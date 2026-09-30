@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+dist/
+tests/
+test-results/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
