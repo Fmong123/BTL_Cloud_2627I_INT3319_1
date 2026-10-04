@@ -6,3 +6,9 @@ dist/
 !.env.example
 test-results/
 *.log
+backend/.venv/
+backend/data/
+backend/.test-tmp/
+__pycache__/
+.pytest_cache/
+*.py[cod]
