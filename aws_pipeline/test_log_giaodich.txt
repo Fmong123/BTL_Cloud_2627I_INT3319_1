@@ -1,0 +1,2 @@
+Đây là file test upload từ module AWS-B bằng boto3.
+Nội dung giả lập: 4111 1111 1111 1111 (Visa Test)
