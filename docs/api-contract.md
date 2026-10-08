@@ -1,6 +1,6 @@
 # Hợp đồng API — MaySec
 
-API chạy local tại `http://127.0.0.1:8000`. OpenAPI tương tác: `/docs`; schema: `/openapi.json`. Không có xác thực ở mốc này; `dev-user` trong key chỉ là tên thử nghiệm.
+API chạy local tại `http://127.0.0.1:8000`. OpenAPI tương tác: `/docs`; schema: `/openapi.json`. OpenAPI sinh từ routes và Pydantic schemas là nguồn chuẩn của hợp đồng HTTP; tài liệu này giải thích hành vi và bàn giao nội bộ. Không có xác thực ở mốc này; `dev-user` trong key chỉ là tên thử nghiệm.
 
 ## GET /health
 
@@ -44,7 +44,7 @@ Ví dụ response của chế độ local:
 
 `key` là định danh lưu trữ tương đối, không phải URL download. UUID riêng cho mỗi request ngăn hai tệp trùng tên ghi đè nhau. Không có idempotency: gửi lại cùng một tệp sẽ tạo object mới.
 
-`storage=local` xác nhận lưu trên đĩa máy chạy API. Giá trị `s3` dành cho adapter thật sau này; repository chưa có adapter đó. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
+`storage=local` xác nhận lưu trên đĩa máy chạy API. Repository có `S3Storage` nhưng chưa nối vào factory/config mặc định, và service AWS chưa triển khai uploader A theo contract bên dưới. Giá trị `s3` chỉ được trả khi adapter gọi uploader thật và nhận xác nhận thành công. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
 
 ### Lỗi
 
@@ -89,9 +89,71 @@ upload(file_obj, *, key: str, content_type: str) -> StoredObject
 - API tạo UUID/key; adapter sử dụng key được giao.
 - Adapter trả `StoredObject` chỉ sau khi ghi xong; lỗi phải được ném ra theo kiểu mà route xử lý.
 - Hàm upload là đồng bộ; API bố trí lời gọi trong worker thread để không chặn event loop.
-- AWS-B có thể bọc `upload_to_s3(...)` của mình bằng interface này. Bucket/region/credentials lấy từ cấu hình phía server; không lấy từ browser.
+- `S3Storage` bọc `upload_to_s3(...)` bằng interface này. Bucket/region/credentials lấy từ cấu hình phía server; không lấy từ browser.
 
 Route/schema/frontend giữ hợp đồng HTTP khi thay adapter. Hướng dẫn bàn giao và chạy demo: [Hướng dẫn API](api-guide.md).
+
+### Bàn giao S3Storage ↔ service của Sang — phương án A
+
+**Trạng thái: contract đề xuất để Sang xác nhận trước khi triển khai service.** Bạn sở hữu adapter/API, Sang sở hữu service/client/transfer settings. Typed interface `S3Uploader` trong `backend/app/services/s3_storage.py` là điểm bàn giao của code Python. Không đổi chữ ký hoặc kiểu trả về riêng lẻ giữa hai bên.
+
+Luồng: `POST /upload → Storage.upload → S3Storage → upload_to_s3 → S3`.
+
+Chữ ký service cần triển khai:
+
+```python
+def upload_to_s3(
+    file_obj,
+    *,
+    key: str,
+    content_type: str,
+    client,
+    bucket: str,
+    transfer_config,
+) -> str:
+    # Ghi S3 đồng bộ; chỉ sau khi SDK thành công mới trả key.
+    ...
+```
+
+| Đầu vào | Yêu cầu |
+|---|---|
+| `file_obj` | Binary file-like đã validation và rewind về đầu; không đọc toàn bộ thành bytes chỉ để upload |
+| `key` | API sinh dạng `uploads/dev-user/UUID/safe-name`; service giữ nguyên, không tự sinh UUID khác |
+| `content_type` | API truyền từ request hoặc `application/octet-stream`; service truyền vào `ExtraArgs.ContentType`; đây chưa phải xác minh định dạng nội dung |
+| `client` | S3 client tạo từ config/factory phía server, có thể thay bằng stub trong tests |
+| `bucket` | Bucket phía server; không lấy từ browser |
+| `transfer_config` | Boto3 TransferConfig đã tạo ngoài adapter; service chuyển vào tham số `Config` của upload_fileobj |
+
+**Quy tắc trả kết quả:** service gọi `client.upload_fileobj(...)`, chờ thao tác hoàn tất rồi `return key`. SDK upload_fileobj có thể trả `None` khi thành công; wrapper của Sang phải chuyển thành chuỗi key. Không nuốt exception rồi trả `None`. Adapter từ chối `None`, boolean hoặc key khác. Chuỗi key chỉ là xác nhận theo contract, không tự chứng minh bytes trên S3 nếu uploader viết sai; nghiệm thu vẫn phải đối chiếu hash trên AWS thật.
+
+Service không tạo presigned URL để thay cho ghi file, không giữ handle sau request và không chịu trách nhiệm validation/UUID/schema HTTP. Cleanup handle cuối request do route thực hiện. Bucket/credentials không được đưa vào response upload.
+
+| Trường hợp | Adapter | HTTP qua route hiện có |
+|---|---|---|
+| Thiếu bucket/client/transfer config/uploader | StorageUnavailable; không gọi service | 503 |
+| Thiếu credentials, thiếu một phần credentials hoặc region khi service gọi SDK | StorageUnavailable | 503 |
+| ClientError, lỗi SDK khác hoặc I/O | StorageFailure | 502 |
+| Service tự ném StorageUnavailable/StorageFailure | Giữ nguyên loại lỗi | 503/502 |
+| Service trả kết quả không đúng contract | StorageFailure | 502 |
+| Lỗi ngoài các loại trên | Route bắt lỗi bất ngờ, không lộ chi tiết | 502 |
+
+`configured=True` chỉ nói dependencies đã được cung cấp; không chứng minh IAM/bucket/mạng hoạt động. Adapter không tự retry POST, không tạo client hoặc import s3_service ở module scope. Retry SDK thuộc service của Sang. Lỗi sau khi S3 có thể đã ghi không tự retry bằng UUID mới.
+
+Khi service sẵn sàng, application factory có thể tạo adapter như sau (ví dụ kết nối, chưa được nối vào main.py):
+
+```python
+storage = S3Storage(
+    bucket=bucket,
+    client=s3_client,
+    transfer_config=transfer_config,
+    uploader=upload_to_s3,
+)
+app = create_app(settings=settings, storage=storage)
+```
+
+Không import `upload_to_s3` từ service hiện tại để chạy ví dụ này: hàm chưa tồn tại và service hiện tạo client lúc import. Sang cần bổ sung hàm/refactor factory trước. Bạn tiếp tục thêm mode s3 vào config/main ở bước kế tiếp.
+
+Kiểm thử bàn giao: adapter dùng uploader stub; service dùng client stub; HTTP test inject adapter qua create_app và kiểm response/error/đóng handle. Tests không cần credentials và không gọi AWS. Demo AWS thật phải kiểm key và SHA256; `scan_status` vẫn `not_started` đến khi nối pipeline/status.
 
 ## Chức năng chưa triển khai
 
