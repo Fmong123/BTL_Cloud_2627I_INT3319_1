@@ -22,7 +22,7 @@ Chế độ trên frontend quyết định có gửi nội dung file đến API 
 | API (`api`) | `local` | Gửi file thật đến FastAPI, ghi trên đĩa máy chạy backend; nhãn **Đã lưu local** |
 | API (`api`) | `unconfigured` | API kiểm tra file; file hợp lệ trả **503**, không ghi file và không báo thành công |
 
-Frontend mặc định là `demo` nếu chưa cấu hình khác. Backend mặc định là `unconfigured`; lệnh chạy bên dưới bật `local` để demo upload thật. Adapter S3 chưa được triển khai; chọn chế độ API trên web không tự bật S3.
+Frontend mặc định là `demo` nếu chưa cấu hình khác. Backend mặc định là `unconfigured`; lệnh chạy bên dưới bật `local` để demo upload thật. Đã có adapter và factory/config S3, vẫn chờ uploader của Sang; chọn chế độ API trên web không tự bật S3. Xem điểm nối uploader trong [contract](docs/api-contract.md).
 
 ## Chạy API
 
@@ -38,7 +38,7 @@ $env:MAYSEC_STORAGE_MODE = 'local'
 
 Gọi trực tiếp Python trong `.venv`, không cần đổi execution policy để activate. Chỉ tạo môi trường/cài dependency ở lần đầu.
 
-API docs: `http://127.0.0.1:8000/docs`. Health: `/health`; HTTP 200 chỉ xác nhận app/config, chưa chứng minh upload hoạt động. Local mode lưu byte thật trong `backend/data/`, không đưa vào Git. Mặc định `MAYSEC_STORAGE_MODE=unconfigured` vẫn khởi động nhưng upload hợp lệ trả 503. Hiện chỉ có hai mode này, chưa có adapter S3.
+API docs: `http://127.0.0.1:8000/docs`. Health: `/health`; HTTP 200 chỉ xác nhận app/config, chưa chứng minh upload hoạt động. Local mode lưu byte thật trong `backend/data/`, không đưa vào Git. Mặc định `MAYSEC_STORAGE_MODE=unconfigured` vẫn khởi động nhưng upload hợp lệ trả 503. Mode `s3` yêu cầu bucket/region và uploader; chưa nối uploader thì `storage_configured=false` và upload trả 503.
 
 ### Địa chỉ và endpoint hiện có
 
@@ -59,10 +59,15 @@ Trong dialog kết nối của webapp, nhập **URL gốc** `http://127.0.0.1:80
 
 | Biến môi trường | Mặc định | Ý nghĩa |
 |---|---|---|
-| `MAYSEC_STORAGE_MODE` | `unconfigured` | Chỉ nhận `unconfigured` hoặc `local` |
+| `MAYSEC_STORAGE_MODE` | `unconfigured` | Nhận `unconfigured`, `local` hoặc `s3` |
 | `MAYSEC_LOCAL_STORAGE_DIR` | `data` | Thư mục lưu local; đường dẫn tương đối tính từ `backend/` |
 | `MAYSEC_MAX_FILE_SIZE_BYTES` | `104857600` | Giới hạn byte nội dung một file |
 | `MAYSEC_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Origin frontend được phép, phân cách bằng dấu phẩy |
+| `S3_BUCKET_NAME` | Rỗng | Bắt buộc khi chọn mode `s3` |
+| `AWS_REGION` | Rỗng | Region của bucket; bắt buộc khi chọn mode `s3` |
+| `MAYSEC_S3_MULTIPART_THRESHOLD_BYTES` | `16777216` | Ngưỡng multipart 16 MiB |
+| `MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES` | `8388608` | Chunk 8 MiB; chấp nhận từ 5 MiB đến 5 GiB |
+| `MAYSEC_S3_MAX_CONCURRENCY` | `2` | Tác vụ SDK song song cho mỗi upload; không giới hạn HTTP requests |
 
 Thay đổi các biến rồi khởi động lại API. Backend không tự đọc `.env`; nếu dùng file cấu hình, sao chép `.env.example` thành `.env` và thêm `--env-file .env` vào lệnh Uvicorn. Biến môi trường đã đặt trong terminal được ưu tiên hơn giá trị trong file `.env`.
 
@@ -121,7 +126,7 @@ API trả HTTP **201 sau khi storage ghi xong**, ví dụ ở local mode:
 }
 ```
 
-Frontend đọc `storage` để phân biệt local/S3/chưa xác định. Vẫn hỗ trợ response cũ chứa `id` hoặc `key`, alias `file_id`/`s3_key` hoặc bọc trong `{ "file": ... }`; thiếu `storage` không phải bằng chứng S3. Adapter S3 thật phải trả thành công sau khi S3 xác nhận; repo chưa có adapter đó.
+Frontend đọc `storage` để phân biệt local/S3/chưa xác định. Vẫn hỗ trợ response cũ chứa `id` hoặc `key`, alias `file_id`/`s3_key` hoặc bọc trong `{ "file": ... }`; thiếu `storage` không phải bằng chứng S3. Adapter S3 chỉ trả thành công sau khi uploader xác nhận ghi xong; uploader vẫn chờ Sang triển khai.
 
 `key` là đường dẫn tương đối trong storage, không phải link download. API dùng UUID và chuẩn hóa tên trong key, còn `original_name` giữ tên client gửi. `content_type` là giá trị client khai báo hoặc `application/octet-stream`; chưa xác minh định dạng theo nội dung. Mỗi request mới tạo ID/key mới, kể cả khi gửi lại cùng file.
 
@@ -162,7 +167,7 @@ curl.exe -i -F 'file=@docs/demo-files/hello-maysec.txt' 'http://127.0.0.1:8000/u
 
 ## Phạm vi và bước tiếp theo
 
-Hiện đã triển khai **frontend và API upload**. Chưa có adapter S3, tài khoản AWS/bucket được cấu hình, đăng nhập, DB metadata, API liệt kê/download/xóa file, quét PII, KMS hay cách ly tệp. Local demo kiểm tra luồng browser → API → đĩa, chưa xác minh upload lên S3 thật. `dev-user` chỉ là danh tính thử nghiệm; file thành công chưa được quét.
+Hiện đã triển khai **frontend và API upload**, adapter và factory/config S3; vẫn chờ service uploader của Sang và nghiệm thu AWS thật. Chưa có đăng nhập, DB metadata, API liệt kê/download/xóa file, quét PII, KMS hay cách ly tệp. Local demo kiểm tra luồng browser → API → đĩa, chưa xác minh upload lên S3 thật. `dev-user` chỉ là danh tính thử nghiệm; file thành công chưa được quét.
 
 Danh sách/bộ lọc/đánh dấu nằm trong bộ nhớ phiên. Refresh không xóa file local đã ghi; bước tiếp theo là nối `GET /files` để tải lại danh sách. **Bỏ khỏi danh sách** chỉ bỏ bản ghi UI, không xóa storage. **Hủy upload** chỉ hủy request phía browser, không bảo đảm backend chưa lưu file. Timeout/retry có thể tạo bản sao: API hiện chưa có idempotency.
 

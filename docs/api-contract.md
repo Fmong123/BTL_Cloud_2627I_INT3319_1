@@ -44,7 +44,7 @@ Ví dụ response của chế độ local:
 
 `key` là định danh lưu trữ tương đối, không phải URL download. UUID riêng cho mỗi request ngăn hai tệp trùng tên ghi đè nhau. Không có idempotency: gửi lại cùng một tệp sẽ tạo object mới.
 
-`storage=local` xác nhận lưu trên đĩa máy chạy API. Repository có `S3Storage` nhưng chưa nối vào factory/config mặc định, và service AWS chưa triển khai uploader A theo contract bên dưới. Giá trị `s3` chỉ được trả khi adapter gọi uploader thật và nhận xác nhận thành công. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
+`storage=local` xác nhận lưu trên đĩa máy chạy API. Repository có `S3Storage` và factory/config hỗ trợ S3, nhưng service AWS chưa triển khai uploader A theo contract bên dưới. Giá trị `s3` trong response upload chỉ được trả khi adapter gọi uploader và nhận xác nhận thành công. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
 
 ### Lỗi
 
@@ -139,19 +139,22 @@ Service không tạo presigned URL để thay cho ghi file, không giữ handle 
 
 `configured=True` chỉ nói dependencies đã được cung cấp; không chứng minh IAM/bucket/mạng hoạt động. Adapter không tự retry POST, không tạo client hoặc import s3_service ở module scope. Retry SDK thuộc service của Sang. Lỗi sau khi S3 có thể đã ghi không tự retry bằng UUID mới.
 
-Khi service sẵn sàng, application factory có thể tạo adapter như sau (ví dụ kết nối, chưa được nối vào main.py):
+`config.py` đã hỗ trợ mode `s3`; khi chọn mode này, bucket và region phải được cung cấp, nếu thiếu ứng dụng báo lỗi cấu hình lúc khởi động. `main.py` đã có factory tạo S3 client/TransferConfig và adapter khi nhận uploader. Cấu hình mẫu nằm trong `backend/.env.example`; Settings không tự đọc `.env`, dùng Uvicorn `--env-file .env` nếu cần.
+
+Khi service sẵn sàng và đã bỏ việc tạo client lúc import, nối uploader vào application factory:
 
 ```python
-storage = S3Storage(
-    bucket=bucket,
-    client=s3_client,
-    transfer_config=transfer_config,
-    uploader=upload_to_s3,
-)
-app = create_app(settings=settings, storage=storage)
+# Chỉ thêm import này sau khi Sang hoàn thành/refactor service.
+from .services.s3_service import upload_to_s3
+
+app = create_app(s3_uploader=upload_to_s3)
 ```
 
-Không import `upload_to_s3` từ service hiện tại để chạy ví dụ này: hàm chưa tồn tại và service hiện tạo client lúc import. Sang cần bổ sung hàm/refactor factory trước. Bạn tiếp tục thêm mode s3 vào config/main ở bước kế tiếp.
+Điểm khởi động hiện tại vẫn là `app = create_app()` vì service chưa có `upload_to_s3`. Trong mode S3 khi chưa truyền uploader, `/health` trả `storage=s3`, `storage_configured=false` và file hợp lệ trả 503; factory không tạo AWS client. Không import service hiện tại chỉ để tìm hàm vì có side effect khởi tạo client.
+
+Factory dùng credentials chain mặc định của Boto3, không nhận AWS keys từ frontend. Client tạo một lần cho ứng dụng và đóng khi ứng dụng shutdown; storage được inject trực tiếp vẫn do caller quản lý. Nếu SDK không tạo được client, app giữ S3 chưa sẵn sàng và upload trả 503; sửa cấu hình rồi khởi động lại.
+
+TransferConfig dùng ngưỡng multipart 16 MiB, chunk 8 MiB, tối đa 2 tác vụ truyền cho mỗi upload và classic transfer manager. Đây là giá trị khởi đầu để đo, không phải giới hạn request đồng thời hoặc cơ chế resume từ browser. Các biến `MAYSEC_S3_MULTIPART_THRESHOLD_BYTES`, `MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES`, `MAYSEC_S3_MAX_CONCURRENCY` cho phép điều chỉnh; chunk phải từ 5 MiB đến 5 GiB.
 
 Kiểm thử bàn giao: adapter dùng uploader stub; service dùng client stub; HTTP test inject adapter qua create_app và kiểm response/error/đóng handle. Tests không cần credentials và không gọi AWS. Demo AWS thật phải kiểm key và SHA256; `scan_status` vẫn `not_started` đến khi nối pipeline/status.
 

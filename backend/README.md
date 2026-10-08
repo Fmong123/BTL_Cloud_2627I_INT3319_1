@@ -25,7 +25,7 @@ $env:MAYSEC_STORAGE_MODE = 'local'
 
 Mở `/docs` hoặc `/health` trên port 8000. Webapp ở port 5173; API chưa có giao diện tại GET `/`. Local adapter mặc định ghi `backend/data/<key>`; xem phần cấu hình trong hướng dẫn nếu thay storage root.
 
-Ctrl+C để dừng. Đổi config phải restart. Chưa có adapter S3, auth, list/download, DB metadata hay pipeline quét; file upload thành công chưa được quét.
+Ctrl+C để dừng. Đổi config phải restart. Đã có adapter và factory/config S3; vẫn cần Sang triển khai uploader và nối vào `create_app(s3_uploader=upload_to_s3)` theo [contract](../docs/api-contract.md). Chọn `s3` yêu cầu `S3_BUCKET_NAME` và `AWS_REGION`; thiếu uploader thì upload trả 503. Chưa có auth, list/download, DB metadata hay pipeline quét; file upload thành công chưa được quét.
 
 ## Kiểm thử
 
