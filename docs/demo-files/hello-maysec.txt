@@ -1,3 +1,0 @@
-Hello MaySec teammates!
-This sample proves browser -> FastAPI -> local storage upload.
-It contains no personal data and has not been scanned by the app.

@@ -28,7 +28,7 @@ Kiểm tra ứng dụng chạy và đọc cấu hình lưu trữ hiện tại. H
 
 Ví dụ response của chế độ local:
 
-```json
+```JSON
 {
   "id": "a-uuid-generated-by-server",
   "key": "uploads/dev-user/a-uuid-generated-by-server/demo.txt",
@@ -44,7 +44,7 @@ Ví dụ response của chế độ local:
 
 `key` là định danh lưu trữ tương đối, không phải URL download. UUID riêng cho mỗi request ngăn hai tệp trùng tên ghi đè nhau. Không có idempotency: gửi lại cùng một tệp sẽ tạo object mới.
 
-`storage=local` xác nhận lưu trên đĩa máy chạy API. Repository có `S3Storage` và factory/config hỗ trợ S3, nhưng service AWS chưa triển khai uploader A theo contract bên dưới. Giá trị `s3` trong response upload chỉ được trả khi adapter gọi uploader và nhận xác nhận thành công. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
+`storage=local` xác nhận lưu trên đĩa máy chạy API. Repository có `S3Storage` nhưng chưa nối vào factory/config mặc định, và service AWS chưa triển khai uploader A theo contract bên dưới. Giá trị `s3` chỉ được trả khi adapter gọi uploader thật và nhận xác nhận thành công. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
 
 ### Lỗi
 
@@ -52,13 +52,13 @@ Ví dụ response của chế độ local:
 {"detail": "Lý do thất bại"}
 ```
 
-| HTTP | Khi nào |
-|---|---|
-| 400 | Tệp rỗng, thiếu tên hợp lệ hoặc lỗi parser multipart |
-| 413 | Nội dung tệp hoặc tổng body multipart vượt giới hạn cấu hình |
-| 422 | Thiếu trường `file`, sai loại trường hoặc request không khớp schema |
-| 503 | Chưa cấu hình storage hoặc dịch vụ chưa sẵn sàng |
-| 502 | Adapter lưu trữ gặp lỗi |
+| HTTP | Khi nào                                                                      |
+| ---- | ----------------------------------------------------------------------------- |
+| 400  | Tệp rỗng, thiếu tên hợp lệ hoặc lỗi parser multipart                  |
+| 413  | Nội dung tệp hoặc tổng body multipart vượt giới hạn cấu hình        |
+| 422  | Thiếu trường`file`, sai loại trường hoặc request không khớp schema |
+| 503  | Chưa cấu hình storage hoặc dịch vụ chưa sẵn sàng                     |
+| 502  | Adapter lưu trữ gặp lỗi                                                   |
 
 API không đưa credentials hoặc chi tiết exception nội bộ vào response. Frontend hiển thị lỗi và giữ trạng thái thất bại; không tự chuyển sang mô phỏng.
 
@@ -74,7 +74,9 @@ CORS là quy tắc cho trình duyệt, không phải xác thực hay kiểm tra 
 
 ```powershell
 Set-Location 'D:\Cloud UET\MaySec'
-curl.exe -i -F 'file=@docs/demo-files/hello-maysec.txt' 'http://127.0.0.1:8000/upload'
+# Thay bằng đường dẫn tới file có sẵn trên máy bạn.
+$sourceFile = 'C:\duong-dan-cua-ban\tai-lieu.txt'
+curl.exe -i -F "file=@$sourceFile" 'http://127.0.0.1:8000/upload'
 ```
 
 ## Hợp đồng API ↔ thành phần lưu trữ
@@ -115,46 +117,43 @@ def upload_to_s3(
     ...
 ```
 
-| Đầu vào | Yêu cầu |
-|---|---|
-| `file_obj` | Binary file-like đã validation và rewind về đầu; không đọc toàn bộ thành bytes chỉ để upload |
-| `key` | API sinh dạng `uploads/dev-user/UUID/safe-name`; service giữ nguyên, không tự sinh UUID khác |
-| `content_type` | API truyền từ request hoặc `application/octet-stream`; service truyền vào `ExtraArgs.ContentType`; đây chưa phải xác minh định dạng nội dung |
-| `client` | S3 client tạo từ config/factory phía server, có thể thay bằng stub trong tests |
-| `bucket` | Bucket phía server; không lấy từ browser |
-| `transfer_config` | Boto3 TransferConfig đã tạo ngoài adapter; service chuyển vào tham số `Config` của upload_fileobj |
+| Đầu vào          | Yêu cầu                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file_obj`        | Binary file-like đã validation và rewind về đầu; không đọc toàn bộ thành bytes chỉ để upload                                                   |
+| `key`             | API sinh dạng`uploads/dev-user/UUID/safe-name`; service giữ nguyên, không tự sinh UUID khác                                                           |
+| `content_type`    | API truyền từ request hoặc`application/octet-stream`; service truyền vào `ExtraArgs.ContentType`; đây chưa phải xác minh định dạng nội dung |
+| `client`          | S3 client tạo từ config/factory phía server, có thể thay bằng stub trong tests                                                                          |
+| `bucket`          | Bucket phía server; không lấy từ browser                                                                                                                  |
+| `transfer_config` | Boto3 TransferConfig đã tạo ngoài adapter; service chuyển vào tham số`Config` của upload_fileobj                                                    |
 
 **Quy tắc trả kết quả:** service gọi `client.upload_fileobj(...)`, chờ thao tác hoàn tất rồi `return key`. SDK upload_fileobj có thể trả `None` khi thành công; wrapper của Sang phải chuyển thành chuỗi key. Không nuốt exception rồi trả `None`. Adapter từ chối `None`, boolean hoặc key khác. Chuỗi key chỉ là xác nhận theo contract, không tự chứng minh bytes trên S3 nếu uploader viết sai; nghiệm thu vẫn phải đối chiếu hash trên AWS thật.
 
 Service không tạo presigned URL để thay cho ghi file, không giữ handle sau request và không chịu trách nhiệm validation/UUID/schema HTTP. Cleanup handle cuối request do route thực hiện. Bucket/credentials không được đưa vào response upload.
 
-| Trường hợp | Adapter | HTTP qua route hiện có |
-|---|---|---|
-| Thiếu bucket/client/transfer config/uploader | StorageUnavailable; không gọi service | 503 |
-| Thiếu credentials, thiếu một phần credentials hoặc region khi service gọi SDK | StorageUnavailable | 503 |
-| ClientError, lỗi SDK khác hoặc I/O | StorageFailure | 502 |
-| Service tự ném StorageUnavailable/StorageFailure | Giữ nguyên loại lỗi | 503/502 |
-| Service trả kết quả không đúng contract | StorageFailure | 502 |
-| Lỗi ngoài các loại trên | Route bắt lỗi bất ngờ, không lộ chi tiết | 502 |
+| Trường hợp                                                                       | Adapter                                         | HTTP qua route hiện có |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------ |
+| Thiếu bucket/client/transfer config/uploader                                       | StorageUnavailable; không gọi service         | 503                      |
+| Thiếu credentials, thiếu một phần credentials hoặc region khi service gọi SDK | StorageUnavailable                              | 503                      |
+| ClientError, lỗi SDK khác hoặc I/O                                               | StorageFailure                                  | 502                      |
+| Service tự ném StorageUnavailable/StorageFailure                                  | Giữ nguyên loại lỗi                         | 503/502                  |
+| Service trả kết quả không đúng contract                                       | StorageFailure                                  | 502                      |
+| Lỗi ngoài các loại trên                                                        | Route bắt lỗi bất ngờ, không lộ chi tiết | 502                      |
 
 `configured=True` chỉ nói dependencies đã được cung cấp; không chứng minh IAM/bucket/mạng hoạt động. Adapter không tự retry POST, không tạo client hoặc import s3_service ở module scope. Retry SDK thuộc service của Sang. Lỗi sau khi S3 có thể đã ghi không tự retry bằng UUID mới.
 
-`config.py` đã hỗ trợ mode `s3`; khi chọn mode này, bucket và region phải được cung cấp, nếu thiếu ứng dụng báo lỗi cấu hình lúc khởi động. `main.py` đã có factory tạo S3 client/TransferConfig và adapter khi nhận uploader. Cấu hình mẫu nằm trong `backend/.env.example`; Settings không tự đọc `.env`, dùng Uvicorn `--env-file .env` nếu cần.
-
-Khi service sẵn sàng và đã bỏ việc tạo client lúc import, nối uploader vào application factory:
+Khi service sẵn sàng, application factory có thể tạo adapter như sau (ví dụ kết nối, chưa được nối vào main.py):
 
 ```python
-# Chỉ thêm import này sau khi Sang hoàn thành/refactor service.
-from .services.s3_service import upload_to_s3
-
-app = create_app(s3_uploader=upload_to_s3)
+storage = S3Storage(
+    bucket=bucket,
+    client=s3_client,
+    transfer_config=transfer_config,
+    uploader=upload_to_s3,
+)
+app = create_app(settings=settings, storage=storage)
 ```
 
-Điểm khởi động hiện tại vẫn là `app = create_app()` vì service chưa có `upload_to_s3`. Trong mode S3 khi chưa truyền uploader, `/health` trả `storage=s3`, `storage_configured=false` và file hợp lệ trả 503; factory không tạo AWS client. Không import service hiện tại chỉ để tìm hàm vì có side effect khởi tạo client.
-
-Factory dùng credentials chain mặc định của Boto3, không nhận AWS keys từ frontend. Client tạo một lần cho ứng dụng và đóng khi ứng dụng shutdown; storage được inject trực tiếp vẫn do caller quản lý. Nếu SDK không tạo được client, app giữ S3 chưa sẵn sàng và upload trả 503; sửa cấu hình rồi khởi động lại.
-
-TransferConfig dùng ngưỡng multipart 16 MiB, chunk 8 MiB, tối đa 2 tác vụ truyền cho mỗi upload và classic transfer manager. Đây là giá trị khởi đầu để đo, không phải giới hạn request đồng thời hoặc cơ chế resume từ browser. Các biến `MAYSEC_S3_MULTIPART_THRESHOLD_BYTES`, `MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES`, `MAYSEC_S3_MAX_CONCURRENCY` cho phép điều chỉnh; chunk phải từ 5 MiB đến 5 GiB.
+Không import `upload_to_s3` từ service hiện tại để chạy ví dụ này: hàm chưa tồn tại và service hiện tạo client lúc import. Sang cần bổ sung hàm/refactor factory trước. Bạn tiếp tục thêm mode s3 vào config/main ở bước kế tiếp.
 
 Kiểm thử bàn giao: adapter dùng uploader stub; service dùng client stub; HTTP test inject adapter qua create_app và kiểm response/error/đóng handle. Tests không cần credentials và không gọi AWS. Demo AWS thật phải kiểm key và SHA256; `scan_status` vẫn `not_started` đến khi nối pipeline/status.
 

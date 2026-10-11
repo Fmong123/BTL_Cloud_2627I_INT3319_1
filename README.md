@@ -85,7 +85,7 @@ pnpm.cmd run dev --port 5173 --strictPort
 
 Đã có pnpm lockfile. Nếu dùng npm, thay hai lệnh bằng `npm.cmd install --package-lock=false` và `npm.cmd run dev -- --port 5173 --strictPort`. Chọn một công cụ cài dependency cho dự án.
 
-Mở địa chỉ Vite hiển thị, mặc định `http://127.0.0.1:5173`. Bấm nút chế độ/kết nối → **Kết nối API (local / S3)**, nhập `http://127.0.0.1:8000`, lưu rồi upload file mẫu [hello-maysec.txt](docs/demo-files/hello-maysec.txt). Tệp thành công có nhãn **Đã lưu local**. Chế độ trải nghiệm mặc định chỉ mô phỏng trong trình duyệt.
+Mở địa chỉ Vite hiển thị, mặc định `http://127.0.0.1:5173`. Bấm nút chế độ/kết nối → **Kết nối API (local / S3)**, nhập `http://127.0.0.1:8000`, lưu rồi chọn một file có sẵn trên máy bạn để thử upload. Tệp thành công có nhãn **Đã lưu local**. Chế độ trải nghiệm mặc định chỉ mô phỏng trong trình duyệt.
 
 Build frontend:
 
@@ -150,7 +150,9 @@ Kiểm tra độc lập bằng PowerShell:
 
 ```powershell
 Set-Location 'D:\Cloud UET\MaySec'
-curl.exe -i -F 'file=@docs/demo-files/hello-maysec.txt' 'http://127.0.0.1:8000/upload'
+# Thay bằng đường dẫn tới file có sẵn trên máy bạn.
+$sourceFile = 'C:\duong-dan-cua-ban\tai-lieu.txt'
+curl.exe -i -F "file=@$sourceFile" 'http://127.0.0.1:8000/upload'
 ```
 
 ## Đã triển khai
@@ -216,7 +218,6 @@ frontend/
 docs/
   api-guide.md
   api-contract.md
-  demo-files/hello-maysec.txt
 ```
 
 Giữ source, các file cấu hình mẫu, lockfile, docs và tests backend khi đưa lên Git. Không commit `.venv`, `node_modules`, `dist`, dữ liệu upload, log hoặc `.env` riêng. Nếu upload bằng giao diện GitHub, `.gitignore` không tự lọc thao tác kéo thả trên web; kiểm tra file được chọn.

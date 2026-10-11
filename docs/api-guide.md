@@ -123,7 +123,7 @@ Lệnh `.cmd` tránh vấn đề execution policy của PowerShell. Repo có s�
 
 1. Mở địa chỉ Vite hiển thị, thường là `http://127.0.0.1:5173`.
 2. Bấm nút chế độ/kết nối, chọn **Kết nối API (local / S3)**, nhập `http://127.0.0.1:8000`, lưu.
-3. Chọn/kéo thả file mẫu `D:\Cloud UET\MaySec\docs\demo-files\hello-maysec.txt`. Chờ server trả 201; nhãn thành công ghi **Đã lưu local**.
+3. Chọn/kéo thả một file có sẵn trên máy bạn. Chờ server trả 201; nhãn thành công ghi **Đã lưu local**.
 4. Mở thông tin tệp để xem nơi lưu, ID/key và trạng thái chưa quét; mở Developer Tools → Network → request `/upload` để xem response JSON.
 
 Lưu URL trên UI chỉ cập nhật cấu hình phiên, không kiểm tra server ngay. Mỗi tệp giữ cấu hình tại lúc được đưa vào hàng đợi; thử lại tệp đó vẫn dùng URL/chế độ cũ. Sau khi đổi cấu hình, thêm tệp mới để demo chế độ mới.
@@ -146,18 +146,18 @@ Biến `VITE_*` nằm trong mã trình duyệt; chỉ đặt URL/chế độ/gi�
 
 ## 4. Chứng minh file lưu thật, thay vì chỉ xem nhãn UI
 
-Repo có file mẫu [hello-maysec.txt](demo-files/hello-maysec.txt), không chứa dữ liệu cá nhân. Upload file đó qua webapp khi API chạy `local`. Copy giá trị `key` từ response hoặc thông tin tệp, rồi chạy:
+Chọn một file có sẵn trên máy bạn và upload qua webapp khi API chạy `local`. Copy giá trị `key` từ response hoặc thông tin tệp, rồi chạy; thay đường dẫn file nguồn và key trong ví dụ bằng giá trị thực tế:
 
 ```powershell
 Set-Location 'D:\Cloud UET\MaySec'
-$uploadedKey = 'uploads/dev-user/THAY-UUID-TU-RESPONSE/hello-maysec.txt'
+$sourceFile = 'C:\duong-dan-cua-ban\tai-lieu.txt'
+$uploadedKey = 'THAY-BANG-KEY-TU-RESPONSE'
 $storedFile = Join-Path '.\backend\data' $uploadedKey
-Get-Content -LiteralPath $storedFile
-Get-FileHash -LiteralPath '.\docs\demo-files\hello-maysec.txt' -Algorithm SHA256
+Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256
 Get-FileHash -LiteralPath $storedFile -Algorithm SHA256
 ```
 
-Hai SHA256 phải trùng nhau. Nếu đổi thư mục storage, thay `backend/data` bằng thư mục thực tế. Sau refresh webapp, danh sách trống vì chưa có `GET /files`, nhưng `Get-Content` vẫn đọc được file đã lưu; restart API cũng không tự xóa dữ liệu local.
+Hai SHA256 phải trùng nhau. Nếu đổi thư mục storage, thay `backend/data` bằng thư mục thực tế. Sau refresh webapp, danh sách trống vì chưa có `GET /files`, nhưng file đã lưu vẫn nằm trên đĩa; restart API cũng không tự xóa dữ liệu local. Với file văn bản, có thể dùng `Get-Content -LiteralPath $storedFile` để xem nội dung.
 
 Upload hai lần file cùng tên: response phải có ID/key khác nhau và hai file được giữ riêng. Đây là chống ghi đè tên, chưa phải chống tạo bản sao khi retry.
 
@@ -321,9 +321,9 @@ Response mẫu:
 ```json
 {
   "id": "uuid-do-server-tao",
-  "key": "uploads/dev-user/uuid-do-server-tao/hello-maysec.txt",
+  "key": "uploads/dev-user/uuid-do-server-tao/tai-lieu.txt",
   "storage": "local",
-  "original_name": "hello-maysec.txt",
+  "original_name": "tai-lieu.txt",
   "size_bytes": 153,
   "content_type": "text/plain",
   "scan_status": "not_started"
@@ -338,12 +338,14 @@ Ví dụ này gửi một upload mới đến server local đang chạy; mỗi l
 
 ```powershell
 Set-Location 'D:\Cloud UET\MaySec'
-$uploadResult = curl.exe --silent --show-error -F 'file=@docs/demo-files/hello-maysec.txt' 'http://127.0.0.1:8000/upload' | ConvertFrom-Json
+# Thay bằng đường dẫn tới file có sẵn trên máy bạn.
+$sourceFile = 'C:\duong-dan-cua-ban\tai-lieu.txt'
+$uploadResult = curl.exe --silent --show-error -F "file=@$sourceFile" 'http://127.0.0.1:8000/upload' | ConvertFrom-Json
 if ($uploadResult.storage -ne 'local' -or -not $uploadResult.key) {
     throw 'Upload local chưa được xác nhận; kiểm tra response và cấu hình API'
 }
 $savedPath = Join-Path '.\backend\data' $uploadResult.key
-$sourceHash = (Get-FileHash -LiteralPath '.\docs\demo-files\hello-maysec.txt' -Algorithm SHA256).Hash
+$sourceHash = (Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash
 $savedHash = (Get-FileHash -LiteralPath $savedPath -Algorithm SHA256).Hash
 $uploadResult
 "Noi luu: $savedPath"
