@@ -1,40 +1,32 @@
-import boto3
-from botocore.exceptions import ClientError
-import os
-from dotenv import load_dotenv
-
-# Backend sử dụng FastAPI nên sẽ tự động quản lý load biến môi trường
-load_dotenv()
-
-S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
-AWS_REGION = os.getenv('AWS_REGION')
-
-# Khởi tạo client S3
-s3_client = boto3.client(
-    's3',
-    region_name=AWS_REGION,
-    # Cấu hình signature_version để đảm bảo url tương thích tốt nhất với presigned
-    config=boto3.session.Config(signature_version='s3v4')
-)
-
-def generate_upload_url(object_name, expiration=3600):
+def upload_to_s3(
+    file_obj,
+    *,
+    key: str,
+    content_type: str,
+    client,
+    bucket: str,
+    transfer_config,
+) -> str:
     """
-    Tạo Presigned URL để Frontend tự tải file trực tiếp lên S3
-    :param object_name: Tên file trên S3 (vd: uploads/123/file.txt)
-    :param expiration: Thời gian sống của URL tính bằng giây (mặc định 1 tiếng)
-    :return: Chuỗi URL hoặc None nếu lỗi
+    Uploader tuân thủ S3Uploader Protocol (s3_storage.py).
+
+    - file_obj   : positional — file-like object đã được rewind bởi caller (files.py:52).
+    - key/content_type/client/bucket/transfer_config : keyword-only theo Protocol.
+    - Trả về đúng chuỗi `key` không đổi để Adapter xác nhận tại dòng 86.
+    - Không bắt exception — Adapter (s3_storage.py:78-84) đã xử lý toàn bộ.
     """
-    try:
-        response = s3_client.generate_presigned_url(
-            'put_object',
-            Params={
-                'Bucket': S3_BUCKET_NAME,
-                'Key': object_name
-            },
-            ExpiresIn=expiration
-        )
-        print(f"✅ Đã tạo Presigned URL cho file: {object_name}")
-        return response
-    except ClientError as e:
-        print(f"❌ Lỗi khi tạo presigned URL: {e}")
-        return None
+    kwargs = {
+        "Fileobj": file_obj,
+        "Bucket": bucket,
+        "Key": key,
+    }
+
+    if content_type:
+        kwargs["ExtraArgs"] = {"ContentType": content_type}
+
+    if transfer_config:
+        kwargs["Config"] = transfer_config
+
+    client.upload_fileobj(**kwargs)
+
+    return key
