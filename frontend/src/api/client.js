@@ -20,7 +20,10 @@ export function parseUploadResponse(text) {
     throw new Error('API cần trả về id hoặc key của tệp đã lưu');
   }
   if (!id && !key) throw new Error('API chưa xác nhận tệp đã được lưu');
-  return { id, key };
+  if (result.storage != null && !['local', 's3'].includes(result.storage)) {
+    throw new Error('API trả về loại lưu trữ chưa được hỗ trợ');
+  }
+  return { id, key, storage: result.storage ?? 'unspecified', scanStatus: result.scan_status ?? 'unknown' };
 }
 
 function apiError(xhr) {

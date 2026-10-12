@@ -25,7 +25,7 @@ export default function FileList({ files, view, hasFiles, filtered, onChoose, so
     <div className="file-card-top"><FileIcon file={file} large /><Actions file={file} {...actions} /></div>
     <button className="file-name" onClick={() => actions.onInspect(file.id)} title={file.name}>{file.name}</button>
     <p>{formatBytes(file.size)}<span>·</span>{new Date(file.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</p>
-    <StatusBadge status={file.status} mode={file.mode} progress={file.progress} />
+    <StatusBadge status={file.status} mode={file.mode} progress={file.progress} storage={file.storage} />
     {file.status === 'uploading' && <progress max="100" value={file.progress} aria-label={`Tiến độ ${file.name}`} />}
     {file.error && <p className="file-error">{file.error}</p>}
   </article>)}</div>;
@@ -36,6 +36,6 @@ export default function FileList({ files, view, hasFiles, filtered, onChoose, so
   </tr></thead><tbody>{files.map((file) => <tr key={file.id}>
     <td><div className="file-title-cell"><FileIcon file={file} /><div className="file-title-text"><button className="file-name" title={file.name} onClick={() => actions.onInspect(file.id)}>{file.name}</button>{file.error && <span className="file-error">{file.error}</span>}{file.status === 'uploading' && <progress max="100" value={file.progress} aria-label={`Tiến độ ${file.name}`} />}</div></div></td>
     <td>{formatBytes(file.size)}</td><td>{new Date(file.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}<span className="cell-date">{new Date(file.createdAt).toLocaleDateString('vi-VN')}</span></td>
-    <td><StatusBadge status={file.status} mode={file.mode} progress={file.progress} /></td><td><Actions file={file} {...actions} /></td>
+    <td><StatusBadge status={file.status} mode={file.mode} progress={file.progress} storage={file.storage} /></td><td><Actions file={file} {...actions} /></td>
   </tr>)}</tbody></table></div>;
 }
