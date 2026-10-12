@@ -1,30 +1,26 @@
-import boto3
-from botocore.exceptions import ClientError
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
-AWS_REGION = os.getenv('AWS_REGION')
-
-s3_client = boto3.client(
-    's3',
-    region_name=AWS_REGION
-)
-
-def upload_to_s3(file_obj, object_name):
+def upload_to_s3(file_obj, key, content_type, client, bucket, transfer_config):
     """
-    Hàm nhận file stream từ Backend và upload trực tiếp lên S3
-    :param file_obj: Đối tượng file được đọc từ request của Frontend
-    :param object_name: Tên file/Đường dẫn file khi lưu trên S3 (vd: uploads/id/file.txt)
-    :return: True nếu upload thành công, False nếu thất bại
+    Hàm upload S3 chuẩn Dependency Injection theo contract của adapter.
+    Không khởi tạo client hay bucket toàn cục, sử dụng hoàn toàn tham số được truyền vào.
     """
-    try:
-        # Upload trực tiếp file stream thay vì dùng đường dẫn local
-        s3_client.upload_fileobj(file_obj, S3_BUCKET_NAME, object_name)
-        print(f"✅ Đã upload thành công {object_name} lên S3")
-        return True
-    except ClientError as e:
-        print(f"❌ Lỗi upload S3: {e}")
-        return False
+    # Chuẩn bị các tham số bắt buộc
+    kwargs = {
+        'Fileobj': file_obj,
+        'Bucket': bucket,
+        'Key': key
+    }
+    
+    # Bổ sung ContentType vào ExtraArgs nếu có (Khắc phục lỗi 4)
+    if content_type:
+        kwargs['ExtraArgs'] = {'ContentType': content_type}
+        
+    # Bổ sung Config tải nhiều phần (multipart) nếu có (Khắc phục lỗi 4)
+    if transfer_config:
+        kwargs['Config'] = transfer_config
+
+    # Gọi hàm upload của boto3. 
+    # KHÔNG dùng try-except ở đây để Exception tự đẩy ra ngoài cho Adapter bắt (Khắc phục lỗi 5)
+    client.upload_fileobj(**kwargs)
+    
+    # Trả về chuỗi key đúng chuẩn (Khắc phục lỗi 2)
+    return key
