@@ -22,7 +22,7 @@ Chế độ trên frontend quyết định có gửi nội dung file đến API 
 | API (`api`) | `local` | Gửi file thật đến FastAPI, ghi trên đĩa máy chạy backend; nhãn **Đã lưu local** |
 | API (`api`) | `unconfigured` | API kiểm tra file; file hợp lệ trả **503**, không ghi file và không báo thành công |
 
-Frontend mặc định là `demo` nếu chưa cấu hình khác. Backend mặc định là `unconfigured`; lệnh chạy bên dưới bật `local` để demo upload thật. Đã có adapter và factory/config S3, vẫn chờ uploader của Sang; chọn chế độ API trên web không tự bật S3. Xem điểm nối uploader trong [contract](docs/api-contract.md).
+Frontend mặc định là `demo` nếu chưa cấu hình khác. Backend mặc định là `unconfigured`; lệnh chạy bên dưới bật `local` để demo upload thật. Uploader, adapter và factory/config S3 đã nối trong `app.main:app`; chọn chế độ API trên web không tự bật S3. Đọc [hướng dẫn tự test local/S3](docs/upload-test-guide.md).
 
 ## Chạy API
 
@@ -38,7 +38,7 @@ $env:MAYSEC_STORAGE_MODE = 'local'
 
 Gọi trực tiếp Python trong `.venv`, không cần đổi execution policy để activate. Chỉ tạo môi trường/cài dependency ở lần đầu.
 
-API docs: `http://127.0.0.1:8000/docs`. Health: `/health`; HTTP 200 chỉ xác nhận app/config, chưa chứng minh upload hoạt động. Local mode lưu byte thật trong `backend/data/`, không đưa vào Git. Mặc định `MAYSEC_STORAGE_MODE=unconfigured` vẫn khởi động nhưng upload hợp lệ trả 503. Mode `s3` yêu cầu bucket/region và uploader; chưa nối uploader thì `storage_configured=false` và upload trả 503.
+API docs: `http://127.0.0.1:8000/docs`. Health: `/health`; HTTP 200 chỉ xác nhận app/config, chưa chứng minh upload hoạt động. Local mode lưu byte thật trong `backend/data/`, không đưa vào Git. Mặc định `MAYSEC_STORAGE_MODE=unconfigured` vẫn khởi động nhưng upload hợp lệ trả 503. Mode `s3` dùng uploader đã nối, yêu cầu bucket/region và quyền AWS của backend.
 
 ### Địa chỉ và endpoint hiện có
 
@@ -126,7 +126,7 @@ API trả HTTP **201 sau khi storage ghi xong**, ví dụ ở local mode:
 }
 ```
 
-Frontend đọc `storage` để phân biệt local/S3/chưa xác định. Vẫn hỗ trợ response cũ chứa `id` hoặc `key`, alias `file_id`/`s3_key` hoặc bọc trong `{ "file": ... }`; thiếu `storage` không phải bằng chứng S3. Adapter S3 chỉ trả thành công sau khi uploader xác nhận ghi xong; uploader vẫn chờ Sang triển khai.
+Frontend đọc `storage` để phân biệt local/S3/chưa xác định. Vẫn hỗ trợ response cũ chứa `id` hoặc `key`, alias `file_id`/`s3_key` hoặc bọc trong `{ "file": ... }`; thiếu `storage` không phải bằng chứng S3. Adapter S3 chỉ trả thành công sau khi uploader của Sang xác nhận ghi xong.
 
 `key` là đường dẫn tương đối trong storage, không phải link download. API dùng UUID và chuẩn hóa tên trong key, còn `original_name` giữ tên client gửi. `content_type` là giá trị client khai báo hoặc `application/octet-stream`; chưa xác minh định dạng theo nội dung. Mỗi request mới tạo ID/key mới, kể cả khi gửi lại cùng file.
 
@@ -169,7 +169,7 @@ curl.exe -i -F "file=@$sourceFile" 'http://127.0.0.1:8000/upload'
 
 ## Phạm vi và bước tiếp theo
 
-Hiện đã triển khai **frontend và API upload**, adapter và factory/config S3; vẫn chờ service uploader của Sang và nghiệm thu AWS thật. Chưa có đăng nhập, DB metadata, API liệt kê/download/xóa file, quét PII, KMS hay cách ly tệp. Local demo kiểm tra luồng browser → API → đĩa, chưa xác minh upload lên S3 thật. `dev-user` chỉ là danh tính thử nghiệm; file thành công chưa được quét.
+Hiện đã triển khai **frontend và API upload**, service/adapter/factory S3 đã nối; còn nghiệm thu trên tài nguyên AWS thật. Chưa có đăng nhập, DB metadata, API liệt kê/download/xóa file, quét PII, KMS hay cách ly tệp. Local demo kiểm tra luồng browser → API → đĩa, chưa xác minh upload lên S3 thật. `dev-user` chỉ là danh tính thử nghiệm; file thành công chưa được quét.
 
 Danh sách/bộ lọc/đánh dấu nằm trong bộ nhớ phiên. Refresh không xóa file local đã ghi; bước tiếp theo là nối `GET /files` để tải lại danh sách. **Bỏ khỏi danh sách** chỉ bỏ bản ghi UI, không xóa storage. **Hủy upload** chỉ hủy request phía browser, không bảo đảm backend chưa lưu file. Timeout/retry có thể tạo bản sao: API hiện chưa có idempotency.
 

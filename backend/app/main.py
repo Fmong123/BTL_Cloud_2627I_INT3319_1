@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .body_limit import UploadBodyLimitMiddleware
 from .config import Settings
 from .routers.files import router
+from .services.s3_service import upload_to_s3
 from .services.storage import LocalStorage, Storage, UnconfiguredStorage
 
 if TYPE_CHECKING:
@@ -26,7 +27,7 @@ def build_storage(settings: Settings, *, s3_uploader: "S3Uploader | None" = None
     if settings.storage_mode != "s3":
         return UnconfiguredStorage()
 
-    # Local/unconfigured startup never imports the AWS SDK or Sang's service.
+    # Only S3 mode needs the SDK; importing the uploader has no AWS side effects.
     from .services.s3_storage import S3Storage
 
     if not callable(s3_uploader):
@@ -124,4 +125,4 @@ def create_app(
     return app
 
 
-app = create_app()
+app = create_app(s3_uploader=upload_to_s3)
