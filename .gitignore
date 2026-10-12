@@ -12,3 +12,6 @@ backend/.test-tmp/
 __pycache__/
 .pytest_cache/
 *.py[cod]
+
+# Test folders (keep local files, exclude from Git)
+backend/tests/
