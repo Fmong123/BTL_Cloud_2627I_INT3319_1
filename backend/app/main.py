@@ -124,4 +124,6 @@ def create_app(
     return app
 
 
-app = create_app()
+from .services.s3_service import upload_to_s3
+
+app = create_app(s3_uploader=upload_to_s3)
