@@ -2,7 +2,7 @@
 
 Phần được tích hợp gồm FastAPI, kiểm tra file, CORS, chuẩn response/lỗi và điểm ghép storage. Khi chưa có AWS, bạn có thể chứng minh đường đi **webapp → API → file thật trên đĩa** bằng chế độ local được bật rõ ràng. Mặc định storage chưa cấu hình sẽ trả lỗi 503; không báo thành công giả.
 
-Tài liệu này giải thích lớp API và công cụ demo local của MaySec. Luồng “upload từ webapp lên S3 thật” cần adapter S3 và tài nguyên/quyền AWS được bàn giao.
+Tài liệu này giải thích lớp API và công cụ demo local của MaySec. Service/adapter S3 đã nối trong `app.main:app`; upload S3 thật cần tài nguyên/quyền AWS được bàn giao. Hướng dẫn thực hành local/S3 và kiểm tra hash: [upload-test-guide.md](upload-test-guide.md).
 
 Đọc theo thứ tự: chế độ → cài đặt/config → kết nối webapp → kiểm tra nội dung → kiến trúc → kiểm thử/demo → bàn giao S3. Phần cuối có danh sách endpoint, cách dùng Swagger, xử lý lỗi thường gặp và quy tắc phối hợp Git.
 
@@ -15,7 +15,7 @@ Các lệnh PowerShell dùng vị trí clone hiện tại `D:\Cloud UET\MaySec`.
 | Frontend trải nghiệm | Mô phỏng trong bộ nhớ trình duyệt, không gửi nội dung | Giao diện/hàng đợi/trạng thái |
 | API, storage `unconfigured` | API nhận/kiểm tra nhưng chưa có nơi ghi | Hợp đồng HTTP, lỗi 503, UI xử lý lỗi |
 | API, storage `local` | Ghi byte thật vào đĩa máy chạy API | Luồng UI → HTTP → validation → storage hoạt động |
-| S3 sau bàn giao | Adapter ghi object vào bucket thật | Tích hợp Cloud, cần kiểm chứng object/nội dung riêng |
+| API, storage `s3` | Uploader/adapter ghi object vào bucket đã cấu hình | Tích hợp Cloud, cần kiểm chứng object/nội dung trên AWS thật |
 
 File được lưu thành công chưa có kết quả quét. `scan_status=not_started` không phải kết luận file an toàn.
 
@@ -38,7 +38,7 @@ Nếu không có Python Launcher `py` nhưng `python --version` báo Python 3.10
 .\.venv\Scripts\python.exe -m pip --version
 ```
 
-`requirements.txt` gồm FastAPI (HTTP/schema/dependency), Uvicorn (server ASGI) và python-multipart (đọc form upload). `requirements-dev.txt` thêm pytest và httpx để kiểm thử; chưa có boto3 vì chưa triển khai adapter AWS. Máy hiện tại đã được kiểm tra với Python 3.14; các lệnh trên tạo môi trường theo Python có trên máy teammate.
+`requirements.txt` gồm FastAPI (HTTP/schema/dependency), Uvicorn (server ASGI), python-multipart (đọc form upload), boto3 (SDK S3) và python-dotenv (nạp env file qua Uvicorn). `requirements-dev.txt` thêm pytest và httpx để kiểm thử. Máy hiện tại đã được kiểm tra với Python 3.14; các lệnh trên tạo môi trường theo Python có trên máy teammate.
 
 ### Demo local có lưu file thật
 
@@ -85,10 +85,15 @@ Backend không tự đọc `.env` khi thiếu `--env-file`. Các biến server k
 
 | Biến server | Mặc định | Ý nghĩa |
 |---|---|---|
-| `MAYSEC_STORAGE_MODE` | `unconfigured` | Chỉ nhận `unconfigured` hoặc `local`; chưa có lựa chọn S3 |
+| `MAYSEC_STORAGE_MODE` | `unconfigured` | Nhận `unconfigured`, `local` hoặc `s3` |
 | `MAYSEC_MAX_FILE_SIZE_BYTES` | `104857600` | Giới hạn nội dung một file tính theo byte |
 | `MAYSEC_LOCAL_STORAGE_DIR` | `data` | Đường dẫn tương đối được tính từ thư mục `backend`, hoặc dùng đường dẫn tuyệt đối |
 | `MAYSEC_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Danh sách origin, phân cách bằng dấu phẩy |
+| `S3_BUCKET_NAME` | Rỗng | Bắt buộc khi chọn mode `s3` |
+| `AWS_REGION` | Rỗng | Region của bucket; bắt buộc khi chọn mode `s3` |
+| `MAYSEC_S3_MULTIPART_THRESHOLD_BYTES` | `16777216` | Ngưỡng multipart 16 MiB |
+| `MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES` | `8388608` | Chunk 8 MiB; giá trị từ 5 MiB đến 5 GiB |
+| `MAYSEC_S3_MAX_CONCURRENCY` | `2` | Tác vụ SDK song song mỗi upload; không giới hạn HTTP requests |
 
 Ví dụ tùy chỉnh bằng biến môi trường trước khi chạy server:
 
@@ -215,7 +220,7 @@ Việc dọn file `.part` được thực hiện khi có lỗi; nếu hệ đi�
 | 6 | Restart ở `unconfigured`, upload tệp mới | Lỗi 503 xuất hiện trên UI, không thành công giả |
 | 7 | Chỉ vào interface storage | AWS-B thay adapter; FE/route giữ nguyên hợp đồng |
 
-Bạn có thể nói: “Em đã hoàn thành lớp HTTP cho chức năng upload và ghép vào frontend. Local mode để test tích hợp khi chưa có S3. Luồng S3 thật đang chờ adapter/hạ tầng; validation, CORS và response đã có thể kiểm thử độc lập.”
+Bạn có thể nói: “Em đã hoàn thành lớp HTTP và ghép frontend với service/adapter S3. Local mode kiểm tra độc lập khi chưa có quyền AWS. Luồng S3 cần nghiệm thu trên bucket thật bằng object key và SHA256; upload thành công chưa đồng nghĩa đã quét hoặc mã hóa theo nghiệp vụ.”
 
 ### Kiểm tra lỗi độc lập với frontend
 
@@ -253,7 +258,7 @@ Test parser frontend kiểm tra response local/S3/legacy và phản hồi sai. T
 
 1. AWS-A bàn giao bucket/region và phương thức cấp quyền phía server; AWS-B bàn giao hàm upload, dependencies và kiểu lỗi.
 2. AWS-B/API cùng implement interface `Storage.upload(...)` và trả `StoredObject` đúng định nghĩa trong code, với `storage='s3'` sau khi S3 xác nhận.
-3. Ghép adapter trong factory `create_app()` của `main.py`, bổ sung cấu hình/chế độ cần thiết trong `config.py`; dependency tiếp tục lấy adapter từ `app.state.storage`. Chưa có adapter S3 thì không bật chế độ đó hoặc báo kết quả Cloud giả.
+3. Service/adapter/config S3 đã nối trong entrypoint `app.main:app`; factory `create_app()` vẫn nhận storage/uploader để kiểm thử. Dependency lấy adapter từ `app.state.storage`. Hai bên chạy tests service/adapter/entrypoint và nghiệm thu bucket thật trước khi kết luận luồng Cloud hoạt động.
 4. Kiểm tra API bằng curl, đối chiếu key và đọc lại object thật; sau đó kiểm tra từ webapp. Giữ `/upload` và trường response đang được FE dùng.
 5. Tiếp tục metadata dùng chung/`GET /files`, xác thực/quyền và pipeline quét theo kế hoạch các tuần sau.
 
@@ -263,7 +268,7 @@ Adapter bàn giao phải có `mode`, `configured` và method `upload(file_obj, *
 
 ## 8. Giới hạn khi bàn giao
 
-Chưa có auth, S3 thật, DB metadata, list/download/xóa object, idempotency, quét PII/malware, KMS và cách ly. Không triển khai API chưa auth ra mạng public. Nút hủy phía browser không bảo đảm server chưa ghi file; timeout/retry có thể tạo object mới. Bỏ khỏi danh sách chỉ bỏ bản ghi UI.
+Upload S3 đã nối trong code nhưng chưa nghiệm thu trên AWS thật. Chưa có auth, DB metadata, list/download/xóa object, idempotency, quét PII/malware, KMS và cách ly. Không triển khai API chưa auth ra mạng public. Nút hủy phía browser không bảo đảm server chưa ghi file; timeout/retry có thể tạo object mới. Bỏ khỏi danh sách chỉ bỏ bản ghi UI.
 
 Local storage không thay thế S3 trong báo cáo Cloud. Các file demo đã ghi phải được dọn thủ công khi không cần; chúng bị ignore khỏi Git. Danh sách UI chưa được khôi phục sau refresh.
 
@@ -410,9 +415,9 @@ Kỳ vọng 413. Sau demo, đặt server `MAYSEC_MAX_FILE_SIZE_BYTES=104857600`,
 |---|---|
 | `routers/files.py`, `schemas/file.py` | Người API giữ hợp đồng HTTP/validation |
 | `services/storage.py` | Interface dùng chung; thống nhất trước khi sửa |
-| `services/s3_storage.py` (chưa có) | Teammate bổ sung adapter S3 |
+| `services/s3_storage.py`, `services/s3_service.py` | Adapter và uploader S3 đã nối; giữ cùng S3Uploader Protocol |
 | `main.py`, `config.py`, `requirements.txt` | Phối hợp/giao một người ghép adapter và dependencies |
-| `infra/`, `lambdas/` (chưa có) | Teammate bổ sung hạ tầng và pipeline |
+| `lambdas/scan_file/handler.py`, cấu hình AWS | Có code scanner, chưa nối kết quả vào API/UI; hạ tầng cần Sang xác minh/bàn giao |
 
 Folder `backend/` dùng chung cho API và xử lý AWS; không cần tạo thêm backend thứ hai. Sau khi khung được commit/push, teammate cập nhật nhánh chung trước khi bắt đầu và làm trên branch riêng. Cùng tạo `main.py` hoặc cùng sửa đoạn config có thể gây conflict; tạo adapter mới và bàn giao hợp đồng trước giúp giảm xung đột.
 

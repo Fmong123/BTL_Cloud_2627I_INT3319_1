@@ -44,7 +44,7 @@ Ví dụ response của chế độ local:
 
 `key` là định danh lưu trữ tương đối, không phải URL download. UUID riêng cho mỗi request ngăn hai tệp trùng tên ghi đè nhau. Không có idempotency: gửi lại cùng một tệp sẽ tạo object mới.
 
-`storage=local` xác nhận lưu trên đĩa máy chạy API. Repository có `S3Storage` nhưng chưa nối vào factory/config mặc định, và service AWS chưa triển khai uploader A theo contract bên dưới. Giá trị `s3` chỉ được trả khi adapter gọi uploader thật và nhận xác nhận thành công. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
+`storage=local` xác nhận lưu trên đĩa máy chạy API. `S3Storage`, service uploader và factory/config S3 đã được nối trong `app.main:app`. Đặt `MAYSEC_STORAGE_MODE=s3`, bucket/region và cấu hình quyền AWS để sử dụng. Giá trị `s3` trong response upload chỉ được trả sau khi uploader xác nhận ghi hoàn tất. Frontend cũng hiểu response cũ chỉ có `id`/`key`, nhưng không coi việc thiếu `storage` là bằng chứng S3.
 
 ### Lỗi
 
@@ -97,7 +97,7 @@ Route/schema/frontend giữ hợp đồng HTTP khi thay adapter. Hướng dẫn 
 
 ### Bàn giao S3Storage ↔ service của Sang — phương án A
 
-**Trạng thái: contract đề xuất để Sang xác nhận trước khi triển khai service.** Bạn sở hữu adapter/API, Sang sở hữu service/client/transfer settings. Typed interface `S3Uploader` trong `backend/app/services/s3_storage.py` là điểm bàn giao của code Python. Không đổi chữ ký hoặc kiểu trả về riêng lẻ giữa hai bên.
+**Trạng thái: service và adapter đã triển khai cùng contract; cần nghiệm thu AWS thật.** Bạn sở hữu adapter/API/factory; Sang sở hữu service và cấu hình AWS, cùng thống nhất SDK settings. Typed interface `S3Uploader` trong `backend/app/services/s3_storage.py` là điểm bàn giao của code Python. Không đổi chữ ký hoặc kiểu trả về riêng lẻ giữa hai bên.
 
 Luồng: `POST /upload → Storage.upload → S3Storage → upload_to_s3 → S3`.
 
@@ -141,21 +141,21 @@ Service không tạo presigned URL để thay cho ghi file, không giữ handle 
 
 `configured=True` chỉ nói dependencies đã được cung cấp; không chứng minh IAM/bucket/mạng hoạt động. Adapter không tự retry POST, không tạo client hoặc import s3_service ở module scope. Retry SDK thuộc service của Sang. Lỗi sau khi S3 có thể đã ghi không tự retry bằng UUID mới.
 
-Khi service sẵn sàng, application factory có thể tạo adapter như sau (ví dụ kết nối, chưa được nối vào main.py):
+`main.py` đã nối uploader vào điểm khởi động Uvicorn:
 
 ```python
-storage = S3Storage(
-    bucket=bucket,
-    client=s3_client,
-    transfer_config=transfer_config,
-    uploader=upload_to_s3,
-)
-app = create_app(settings=settings, storage=storage)
+from .services.s3_service import upload_to_s3
+
+app = create_app(s3_uploader=upload_to_s3)
 ```
 
-Không import `upload_to_s3` từ service hiện tại để chạy ví dụ này: hàm chưa tồn tại và service hiện tạo client lúc import. Sang cần bổ sung hàm/refactor factory trước. Bạn tiếp tục thêm mode s3 vào config/main ở bước kế tiếp.
+Service không tạo AWS client lúc import. Factory tạo client/TransferConfig khi mode là `s3`, sử dụng credentials chain của Boto3, và đóng client thuộc ứng dụng khi shutdown. Trong local/unconfigured mode không tạo AWS client. Factory vẫn cho phép inject storage/uploader để kiểm thử; gọi trực tiếp `create_app(settings)` mà không truyền uploader trong mode S3 sẽ báo storage chưa sẵn sàng, khác với entrypoint `app.main:app` đã được nối.
 
-Kiểm thử bàn giao: adapter dùng uploader stub; service dùng client stub; HTTP test inject adapter qua create_app và kiểm response/error/đóng handle. Tests không cần credentials và không gọi AWS. Demo AWS thật phải kiểm key và SHA256; `scan_status` vẫn `not_started` đến khi nối pipeline/status.
+`S3_BUCKET_NAME` và `AWS_REGION` bắt buộc khi chọn mode S3; thiếu sẽ báo lỗi cấu hình lúc khởi động. `configured=true` không kiểm tra bucket/IAM/mạng. Nếu tạo client thất bại, upload trả 503; nếu SDK không xác nhận ghi, upload trả 502. Sau khi sửa cấu hình khởi tạo, restart API.
+
+SDK mặc định dùng threshold 16 MiB, chunk 8 MiB, concurrency 2 và classic transfer manager. Đây là settings khởi điểm, không phải giới hạn request upload đồng thời. Settings đọc biến môi trường; dùng Uvicorn `--env-file .env` nếu muốn nạp file `.env`.
+
+Kiểm thử bàn giao gồm tests adapter, service thật với client giả, entrypoint với service thật và Boto3 Stubber cho upload nhỏ/multipart. Tests không dùng tài khoản AWS và không gọi mạng AWS. Demo AWS thật phải kiểm key và SHA256; `scan_status` vẫn `not_started` đến khi nối pipeline/status. Các bước tự kiểm tra nằm trong [upload-test-guide.md](upload-test-guide.md).
 
 ## Chức năng chưa triển khai
 

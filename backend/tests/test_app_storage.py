@@ -1,5 +1,3 @@
-import sys
-
 import boto3
 from botocore.exceptions import PartialCredentialsError
 from fastapi.testclient import TestClient
@@ -34,7 +32,6 @@ def test_startup_without_uploader_never_creates_aws_client(mode, tmp_path, monke
         assert health["storage_configured"] is (mode == "local")
         response = client.post("/upload", files={"file": ("x.txt", b"hello")})
         assert response.status_code == (201 if mode == "local" else 503)
-    assert "app.services.s3_service" not in sys.modules
 
 
 def test_factory_connects_uploader_client_transfer_settings_and_closes_client(monkeypatch):
