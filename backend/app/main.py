@@ -124,5 +124,4 @@ def create_app(
     app.include_router(router, tags=["Files"])
     return app
 
-
 app = create_app(s3_uploader=upload_to_s3)
