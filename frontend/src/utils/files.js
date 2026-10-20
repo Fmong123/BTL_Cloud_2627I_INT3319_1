@@ -7,14 +7,24 @@ export function formatBytes(bytes) {
 
 export function fileCategory(file) {
   const extension = file.name.split('.').pop().toLowerCase();
-  if (file.type?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'heic', 'avif'].includes(extension)) return 'image';
+  if (
+    file.type?.startsWith('image/') ||
+    ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'heic', 'avif'].includes(extension)
+  )
+    return 'image';
   if (['xls', 'xlsx', 'csv', 'ods'].includes(extension)) return 'sheet';
-  if (['pdf', 'doc', 'docx', 'txt', 'md', 'ppt', 'pptx', 'rtf', 'odt'].includes(extension)) return 'document';
+  if (['pdf', 'doc', 'docx', 'txt', 'md', 'ppt', 'pptx', 'rtf', 'odt'].includes(extension))
+    return 'document';
   return 'other';
 }
 
 export function normalizedSearch(value) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase();
 }
 
 export function validateFile(file, maxBytes) {
