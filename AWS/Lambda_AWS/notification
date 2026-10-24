@@ -1,0 +1,125 @@
+import json
+import os
+import urllib.request
+import uuid
+from datetime import datetime, timezone
+
+import boto3
+from botocore.exceptions import ClientError
+
+sns = boto3.client("sns")
+audit = boto3.resource("dynamodb").Table(os.environ.get("AUDIT_TABLE", "securedrive-audit-log"))
+
+TOPIC_ARN = os.environ["SNS_TOPIC_ARN"]
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "")
+ACTOR = "lambda:securedrive-notify"
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def file_id_from_key(key):
+    parts = key.split("/")
+    return parts[2] if len(parts) >= 4 and parts[0] == "uploads" else None
+
+
+def put_audit(file_id, action, status, details, occurred_at, event_id):
+    try:
+        audit.put_item(
+            Item={
+                "file_id": file_id,
+                "event_key": f"{occurred_at}#{event_id}",
+                "event_id": event_id,
+                "occurred_at": occurred_at,
+                "actor": ACTOR,
+                "action": action,
+                "status": status,
+                "details": details,
+            },
+            ConditionExpression="attribute_not_exists(event_key)",
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+
+
+def build_message(result, key, findings):
+    name = key.rsplit("/", 1)[-1]
+    counts = {}
+    for f in findings:
+        t = f.get("type", "UNKNOWN")
+        counts[t] = counts.get(t, 0) + 1
+    detail = ", ".join(f"{t} x{n}" for t, n in sorted(counts.items())) or "không có"
+
+    if result == "quarantined":
+        subject = "[MaySec] File quarantined"
+        body = f"Tệp: {name}\nKết quả: ĐÃ CÁCH LY\nLoại thông tin nhạy cảm: {detail}"
+    else:
+        subject = "[MaySec] File safe"
+        body = f"Tệp: {name}\nKết quả: AN TOÀN"
+    return subject, body
+
+
+def post_webhook(text):
+    if not WEBHOOK_URL:
+        return "skipped"
+    req = urllib.request.Request(
+        WEBHOOK_URL,
+        data=json.dumps({"text": text}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return f"http {resp.status}"
+    except Exception as exc:
+        print(f"WEBHOOK_FAILED: {exc}")
+        return "failed"
+
+
+def lambda_handler(event, context):
+    result = event["result"]
+    key = event["key"]
+    findings = event.get("findings", [])
+    ctx = event.get("ctx") or {}
+
+    file_id = file_id_from_key(key)
+    action = f"notify_{result}"
+
+    stable = bool(ctx.get("execution") and ctx.get("entered_at"))
+    event_id = f"{action}-{ctx['execution']}" if stable else f"{action}-{uuid.uuid4()}"
+    occurred_at = ctx["entered_at"] if stable else now_iso()
+
+    if file_id and stable:
+        try:
+            got = audit.get_item(Key={"file_id": file_id, "event_key": f"{occurred_at}#{event_id}"})
+            if got.get("Item"):
+                return {"notified": True, "duplicate": True}
+        except ClientError as exc:
+            print(f"DEDUP_CHECK_FAILED: {exc}")
+
+    subject, body = build_message(result, key, findings)
+
+    try:
+        resp = sns.publish(TopicArn=TOPIC_ARN, Subject=subject, Message=body)
+    except Exception as exc:
+        if file_id:
+            try:
+                put_audit(file_id, "notify_failed", result,
+                          {"attempted": action, "error": type(exc).__name__},
+                          now_iso(), f"notify_failed-{uuid.uuid4()}")
+            except Exception as db_exc:
+                print(f"AUDIT_WRITE_FAILED: {db_exc}")
+        raise
+
+    webhook = post_webhook(f"{subject}\n{body}")
+
+    if file_id:
+        try:
+            put_audit(file_id, action, result,
+                      {"sns_message_id": resp["MessageId"], "webhook": webhook},
+                      occurred_at, event_id)
+        except Exception as exc:
+            print(f"AUDIT_WRITE_FAILED: {exc}")
+    return {"notified": True, "sns_message_id": resp["MessageId"], "webhook": webhook}
