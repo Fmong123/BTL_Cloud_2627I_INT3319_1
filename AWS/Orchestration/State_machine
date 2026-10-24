@@ -1,0 +1,225 @@
+{
+  "Comment": "MaySec scan pipeline (DynamoDB: securedrive-files, securedrive-audit-log)",
+  "QueryLanguage": "JSONata",
+  "StartAt": "ScanFilePII",
+  "States": {
+    "ScanFilePII": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-scan-pii",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Name, 'entered_at': $states.context.State.EnteredTime}}]) %}"
+      },
+      "Output": "{% $merge([$states.input, {'scan': $states.result.Payload}]) %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.TooManyRequestsException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Output": "{% $merge([$states.input, {'scan': {'status': 'error', 'findings': [], 'reason': 'scan_crashed'}}]) %}",
+          "Next": "RecordNotScanned"
+        }
+      ],
+      "Next": "Route"
+    },
+    "Route": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $states.input.scan.status = 'flagged' %}",
+          "Next": "QuarantineFile"
+        },
+        {
+          "Condition": "{% $states.input.scan.status = 'safe' %}",
+          "Next": "NotifySafe"
+        }
+      ],
+      "Default": "RecordNotScanned"
+    },
+    "QuarantineFile": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-quarantine-file",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Name, 'entered_at': $states.context.State.EnteredTime}}]) %}"
+      },
+      "Output": "{% $merge([$states.input, {'quarantine': $states.result.Payload}]) %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Output": "{% $merge([$states.input, {'error': $states.errorOutput}]) %}",
+          "Next": "QuarantineFailed"
+        }
+      ],
+      "Next": "NotifyQuarantined"
+    },
+    "NotifyQuarantined": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-notify",
+        "Payload": "{% {'result': 'quarantined', 'key': $states.input.detail.object.key, 'findings': $states.input.scan.findings[], 'ctx': {'execution': $states.context.Execution.Name, 'entered_at': $states.context.State.EnteredTime}} %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    },
+    "NotifySafe": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-notify",
+        "Payload": "{% {'result': 'safe', 'key': $states.input.detail.object.key, 'findings': $states.input.scan.findings[], 'ctx': {'execution': $states.context.Execution.Name, 'entered_at': $states.context.State.EnteredTime}} %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    },
+    "RecordNotScanned": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Arguments": {
+        "TableName": "securedrive-files",
+        "Key": {
+          "owner_id": {
+            "S": "{% $split($states.input.detail.object.key, '/')[1] %}"
+          },
+          "file_id": {
+            "S": "{% $split($states.input.detail.object.key, '/')[2] %}"
+          }
+        },
+        "UpdateExpression": "SET #s = :s, status_reason = :r, updated_at = :t",
+        "ConditionExpression": "attribute_not_exists(#s) OR #s IN (:ns, :sc, :fl)",
+        "ExpressionAttributeNames": {
+          "#s": "status"
+        },
+        "ExpressionAttributeValues": {
+          ":s": {
+            "S": "{% $states.input.scan.status = 'unscanned' ? 'unscanned' : 'error' %}"
+          },
+          ":r": {
+            "S": "{% $states.input.scan.reason ? $states.input.scan.reason : 'unexpected_scan_result' %}"
+          },
+          ":t": {
+            "S": "{% $states.context.State.EnteredTime %}"
+          },
+          ":ns": {
+            "S": "not_started"
+          },
+          ":sc": {
+            "S": "scanning"
+          },
+          ":fl": {
+            "S": "flagged"
+          }
+        }
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "DynamoDB.ConditionalCheckFailedException"
+          ],
+          "Next": "Done"
+        }
+      ],
+      "Next": "Done"
+    },
+    "QuarantineFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Arguments": {
+        "TableName": "securedrive-files",
+        "Key": {
+          "owner_id": {
+            "S": "{% $split($states.input.detail.object.key, '/')[1] %}"
+          },
+          "file_id": {
+            "S": "{% $split($states.input.detail.object.key, '/')[2] %}"
+          }
+        },
+        "UpdateExpression": "SET #s = :s, status_reason = :r, updated_at = :t",
+        "ConditionExpression": "attribute_not_exists(#s) OR #s IN (:ns, :sc, :fl)",
+        "ExpressionAttributeNames": {
+          "#s": "status"
+        },
+        "ExpressionAttributeValues": {
+          ":s": {
+            "S": "error"
+          },
+          ":r": {
+            "S": "quarantine_failed"
+          },
+          ":t": {
+            "S": "{% $states.context.State.EnteredTime %}"
+          },
+          ":ns": {
+            "S": "not_started"
+          },
+          ":sc": {
+            "S": "scanning"
+          },
+          ":fl": {
+            "S": "flagged"
+          }
+        }
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "QuarantineFailedEnd"
+        }
+      ],
+      "Next": "QuarantineFailedEnd"
+    },
+    "QuarantineFailedEnd": {
+      "Type": "Fail",
+      "Error": "QuarantineFailed",
+      "Cause": "Copy/verify/delete failed, original kept in uploads"
+    },
+    "Done": {
+      "Type": "Succeed"
+    }
+  }
+}
