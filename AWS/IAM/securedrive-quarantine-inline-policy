@@ -1,0 +1,73 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSource",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersionTagging"
+      ],
+      "Resource": "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an/uploads/*"
+    },
+    {
+      "Sid": "DeleteSource",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+      ],
+      "Resource": "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an/uploads/*"
+    },
+    {
+      "Sid": "ListVersionsFallback",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:ListBucketVersions"
+      ],
+      "Resource": "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an"
+    },
+    {
+      "Sid": "WriteQuarantine",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:PutObjectTagging",
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an/*"
+    },
+    {
+      "Sid": "ListQuarantineBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an"
+    },
+    {
+      "Sid": "UseKmsKey",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Encrypt",
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:ap-southeast-2:018913575473:key/8e6a35d0-a14d-431b-b1a2-f9a905735055"
+    },
+    {
+      "Sid": "WriteFilesStatus",
+      "Effect": "Allow",
+      "Action": "dynamodb:UpdateItem",
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-files"
+    },
+    {
+      "Sid": "WriteAuditLog",
+      "Effect": "Allow",
+      "Action": "dynamodb:PutItem",
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-audit-log"
+    }
+  ]
+}
