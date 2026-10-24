@@ -1,0 +1,292 @@
+import json
+import os
+import uuid
+from datetime import datetime, timezone
+from urllib.parse import unquote_plus
+
+import boto3
+from botocore.exceptions import ClientError
+
+s3 = boto3.client("s3")
+ddb = boto3.resource("dynamodb")
+
+QUARANTINE_BUCKET = os.environ["QUARANTINE_BUCKET"]
+KMS_KEY_ID = os.environ["KMS_KEY_ID"]
+FILES_TABLE = os.environ.get("FILES_TABLE", "securedrive-files")
+AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "securedrive-audit-log")
+ACTOR = "lambda:securedrive-quarantine-file"
+
+
+class QuarantineError(Exception):
+    pass
+
+
+def now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def log_status(file_id, status, details):
+    print(json.dumps({
+        "file_id": file_id,
+        "status": status,
+        "details": details
+    }, ensure_ascii=False, default=str))
+
+
+def ids_from_key(key):
+    parts = key.split("/")
+    if len(parts) >= 4 and parts[0] == "uploads":
+        return parts[1], parts[2]
+    return None, None
+
+
+def is_not_found(error):
+    return error.response.get("Error", {}).get("Code") in (
+        "404", "NoSuchKey", "NoSuchVersion", "NotFound"
+    )
+
+
+def set_file_status(owner_id, file_id, status, fields, never_overwrite=None):
+    names = {"#s": "status"}
+    values = {":s": status, ":t": now_iso()}
+    sets = ["#s = :s", "updated_at = :t"]
+    for i, (name, value) in enumerate(fields.items()):
+        names[f"#f{i}"] = name
+        values[f":f{i}"] = value
+        sets.append(f"#f{i} = :f{i}")
+    args = {
+        "Key": {"owner_id": owner_id, "file_id": file_id},
+        "UpdateExpression": "SET " + ", ".join(sets),
+        "ExpressionAttributeNames": names,
+        "ExpressionAttributeValues": values,
+    }
+    if never_overwrite:
+        args["ConditionExpression"] = "attribute_not_exists(#s) OR #s <> :keep"
+        values[":keep"] = never_overwrite
+    try:
+        ddb.Table(FILES_TABLE).update_item(**args)
+    except ClientError as error:
+        if error.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+
+
+def put_audit(file_id, action, status, details, ctx):
+    occurred_at = ctx.get("entered_at") or now_iso()
+    event_id = f"{action}-{ctx.get('execution') or uuid.uuid4()}"
+    try:
+        ddb.Table(AUDIT_TABLE).put_item(
+            Item={
+                "file_id": file_id,
+                "event_key": f"{occurred_at}#{event_id}",
+                "event_id": event_id,
+                "occurred_at": occurred_at,
+                "actor": ACTOR,
+                "action": action,
+                "status": status,
+                "details": details,
+            },
+            ConditionExpression="attribute_not_exists(event_key)",
+        )
+    except ClientError as error:
+        if error.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+
+
+def head_destination(destination_key):
+    try:
+        return s3.head_object(Bucket=QUARANTINE_BUCKET, Key=destination_key)
+    except ClientError as error:
+        if is_not_found(error):
+            return None
+        raise QuarantineError(
+            f"Cannot inspect quarantine object: {error}"
+        ) from error
+
+
+def verify_destination(dst_head, src_size):
+    if src_size is not None and dst_head.get("ContentLength") != src_size:
+        raise QuarantineError("Size mismatch; source was not deleted")
+
+    if dst_head.get("ServerSideEncryption") != "aws:kms":
+        raise QuarantineError("Destination is not SSE-KMS; source was not deleted")
+
+    actual_kms_key = dst_head.get("SSEKMSKeyId")
+    if not actual_kms_key:
+        raise QuarantineError(
+            "Destination KMS key could not be verified; source was not deleted"
+        )
+
+    if KMS_KEY_ID not in actual_kms_key and actual_kms_key not in KMS_KEY_ID:
+        raise QuarantineError(
+            "Unexpected KMS key on destination; source was not deleted"
+        )
+    return actual_kms_key
+
+
+def finish(owner_id, file_id, src_bucket, key, version_id, destination_key,
+           dst_head, actual_kms_key, findings, ctx):
+    result = {
+        "status": "quarantined",
+        "owner_id": owner_id,
+        "file_id": file_id,
+        "source_bucket": src_bucket,
+        "source_key": key,
+        "source_version_id": version_id,
+        "quarantine_bucket": QUARANTINE_BUCKET,
+        "quarantine_key": destination_key,
+        "kms_key": actual_kms_key,
+        "findings_count": len(findings),
+        "finding_types": sorted({
+            finding.get("type", "UNKNOWN")
+            for finding in findings
+        }),
+        "quarantined_at": now_iso()
+    }
+    quarantine_version_id = dst_head.get("VersionId")
+    if quarantine_version_id:
+        result["quarantine_version_id"] = quarantine_version_id
+
+    fields = {
+        "quarantine_bucket": result["quarantine_bucket"],
+        "quarantine_key": result["quarantine_key"],
+        "quarantined_at": result["quarantined_at"],
+        "findings_count": result["findings_count"],
+        "finding_types": result["finding_types"],
+    }
+    if quarantine_version_id:
+        fields["quarantine_version_id"] = quarantine_version_id
+
+    details = dict(
+        fields,
+        kms_key=actual_kms_key,
+        source_key=key,
+        source_version_id=version_id,
+    )
+
+    try:
+        set_file_status(owner_id, file_id, "quarantined", fields)
+        put_audit(file_id, "quarantined", "quarantined", details, ctx)
+    except ClientError as error:
+        raise QuarantineError(
+            f"DB write failed; file is already in quarantine, safe to retry: {error}"
+        ) from error
+
+    log_status(file_id, "quarantined", result)
+    return result
+
+
+def lambda_handler(event, context):
+    scan = event.get("scan") or {}
+    if scan.get("status") != "flagged":
+        raise QuarantineError("Refusing to quarantine: scan.status is not flagged")
+
+    ctx = event.get("ctx") or {}
+    detail = event.get("detail") or {}
+    bucket_info = detail.get("bucket") or {}
+    object_info = detail.get("object") or {}
+
+    src_bucket = bucket_info.get("name")
+    key = object_info.get("key")
+    version_id = object_info.get("version-id")
+    findings = scan.get("findings") or []
+
+    if not src_bucket or not key:
+        raise QuarantineError("Missing source bucket or object key")
+
+    if not key.startswith("uploads/"):
+        raise QuarantineError("Refusing to process key outside uploads/")
+
+    if not version_id or version_id == "null":
+        raise QuarantineError(
+            "Missing valid VersionId; source file was not deleted"
+        )
+
+    key = unquote_plus(key)
+
+    owner_id, file_id = ids_from_key(key)
+    if not file_id:
+        raise QuarantineError(
+            "Key must look like uploads/<owner_id>/<file_id>/<name>; source was not touched"
+        )
+
+    src_args = {
+        "Bucket": src_bucket,
+        "Key": key,
+        "VersionId": version_id
+    }
+    destination_key = f"{key}.version-{version_id}"
+
+    try:
+        src_head = s3.head_object(**src_args)
+    except ClientError as error:
+        if is_not_found(error):
+            dst_head = head_destination(destination_key)
+            if dst_head:
+                actual_kms_key = verify_destination(dst_head, None)
+                return finish(owner_id, file_id, src_bucket, key, version_id,
+                              destination_key, dst_head, actual_kms_key, findings, ctx)
+        raise QuarantineError(
+            f"Cannot read source version; source was not deleted: {error}"
+        ) from error
+
+    dst_head = head_destination(destination_key)
+
+    if dst_head is None:
+        try:
+            s3.copy_object(
+                CopySource=src_args,
+                Bucket=QUARANTINE_BUCKET,
+                Key=destination_key,
+                ServerSideEncryption="aws:kms",
+                SSEKMSKeyId=KMS_KEY_ID,
+                BucketKeyEnabled=True,
+                MetadataDirective="COPY"
+            )
+        except ClientError as error:
+            raise QuarantineError(
+                f"Copy failed; source was not deleted: {error}"
+            ) from error
+
+        try:
+            dst_head = s3.head_object(
+                Bucket=QUARANTINE_BUCKET,
+                Key=destination_key
+            )
+        except ClientError as error:
+            raise QuarantineError(
+                f"Cannot verify copy; source was not deleted: {error}"
+            ) from error
+
+    actual_kms_key = verify_destination(dst_head, src_head.get("ContentLength"))
+
+    try:
+        s3.delete_object(
+            Bucket=src_bucket,
+            Key=key,
+            VersionId=version_id
+        )
+    except ClientError as error:
+        log_status(file_id, "quarantine_delete_failed", {
+            "key": key,
+            "version_id": version_id,
+            "error": str(error)
+        })
+        try:
+            fields = {
+                "status_reason": "source_delete_failed",
+                "quarantine_bucket": QUARANTINE_BUCKET,
+                "quarantine_key": destination_key,
+            }
+            set_file_status(owner_id, file_id, "quarantine_delete_failed",
+                            fields, never_overwrite="quarantined")
+            put_audit(file_id, "quarantine_delete_failed", "quarantine_delete_failed",
+                      {"source_key": key, "source_version_id": version_id,
+                       "error": str(error)[:300]}, ctx)
+        except Exception as db_error:
+            print(f"DB write failed for quarantine_delete_failed: {db_error}")
+        raise QuarantineError(
+            f"Copy verified but source version deletion failed: {error}"
+        ) from error
+
+    return finish(owner_id, file_id, src_bucket, key, version_id,
+                  destination_key, dst_head, actual_kms_key, findings, ctx)
