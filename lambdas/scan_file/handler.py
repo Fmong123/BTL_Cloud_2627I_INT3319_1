@@ -9,7 +9,8 @@ Payload trả về cho Step Functions (đúng 4 giá trị status, viết đúng
 `location` chỉ dùng nội bộ, không đưa vào thông báo. Không bao giờ lưu/trả giá trị gốc.
 
 Quy tắc an toàn: tệp không đọc được hoặc chưa hỗ trợ KHÔNG BAO GIỜ được đánh dấu safe,
-và mọi nhánh đều cập nhật bảng files + ghi audit_log (khi DynamoDB được kích hoạt).
+và mọi nhánh đều cập nhật bảng files + ghi audit log (khi DynamoDB được kích hoạt).
+
 """
 
 import io
@@ -30,9 +31,8 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # ---- Cấu hình (có thể ghi đè bằng biến môi trường của Lambda) ----
-FILES_TABLE = os.environ.get("FILES_TABLE", "files")
-AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "audit_log")
-FILES_PK = os.environ.get("FILES_PK", "file_id")
+FILES_TABLE = os.environ.get("FILES_TABLE", "securedrive-files")
+AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "securedrive-audit-log")
 # Cho phép chạy mượt với Step Functions ngay cả khi nhánh Hạ tầng chưa tạo xong bảng DynamoDB
 STRICT_DB_WRITE = os.environ.get("STRICT_DB_WRITE", "false").lower() == "true"
 
@@ -211,31 +211,71 @@ def find_pii(text: str):
 
 
 # ---------------------------------------------------------------- ghi DynamoDB
-def record_result(file_id, key, status, findings, counts, reason=None):
-    """Cập nhật files + ghi audit_log. Không làm sập luồng Step Functions nếu bảng DB chưa tạo."""
-    now = datetime.now(timezone.utc).isoformat()
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _is_conditional_fail(exc):
+    return isinstance(exc, ClientError) and exc.response["Error"]["Code"] == "ConditionalCheckFailedException"
+
+
+def record_result(owner_id, file_id, key, status, findings, counts, reason, ctx):
+    """Cập nhật securedrive-files + ghi securedrive-audit-log.
+    Không làm sập luồng Step Functions nếu bảng DB chưa sẵn sàng (trừ khi STRICT_DB_WRITE=true)."""
+    if not owner_id or not file_id:
+        logger.warning("Key không đúng dạng uploads/<owner_id>/<file_id>/<tên>, bỏ qua ghi DynamoDB")
+        return
+
+    now = _now_iso()
     scan_result = {"findings": findings, "finding_counts": counts}
-    names, values = {"#s": "status"}, {":s": status, ":r": scan_result, ":t": now}
-    expr = "SET #s = :s, scan_result = :r, scanned_at = :t, updated_at = :t"
+    names = {"#s": "status"}
+    values = {
+        ":s": status, ":r": scan_result, ":t": now,
+        ":n": sum(counts.values()), ":ft": sorted(counts),
+        ":q": "quarantined", ":qf": "quarantine_delete_failed",
+    }
+    expr = ("SET #s = :s, scan_result = :r, findings_count = :n, finding_types = :ft, "
+            "scanned_at = :t, updated_at = :t")
     if reason:
-        expr += ", reason = :reason"
+        expr += ", status_reason = :reason"
         values[":reason"] = reason
     else:
-        expr += " REMOVE reason"
+        expr += " REMOVE status_reason"
 
     try:
-        _table(FILES_TABLE).update_item(
-            Key={FILES_PK: file_id}, UpdateExpression=expr,
-            ExpressionAttributeNames=names, ExpressionAttributeValues=values)
+        try:
+            # Không lùi trạng thái: nếu file đã được cách ly thì không ghi đè bằng kết quả quét
+            _table(FILES_TABLE).update_item(
+                Key={"owner_id": owner_id, "file_id": file_id},
+                UpdateExpression=expr,
+                ConditionExpression="attribute_not_exists(#s) OR NOT (#s IN (:q, :qf))",
+                ExpressionAttributeNames=names, ExpressionAttributeValues=values)
+        except ClientError as exc:
+            if not _is_conditional_fail(exc):
+                raise
+            logger.info("File đã ở trạng thái cuối, giữ nguyên status hiện tại")
 
-        detail = {"key": key, "finding_counts": counts}
+        details = {"key": key, "finding_counts": counts}
         if reason:
-            detail["reason"] = reason
-        _table(AUDIT_TABLE).put_item(Item={
-            "log_id": str(uuid.uuid4()), "file_id": file_id, "timestamp": now,
-            "actor": "lambda:securedrive-scan-pii", "action": f"scan_{status}",
-            "status": status, "detail": detail,
-        })
+            details["reason"] = reason
+        occurred_at = ctx.get("entered_at") or now
+        event_id = f"scan_{status}-{ctx.get('execution') or uuid.uuid4()}"
+        try:
+            _table(AUDIT_TABLE).put_item(
+                Item={
+                    "file_id": file_id,
+                    "event_key": f"{occurred_at}#{event_id}",
+                    "event_id": event_id,
+                    "occurred_at": occurred_at,
+                    "actor": "lambda:securedrive-scan-pii",
+                    "action": f"scan_{status}",
+                    "status": status,
+                    "details": details,
+                },
+                ConditionExpression="attribute_not_exists(event_key)")
+        except ClientError as exc:
+            if not _is_conditional_fail(exc):  # retry cùng execution: bỏ qua dòng trùng
+                raise
     except Exception as exc:
         if STRICT_DB_WRITE:
             raise
@@ -266,20 +306,24 @@ def _parse_event(event):
 
     key = urllib.parse.unquote_plus(raw_key)
     parts = [p for p in key.split("/") if p]
-    # Quy ước chuẩn từ Backend: uploads/<user>/<file_id>/<tên-an-toàn> -> lấy parts[-2]
-    # Hỗ trợ thêm trường hợp test trực tiếp trên S3 Console (uploads/file.txt) -> lấy parts[-1]
-    file_id = parts[-2] if len(parts) >= 3 else parts[-1]
-    return bucket, key, file_id
+    # Quy ước chuẩn từ Backend: uploads/<owner_id>/<file_id>/<tên-an-toàn>
+    # Key sai cấu trúc (vd test trên S3 Console) vẫn quét được nhưng không ghi DynamoDB
+    if len(parts) >= 4 and parts[0] == "uploads":
+        owner_id, file_id = parts[1], parts[2]
+    else:
+        owner_id, file_id = None, None
+    return bucket, key, owner_id, file_id
 
 
 def lambda_handler(event, context):
     try:
-        bucket, key, file_id = _parse_event(event)
+        bucket, key, owner_id, file_id = _parse_event(event)
     except (KeyError, TypeError, ValueError, AttributeError, IndexError):
         logger.error("Sự kiện đầu vào không hợp lệ")
         return _payload(ERROR, reason="Sự kiện đầu vào không hợp lệ")
 
-    logger.info("Quét file_id=%s key=%s", file_id, key)
+    ctx = event.get("ctx") or {}
+    logger.info("Quét owner_id=%s file_id=%s key=%s", owner_id, file_id, key)
     findings, counts, reason = [], {}, None
     try:
         text = extract_text(bucket, key, context)
@@ -294,6 +338,6 @@ def lambda_handler(event, context):
         logger.exception("Lỗi không mong đợi khi quét file_id=%s", file_id)
         status, reason = ERROR, "Lỗi hệ thống khi quét tệp"
 
-    record_result(file_id, key, status, findings, counts, reason)
+    record_result(owner_id, file_id, key, status, findings, counts, reason, ctx)
     logger.info("Kết quả file_id=%s status=%s", file_id, status)
     return _payload(status, findings, reason)
