@@ -161,6 +161,8 @@ Tiếp theo: xác nhận FastAPI với AWS thật, ghép phần ghi DB của Lam
 
 ## 7. Cấu hình S3 pipeline sau khi phía AWS đã sẵn sàng
 
+Hướng dẫn theo ba terminal, upload frontend, script đối chiếu DB/S3/audit và kiểm workflow: [Test toàn luồng AWS](aws-pipeline-e2e-test-guide.md).
+
 Chỉ dùng cấu hình sau với bucket upload thật đã nối EventBridge/Step Functions và các Lambda đã ghi đúng bảng/khóa. Đây là bước AWS thật, không phải cách giả lập Scan trên local.
 
 ```dotenv
