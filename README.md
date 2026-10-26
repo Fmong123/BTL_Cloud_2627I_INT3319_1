@@ -12,6 +12,8 @@ Hướng dẫn giải thích code, cấu hình, chứng minh dữ liệu lưu th
 
 Toàn bộ hướng dẫn backend/API hiện tại được tổng hợp trong **[api-guide.md](docs/api-guide.md)**: cài mới/chạy lại, biến môi trường và `.env`, Swagger/curl, demo web, kiểm tra file, kiến trúc, kiểm thử, xử lý lỗi và bàn giao adapter. Khi làm trong thư mục backend, bắt đầu từ **[backend/README.md](backend/README.md)**.
 
+**DynamoDB cập nhật 21/10/2026:** metadata bật thì upload ghi metadata/audit, đã có GET /files và GET /files/{id}/status. Owner hiện cố định dev-user. Bắt đầu từ [hướng dẫn test FastAPI local](docs/dynamodb-fastapi-local-test-guide.md); pytest kiểm cả DB giả và byte local, chưa cần gọi AWS.
+
 ## Chế độ sử dụng
 
 Chế độ trên frontend quyết định có gửi nội dung file đến API hay không. Chế độ storage trên backend quyết định nơi ghi file khi nhận request.
@@ -50,6 +52,8 @@ API docs: `http://127.0.0.1:8000/docs`. Health: `/health`; HTTP 200 chỉ xác n
 | `GET /openapi.json` | Schema OpenAPI |
 | `GET /health` | Trả trạng thái ứng dụng, loại storage, cấu hình dung lượng và trạng thái chưa quét |
 | `POST /upload` | Nhận một file multipart và gọi storage |
+| `GET /files` | Đọc danh sách theo owner phát triển, có phân trang; cần bật metadata |
+| `GET /files/{id}/status` | Đọc trạng thái file từ DB; cần bật metadata |
 
 Các endpoint tương đối trong bảng thuộc server API ở port 8000. API chưa có `GET /`: mở `http://127.0.0.1:8000/` sẽ nhận **404** `{"detail":"Not Found"}`. Mở `/upload` trực tiếp trên thanh địa chỉ gửi GET và nhận **405**; upload phải dùng POST qua webapp, Swagger hoặc curl.
 
@@ -63,6 +67,13 @@ Trong dialog kết nối của webapp, nhập **URL gốc** `http://127.0.0.1:80
 | `MAYSEC_LOCAL_STORAGE_DIR` | `data` | Thư mục lưu local; đường dẫn tương đối tính từ `backend/` |
 | `MAYSEC_MAX_FILE_SIZE_BYTES` | `104857600` | Giới hạn byte nội dung một file |
 | `MAYSEC_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Origin frontend được phép, phân cách bằng dấu phẩy |
+| `AWS_PROFILE` | SDK không chọn tên riêng; mẫu dùng `securedrive-key` | Profile AWS trên máy phát triển; đặt ở backend/.env, Boto3 tự đọc |
+| `MAYSEC_METADATA_MODE` | `disabled` | `dynamodb` để ghi metadata/audit và đọc list/status |
+| `MAYSEC_SCAN_PIPELINE_ENABLED` | `false` | Bật pipeline yêu cầu S3 + DynamoDB; không bật/tắt EventBridge AWS |
+| `DYNAMODB_REGION` | `ap-southeast-2` | Sydney; độc lập region S3 |
+| `DYNAMODB_FILES_TABLE` | `securedrive-files` | PK owner_id, SK file_id |
+| `DYNAMODB_AUDIT_TABLE` | `securedrive-audit-log` | PK file_id, SK event_key |
+| `DYNAMODB_USERS_TABLE` | `securedrive-users` | PK user_id; chưa ghép service auth |
 | `S3_BUCKET_NAME` | Rỗng | Bắt buộc khi chọn mode `s3` |
 | `AWS_REGION` | Rỗng | Region của bucket; bắt buộc khi chọn mode `s3` |
 | `MAYSEC_S3_MULTIPART_THRESHOLD_BYTES` | `16777216` | Ngưỡng multipart 16 MiB |
@@ -71,14 +82,16 @@ Trong dialog kết nối của webapp, nhập **URL gốc** `http://127.0.0.1:80
 
 Thay đổi các biến rồi khởi động lại API. Backend không tự đọc `.env`; nếu dùng file cấu hình, sao chép `.env.example` thành `.env` và thêm `--env-file .env` vào lệnh Uvicorn. Biến môi trường đã đặt trong terminal được ưu tiên hơn giá trị trong file `.env`.
 
-`/health` có các trường `status`, `storage`, `storage_configured`, `max_file_size_bytes`, `scan_status`. `storage_configured=true` trong local mode chỉ cho biết đã chọn adapter local; không kiểm tra khả năng ghi đĩa. `scan_status=not_started` cho biết chưa có pipeline quét.
+Ví dụ test hiện tại: backend/.env đặt AWS_PROFILE=securedrive-key, MAYSEC_STORAGE_MODE=local, MAYSEC_METADATA_MODE=dynamodb, MAYSEC_SCAN_PIPELINE_ENABLED=false. Frontend/.env.local đặt VITE_UPLOAD_MODE=api. Chỉ copy file mẫu nếu chưa có file riêng; giữ cấu hình đã dùng thành công. Xem [hướng dẫn profile](backend/README.md#cấu-hình-bằng-env-và-aws-profile). AWS CLI không tự đọc backend/.env; dùng --profile khi kiểm CLI.
+
+`/health` có status, storage, storage_configured, max_file_size_bytes, scan_status, metadata_mode, metadata_configured, owner_mode và scan_pipeline_enabled. Configured chỉ phản ánh cấu hình/client, không chứng minh quyền AWS hoặc khả năng ghi đĩa. scan_status là trạng thái khởi tạo theo cấu hình (not_started hoặc scanning), không phải kết quả của một file.
 
 ## Chạy frontend
 
 Chuẩn bị Node.js phù hợp phiên bản Vite và pnpm. Mở terminal PowerShell thứ hai:
 
 ```powershell
-Set-Location 'D:\Cloud UET\MaySec\frontend'
+Set-Location 'G:\code\BTL_Cloud_2627I_INT3319_1\frontend'
 pnpm.cmd install --frozen-lockfile
 pnpm.cmd run dev --port 5173 --strictPort
 ```
@@ -169,7 +182,7 @@ curl.exe -i -F "file=@$sourceFile" 'http://127.0.0.1:8000/upload'
 
 ## Phạm vi và bước tiếp theo
 
-Hiện đã triển khai **frontend và API upload**, service/adapter/factory S3 đã nối; còn nghiệm thu trên tài nguyên AWS thật. Chưa có đăng nhập, DB metadata, API liệt kê/download/xóa file, quét PII, KMS hay cách ly tệp. Local demo kiểm tra luồng browser → API → đĩa, chưa xác minh upload lên S3 thật. `dev-user` chỉ là danh tính thử nghiệm; file thành công chưa được quét.
+Hiện có frontend/API upload, S3 adapter và metadata/audit/list/status theo cấu hình. Backend đã hỗ trợ cờ pipeline S3 và trạng thái/summary theo bàn giao 23/10, không gọi Lambda trực tiếp. Chưa có đăng nhập, download/xóa hoặc React list/polling. Writer DB của Lambda và hạ tầng bàn giao cần ghép/nghiệm thu riêng. Test offline kiểm byte local và giả lập DB; script check_local_api kiểm HTTP loopback thật khi AWS tắt. Chưa nghiệm thu AWS thật trong lần sửa này. dev-user chỉ là danh tính thử nghiệm; upload thành công chưa có nghĩa đã quét. Xem [hướng dẫn local](docs/dynamodb-fastapi-local-test-guide.md).
 
 Danh sách/bộ lọc/đánh dấu nằm trong bộ nhớ phiên. Refresh không xóa file local đã ghi; bước tiếp theo là nối `GET /files` để tải lại danh sách. **Bỏ khỏi danh sách** chỉ bỏ bản ghi UI, không xóa storage. **Hủy upload** chỉ hủy request phía browser, không bảo đảm backend chưa lưu file. Timeout/retry có thể tạo bản sao: API hiện chưa có idempotency.
 

@@ -1,5 +1,7 @@
 # Hướng dẫn API MaySec: kiến trúc, sử dụng và demo
 
+**Cập nhật 21/10/2026:** đã ghép metadata/audit vào upload theo cấu hình, thêm GET /files và GET /files/{id}/status. Làm theo [hướng dẫn FastAPI local + DB](dynamodb-fastapi-local-test-guide.md) cho phần mới; các bước demo storage cũ dưới đây dùng metadata disabled nếu muốn hoàn toàn không gọi AWS. Owner hiện cố định dev-user, chưa có auth.
+
 Phần được tích hợp gồm FastAPI, kiểm tra file, CORS, chuẩn response/lỗi và điểm ghép storage. Khi chưa có AWS, bạn có thể chứng minh đường đi **webapp → API → file thật trên đĩa** bằng chế độ local được bật rõ ràng. Mặc định storage chưa cấu hình sẽ trả lỗi 503; không báo thành công giả.
 
 Tài liệu này giải thích lớp API và công cụ demo local của MaySec. Service/adapter S3 đã nối trong `app.main:app`; upload S3 thật cần tài nguyên/quyền AWS được bàn giao. Hướng dẫn thực hành local/S3 và kiểm tra hash: [upload-test-guide.md](upload-test-guide.md).
@@ -81,7 +83,9 @@ Remove-Item Env:MAYSEC_STORAGE_MODE -ErrorAction SilentlyContinue
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --env-file .env --host 127.0.0.1 --port 8000
 ```
 
-Backend không tự đọc `.env` khi thiếu `--env-file`. Các biến server khác đã đặt trong terminal cũng được ưu tiên hơn file. Không cần AWS credentials để chạy local hoặc unconfigured.
+Backend không tự đọc `.env` khi thiếu `--env-file`. Các biến server khác đã đặt trong terminal cũng được ưu tiên hơn file. Local/unconfigured không cần AWS credentials khi MAYSEC_METADATA_MODE=disabled; local + metadata=dynamodb vẫn cần credentials DB.
+
+Mẫu backend hiện có `AWS_PROFILE=securedrive-key`. Đây là tên profile đã cấu hình trên máy; Boto3 đọc trực tiếp sau khi Uvicorn nạp .env. Chỉ đặt profile ở backend, không đặt trong frontend. AWS CLI không tự nạp .env: dùng `--profile securedrive-key` khi kiểm CLI. Xem [hướng dẫn profile và cách test DB](../backend/README.md#cấu-hình-bằng-env-và-aws-profile). Không copy đè .env đang dùng thành công.
 
 | Biến server | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -105,7 +109,7 @@ $env:MAYSEC_CORS_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Giới hạn frontend và backend độc lập. Ví dụ trên đặt server 10 MiB; nếu UI cũng cần báo giới hạn 10 MiB, đặt `VITE_MAX_FILE_SIZE_MB=10` trong frontend và khởi động lại Vite. Giá trị dung lượng server phải là số nguyên dương; storage mode khác `local`/`unconfigured` làm cấu hình không hợp lệ và app không khởi động. Đặt `s3` lúc này không tự tạo adapter.
+Giới hạn frontend và backend độc lập. Ví dụ trên đặt server 10 MiB; nếu UI cũng cần báo giới hạn 10 MiB, đặt VITE_MAX_FILE_SIZE_MB=10 trong frontend và khởi động lại Vite. Dung lượng server phải là số nguyên dương. Storage mode nhận unconfigured/local/s3; s3 yêu cầu bucket, region và quyền AWS. Adapter/uploader S3 đã nối trong app.main:app; bật mode không tự tạo bucket hoặc cấp quyền.
 
 ### Dừng, khởi động lại và phát triển
 
@@ -162,7 +166,7 @@ Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256
 Get-FileHash -LiteralPath $storedFile -Algorithm SHA256
 ```
 
-Hai SHA256 phải trùng nhau. Nếu đổi thư mục storage, thay `backend/data` bằng thư mục thực tế. Sau refresh webapp, danh sách trống vì chưa có `GET /files`, nhưng file đã lưu vẫn nằm trên đĩa; restart API cũng không tự xóa dữ liệu local. Với file văn bản, có thể dùng `Get-Content -LiteralPath $storedFile` để xem nội dung.
+Hai SHA256 phải trùng nhau. Nếu đổi storage root, thay backend/data bằng thư mục thực tế. Refresh webapp vẫn có thể mất danh sách vì React chưa gọi GET /files; byte local vẫn còn. Khi metadata bật, API list/status đọc lại DB sau restart. Với văn bản, dùng Get-Content để xem file đã ghi.
 
 Upload hai lần file cùng tên: response phải có ID/key khác nhau và hai file được giữ riêng. Đây là chống ghi đè tên, chưa phải chống tạo bản sao khi retry.
 
@@ -200,7 +204,7 @@ Drive.jsx: chọn file, kiểm tra sớm, đưa vào hàng đợi
 
 FastAPI parse multipart vào file tạm trước khi route kiểm tra kích thước file. Middleware giới hạn tổng request, còn route kiểm tra đúng số byte nội dung file. Nếu triển khai sau này, nhóm cần cấu hình giới hạn request, timeout, dung lượng tạm và số kết nối ở hạ tầng tương ứng. MIME type là thông tin client khai báo, chưa phải kiểm tra bảo mật nội dung.
 
-Adapter local ghi vào file `.part`, flush/fsync rồi đổi sang tên cuối sau khi hoàn tất; dọn file đang ghi khi gặp lỗi. Response 201 chỉ xuất hiện sau bước này. Nó giữ nội dung file, chưa ghi metadata thành database hoặc cung cấp API đọc lại.
+Adapter local ghi file .part, flush/fsync rồi đổi tên cuối; dọn file đang ghi khi lỗi. Khi metadata disabled, 201 sau storage xác nhận. Khi metadata bật, route còn cần xác nhận metadata/audit; DB lỗi sau ghi byte trả 503 cùng recovery ID. Adapter giữ interface byte; route điều phối metadata và API đọc lại.
 
 Route đồng bộ được FastAPI chạy trong threadpool. Luồng chi tiết là: parse multipart → đọc file từng chunk 1 MiB/đếm byte → từ chối file rỗng/quá giới hạn → seek về đầu → tạo UUID/key → gọi adapter → kiểm tra adapter giữ đúng key và trả storage hợp lệ → tạo response → đóng file trong `finally`.
 
@@ -260,7 +264,7 @@ Test parser frontend kiểm tra response local/S3/legacy và phản hồi sai. T
 2. AWS-B/API cùng implement interface `Storage.upload(...)` và trả `StoredObject` đúng định nghĩa trong code, với `storage='s3'` sau khi S3 xác nhận.
 3. Service/adapter/config S3 đã nối trong entrypoint `app.main:app`; factory `create_app()` vẫn nhận storage/uploader để kiểm thử. Dependency lấy adapter từ `app.state.storage`. Hai bên chạy tests service/adapter/entrypoint và nghiệm thu bucket thật trước khi kết luận luồng Cloud hoạt động.
 4. Kiểm tra API bằng curl, đối chiếu key và đọc lại object thật; sau đó kiểm tra từ webapp. Giữ `/upload` và trường response đang được FE dùng.
-5. Tiếp tục metadata dùng chung/`GET /files`, xác thực/quyền và pipeline quét theo kế hoạch các tuần sau.
+5. Metadata/list/status đã ghép theo cấu hình; tiếp tục nghiệm thu AWS thật, auth/owner, React list/polling và pipeline quét.
 
 API chịu trách nhiệm HTTP/validation/response/CORS. AWS-B chịu trách nhiệm ghi object và xử lý SDK; AWS-A chịu trách nhiệm hạ tầng/quyền. Đây là các phần trong cùng backend, không bắt buộc tạo hai server gọi HTTP cho nhau.
 
@@ -268,7 +272,7 @@ Adapter bàn giao phải có `mode`, `configured` và method `upload(file_obj, *
 
 ## 8. Giới hạn khi bàn giao
 
-Upload S3 đã nối trong code nhưng chưa nghiệm thu trên AWS thật. Chưa có auth, DB metadata, list/download/xóa object, idempotency, quét PII/malware, KMS và cách ly. Không triển khai API chưa auth ra mạng public. Nút hủy phía browser không bảo đảm server chưa ghi file; timeout/retry có thể tạo object mới. Bỏ khỏi danh sách chỉ bỏ bản ghi UI.
+Upload S3 và metadata/list/status đã nối trong code; chưa nghiệm thu AWS thật trong lần ghép này. Cập nhật 23/10: có cờ MAYSEC_SCAN_PIPELINE_ENABLED cho S3 + DynamoDB, API nhận flagged/quarantine_delete_failed và summary Scan. Backend không gọi workflow trực tiếp; writer DB của Lambda vẫn phải ghép theo schema. Chưa có auth, download/xóa, HTTP history/admin, idempotency hoặc React list/polling. Chỉ test owner cố định trên loopback. Hủy phía browser không bảo đảm server chưa lưu; retry có thể tạo object mới. Bỏ khỏi danh sách vẫn chỉ bỏ bản ghi UI. Xem [hướng dẫn test mới](dynamodb-fastapi-local-test-guide.md).
 
 Local storage không thay thế S3 trong báo cáo Cloud. Các file demo đã ghi phải được dọn thủ công khi không cần; chúng bị ignore khỏi Git. Danh sách UI chưa được khôi phục sau refresh.
 
@@ -292,7 +296,7 @@ Base URL API mặc định: `http://127.0.0.1:8000`. Webapp nằm ở `http://12
 | `GET /redoc` | Đọc tài liệu ReDoc |
 | `GET /openapi.json` | Lấy schema OpenAPI để frontend/tooling đối chiếu |
 
-Chưa có route `GET /`, vì vậy mở base URL trực tiếp nhận 404 `{"detail":"Not Found"}`. Mở `/upload` trên thanh địa chỉ gửi GET nên nhận 405. Hai response này không có nghĩa backend ngừng chạy. `GET /files` và API download chưa tồn tại.
+GET / vẫn trả 404, GET /upload trả 405; đây không phải lỗi server ngừng chạy. GET /files và GET /files/{id}/status đã có khi metadata bật, trả 503 khi metadata disabled. API download chưa có.
 
 Thử `/health` trong Swagger:
 
@@ -381,7 +385,7 @@ Thay `backend/data` nếu đã cấu hình storage root khác. Không thêm `-i`
 | UI HTTPS kết nối HTTP thất bại | Client từ chối mixed content; môi trường HTTPS cần API HTTPS phù hợp |
 | UI hiện Bản trải nghiệm | Chuyển sang API và chọn lại file; bản trải nghiệm không tự chuyển thành upload thật |
 | `.env` sửa mà mode chưa đổi | Uvicorn cần `--env-file .env`; biến terminal được ưu tiên; restart sau khi đổi config |
-| Refresh mất danh sách | Danh sách ở bộ nhớ phiên, chưa có GET /files; kiểm tra file đã ghi trên đĩa |
+| Refresh mất danh sách | React còn dùng bộ nhớ phiên; metadata bật có API list/status nhưng frontend chưa nối đọc lại |
 | Retry tạo hai file | Chưa có idempotency; UUID mới cho mỗi request, kiểm tra server trước khi retry sau timeout |
 | Có file `.part` sau lỗi | Kiểm tra quyền/dung lượng; cleanup có thể bị OS từ chối; dọn thủ công đúng file thử nghiệm nếu không còn request dùng nó |
 | Swagger không hiển thị dù `/health` chạy | Swagger UI mặc định tải asset CDN; kiểm tra network browser, dùng `/openapi.json` hoặc curl để đọc/gọi API |
@@ -421,6 +425,6 @@ Kỳ vọng 413. Sau demo, đặt server `MAYSEC_MAX_FILE_SIZE_BYTES=104857600`,
 
 Folder `backend/` dùng chung cho API và xử lý AWS; không cần tạo thêm backend thứ hai. Sau khi khung được commit/push, teammate cập nhật nhánh chung trước khi bắt đầu và làm trên branch riêng. Cùng tạo `main.py` hoặc cùng sửa đoạn config có thể gây conflict; tạo adapter mới và bàn giao hợp đồng trước giúp giảm xung đột.
 
-Giữ source, tests, requirements, `.env.example` và docs. Không commit `.venv`, `.env`, dữ liệu upload, node_modules, build/cache/log. Với storage root tùy chỉnh trong repo ngoài `backend/data`, phải bổ sung gitignore tương ứng vì rule hiện tại chỉ ignore đường dẫn mặc định. Thư mục local chứa byte file; chưa có metadata bền vững, quota, API dọn/xóa hay cơ chế tự dọn dữ liệu.
+Giữ source, tests, requirements, .env.example và docs; bỏ venv, secrets, dữ liệu upload và cache. Storage root tùy chỉnh cần gitignore phù hợp. Byte local và metadata DynamoDB là hai nơi độc lập; chưa có quota, API dọn/xóa hoặc tự dọn dữ liệu.
 
 Checklist demo/bàn giao hiện tại: API khởi động được → health/config đúng → POST upload 201 local → byte/SHA256 đúng → rỗng/missing/oversize lỗi đúng → unconfigured trả 503 → browser đọc được response/CORS → teammate chạy lại được theo tài liệu. Đây là bằng chứng cho API/local; kiểm chứng S3 là bước riêng sau khi adapter thật được bàn giao.

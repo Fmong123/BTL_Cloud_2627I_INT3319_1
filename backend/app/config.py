@@ -8,6 +8,13 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIB = 1024 * 1024
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, str(default)).strip().lower()
+    if value not in {"true", "false", "1", "0"}:
+        raise ValueError(f"{name} must be true, false, 1 or 0")
+    return value in {"true", "1"}
+
+
 @dataclass(frozen=True)
 class Settings:
     storage_mode: str = "unconfigured"
@@ -21,8 +28,32 @@ class Settings:
     s3_multipart_threshold_bytes: int = 16 * MIB
     s3_multipart_chunksize_bytes: int = 8 * MIB
     s3_max_concurrency: int = 2
+    metadata_mode: str = "disabled"
+    scan_pipeline_enabled: bool = False
+    dynamodb_region: str = "ap-southeast-2"
+    dynamodb_files_table: str = "securedrive-files"
+    dynamodb_audit_table: str = "securedrive-audit-log"
+    dynamodb_users_table: str = "securedrive-users"
 
     def __post_init__(self) -> None:
+        if type(self.scan_pipeline_enabled) is not bool:
+            raise ValueError("MAYSEC_SCAN_PIPELINE_ENABLED must be a boolean")
+        if self.scan_pipeline_enabled and (
+            self.storage_mode != "s3" or self.metadata_mode != "dynamodb"
+        ):
+            raise ValueError("Scan pipeline requires S3 storage and DynamoDB metadata")
+        if self.metadata_mode not in {"disabled", "dynamodb"}:
+            raise ValueError("MAYSEC_METADATA_MODE must be disabled or dynamodb")
+        if self.metadata_mode == "dynamodb":
+            if self.dynamodb_region != "ap-southeast-2":
+                raise ValueError("DynamoDB must use ap-southeast-2")
+            for name in (
+                self.dynamodb_files_table,
+                self.dynamodb_audit_table,
+                self.dynamodb_users_table,
+            ):
+                if not name.startswith("securedrive-"):
+                    raise ValueError("DynamoDB table names must start with securedrive-")
         if self.storage_mode not in {"unconfigured", "local", "s3"}:
             raise ValueError("MAYSEC_STORAGE_MODE must be unconfigured, local or s3")
         if self.max_file_size_bytes <= 0:
@@ -60,4 +91,16 @@ class Settings:
                 "MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES", str(8 * MIB)
             )),
             s3_max_concurrency=int(os.getenv("MAYSEC_S3_MAX_CONCURRENCY", "2")),
+            metadata_mode=os.getenv("MAYSEC_METADATA_MODE", "disabled").strip().lower(),
+            scan_pipeline_enabled=env_bool("MAYSEC_SCAN_PIPELINE_ENABLED"),
+            dynamodb_region=os.getenv("DYNAMODB_REGION", "ap-southeast-2").strip(),
+            dynamodb_files_table=os.getenv(
+                "DYNAMODB_FILES_TABLE", "securedrive-files"
+            ).strip(),
+            dynamodb_audit_table=os.getenv(
+                "DYNAMODB_AUDIT_TABLE", "securedrive-audit-log"
+            ).strip(),
+            dynamodb_users_table=os.getenv(
+                "DYNAMODB_USERS_TABLE", "securedrive-users"
+            ).strip(),
         )
