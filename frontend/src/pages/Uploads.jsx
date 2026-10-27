@@ -1,24 +1,28 @@
 import { RotateCcw, X } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { canRetry, isBusy } from '../utils/workspace.js';
+import { needsTracking } from '../utils/processing.js';
 import FileBrowser from '../components/FileBrowser.jsx';
 
 export default function Uploads() {
   const w = useWorkspace();
-  const active = w.files.filter(isBusy);
-  const retryable = w.files.filter(canRetry);
-  const done = w.files.filter((file) => file.status === 'success').length;
-  const failed = w.files.filter((file) => file.status === 'error').length;
+  const activity = w.activityFiles || w.files;
+  const active = activity.filter(isBusy);
+  const retryable = activity.filter(canRetry);
+  const done = activity.filter((file) => file.status === 'success').length;
+  const failed = activity.filter((file) => file.status === 'error').length;
+  const tracking = w.files.filter(needsTracking).length;
   return (
     <>
       <div className="activity-summary">
         <div>
-          <h2>Theo dõi từng lượt tải</h2>
+          <h2>Theo dõi từ tải lên đến xử lý</h2>
           <p>
-            {active.length} đang tải / chờ · {done} hoàn tất · {failed} lỗi
+            {active.length} đang tải / chờ · {done} đã tải xong · {failed} lỗi upload · {tracking}{' '}
+            chờ kết quả
           </p>
           <small>
-            Tệp được tải lần lượt. Hủy ở trình duyệt không đảm bảo máy chủ chưa lưu tệp.
+            Tối đa 5 tệp tải song song. Hủy ở trình duyệt không đảm bảo máy chủ chưa lưu tệp.
           </small>
         </div>
         <div className="inline-actions">
@@ -40,6 +44,9 @@ export default function Uploads() {
           </button>
         </div>
       </div>
+      <p className="activity-steps">
+        <span>Tải lên</span>→<span>Quét dữ liệu</span>→<span>Cách ly nếu cần</span>
+      </p>
       <FileBrowser activity />
     </>
   );

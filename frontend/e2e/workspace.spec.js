@@ -16,32 +16,102 @@ test.beforeEach(async ({ page }) => {
 });
 test.afterEach(async ({ page }) => expect(runtimeErrors.get(page)).toEqual([]));
 
+test('storage badge opens an inline menu without navigating or clearing file filters', async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      'maysec.preferences.v1',
+      JSON.stringify({ version: 1, mode: 'api', baseUrl: 'http://127.0.0.1:8000', theme: 'dark' }),
+    ),
+  );
+  await page.goto('/#/files?q=bao%20cao');
+  const url = page.url();
+  const trigger = page.getByRole('button', { name: 'Lưu trữ thật', exact: true });
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('link', { name: 'Cài đặt kết nối', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Tệp của tôi');
+  await expect(page).toHaveURL(url);
+  await page.screenshot({ path: testInfo.outputPath('connection-menu.png') });
+  await page.keyboard.press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await trigger.click();
+  await page.getByRole('radio', { name: /Trải nghiệm giao diện/ }).click();
+  await expect(page).toHaveURL(url);
+  await expect(page.getByRole('textbox', { name: 'Tìm kiếm tệp', exact: true })).toHaveValue(
+    'bao cao',
+  );
+  const demo = page.getByRole('button', { name: 'Trải nghiệm', exact: true });
+  await demo.click();
+  await page.getByRole('radio', { name: /Lưu trữ thật/ }).click();
+  await trigger.click();
+  await page.getByRole('link', { name: 'Cài đặt kết nối', exact: true }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await trigger.click();
+  await page
+    .locator('#storage-options')
+    .getByRole('radio', { name: /Trải nghiệm giao diện/ })
+    .click();
+  await expect(
+    page.locator('.mode-option').getByRole('radio', { name: /Trải nghiệm giao diện/ }),
+  ).toBeChecked();
+});
+
+test('storage menu cannot change connection while a queue is running', async ({ page }) => {
+  await page.goto('/#/files');
+  await filesInput(page).setInputFiles(
+    Array.from({ length: 5 }, (_, index) => sample(`menu-${index}.txt`)),
+  );
+  await page.getByRole('button', { name: 'Trải nghiệm', exact: true }).click();
+  await expect(page.getByRole('radio', { name: /Lưu trữ thật/ })).toBeDisabled();
+  await expect(page.getByText('Chờ hoặc hủy lượt tải trước khi đổi chế độ.')).toBeVisible();
+  await page.getByRole('heading', { level: 1 }).click();
+  await expect(page.getByRole('link', { name: 'Cài đặt kết nối', exact: true })).toHaveCount(0);
+});
+
 test('200-file selection, cancellation, grid and undo remain usable', async ({ page }) => {
   await page.goto('/#/uploads');
   await filesInput(page).setInputFiles(
     Array.from({ length: 200 }, (_, i) => sample(`Tài liệu ${i}.txt`)),
   );
   await page.getByRole('button', { name: 'Hủy tất cả', exact: true }).first().click();
-  await expect(page.locator('tbody tr')).toHaveCount(200);
+  await expect(page.locator('tbody tr')).toHaveCount(50);
+  await expect(page.locator('.file-pagination')).toContainText('Trang 1 / 4');
   await expect(page.getByRole('region', { name: 'Tiến trình tải lên' })).toHaveCount(0);
   await nav(page).locator('a[href="#/files"]').click();
   await page.getByRole('button', { name: 'Dạng lưới', exact: true }).click();
-  await expect(page.locator('.file-card')).toHaveCount(200);
-  await page.getByRole('checkbox', { name: 'Chọn tất cả tệp đang hiển thị' }).check();
-  await page
-    .getByLabel('Thao tác với tệp đã chọn')
-    .getByRole('button', { name: 'Đánh dấu', exact: true })
-    .click();
+  // Selection applies to the 50 visible records, not hidden pages. Star all four pages.
+  for (let current = 1; current <= 4; current++) {
+    await expect(page.locator('.file-card')).toHaveCount(50);
+    await expect(page.locator('.file-pagination')).toContainText(`Trang ${current} / 4`);
+    await page.getByRole('checkbox', { name: 'Chọn tất cả tệp đang hiển thị' }).check();
+    await page
+      .getByLabel('Thao tác với tệp đã chọn')
+      .getByRole('button', { name: 'Đánh dấu', exact: true })
+      .click();
+    if (current < 4) await page.getByRole('button', { name: 'Trang sau', exact: true }).click();
+  }
+  await page.locator('.extra-file-filters > summary').click();
   await page.getByRole('combobox', { name: 'Nhóm tệp' }).selectOption('starred');
-  await expect(page.locator('.file-card')).toHaveCount(200);
+  await expect(page.locator('.file-card')).toHaveCount(50);
+  await expect(page.locator('.file-pagination')).toContainText('Trang 1 / 4');
+  const removedNames = await page.locator('.file-card .file-name').allTextContents();
   await page.getByRole('checkbox', { name: 'Chọn tất cả tệp đang hiển thị' }).check();
   await page.getByRole('button', { name: 'Bỏ khỏi danh sách', exact: true }).click();
-  await expect(page.locator('.file-card')).toHaveCount(0);
+  await expect(page.locator('.file-pagination')).toContainText('Trang 1 / 3');
+  const remainingNames = await page.locator('.file-card .file-name').allTextContents();
+  expect(remainingNames.every((name) => !removedNames.includes(name))).toBe(true);
   await page.getByRole('button', { name: 'Hoàn tác' }).click();
-  await expect(page.locator('.file-card')).toHaveCount(200);
+  await expect(page.locator('.file-card')).toHaveCount(50);
+  await expect(page.locator('.file-pagination')).toContainText('Trang 1 / 4');
+  await expect(page.locator('.file-card .file-name')).toHaveText(removedNames);
 });
 
-test('enlarged desktop text, reduced motion and modal keyboard behavior', async ({ page }) => {
+test('enlarged desktop text, reduced motion and detail drawer keyboard behavior', async ({
+  page,
+}) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const factor of [1.25, 1.5]) {
     await page.setViewportSize({
@@ -63,9 +133,9 @@ test('enlarged desktop text, reduced motion and modal keyboard behavior', async 
     exact: true,
   });
   await trigger.click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Thông tin tệp', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Thông tin tệp', exact: true })).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await page.getByRole('link', { name: 'Đến nội dung chính' }).focus();
   await page.keyboard.press('Enter');
@@ -212,7 +282,7 @@ test('health and real-upload contract work, client validation uses server limit'
         },
       });
     const health = route.request().url().endsWith('/health');
-    if (!health) uploadCalls++;
+    if (route.request().method() === 'POST') uploadCalls++;
     return route.fulfill({
       status: health ? 200 : 201,
       headers: { 'Access-Control-Allow-Origin': '*' },
@@ -222,6 +292,8 @@ test('health and real-upload contract work, client validation uses server limit'
             storage: 'local',
             storage_configured: true,
             max_file_size_bytes: 100,
+            metadata_mode: 'disabled',
+            metadata_configured: false,
           }
         : {
             id: 'server-file',
@@ -248,8 +320,13 @@ test('health and real-upload contract work, client validation uses server limit'
   await expect(page.getByText('Tệp vượt quá giới hạn 100 B', { exact: true })).toBeVisible();
   expect(uploadCalls).toBe(1);
   await page.getByRole('button', { name: 'Thông tin real.txt', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('Máy chủ báo chưa bắt đầu quét');
-  await page.getByRole('button', { name: 'Đóng', exact: true }).last().click();
+  const detail = page.getByRole('region', { name: 'Thông tin tệp', exact: true });
+  await expect(detail).toContainText('Chưa bắt đầu quét');
+  await detail.getByRole('tab', { name: 'Xử lý', exact: true }).click();
+  await expect(detail).toContainText(
+    'Máy chủ đã xác nhận lưu nội dung. Kết quả quét là bước riêng.',
+  );
+  await detail.getByRole('button', { name: 'Đóng', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Thông tin real.txt', exact: true })).toBeFocused();
 });
 
@@ -299,7 +376,7 @@ for (const viewport of [
           {
             overview: 'Tổng quan',
             files: 'Tệp của tôi',
-            uploads: 'Hoạt động tải lên',
+            uploads: 'Hoạt động xử lý',
             settings: 'Cài đặt',
             help: 'Hướng dẫn',
           }[route],

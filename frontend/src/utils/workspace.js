@@ -1,12 +1,20 @@
 import { fileCategory, normalizedSearch } from './files.js';
+import { isAttention, needsTracking } from './processing.js';
 
 export const PREFERENCES_KEY = 'maysec.preferences.v1';
 export const themes = ['light', 'dark', 'system'];
 export const sorts = ['newest', 'oldest', 'name', 'name-desc', 'size', 'size-desc'];
-export const isBusy = (file) => ['queued', 'uploading'].includes(file.status);
+export const isBusy = (file) =>
+  Boolean(file.original) && ['queued', 'uploading'].includes(file.status);
 export const canRetry = (file) =>
-  ['error', 'cancelled'].includes(file.status) && !file.validationError && file.retryable !== false;
-export const fileFingerprint = (file) => JSON.stringify([file.name, file.size, file.lastModified]);
+  Boolean(file.original) &&
+  ['error', 'cancelled'].includes(file.status) &&
+  !file.validationError &&
+  file.retryable !== false &&
+  !file.reconciling &&
+  !file.outcomeUnknown;
+export const fileFingerprint = (file) =>
+  file ? JSON.stringify([file.name, file.size, file.lastModified]) : null;
 
 export function readPreferences(defaults, storage) {
   try {
@@ -38,7 +46,15 @@ export function savePreferences(value, storage) {
 
 export function filterFiles(
   files,
-  { q = '', category = 'all', status = 'all', section = 'all', sort = 'newest' } = {},
+  {
+    q = '',
+    category = 'all',
+    status = 'all',
+    section = 'all',
+    sort = 'newest',
+    area = 'all',
+    scan = 'all',
+  } = {},
   now = Date.now(),
 ) {
   return files
@@ -46,7 +62,12 @@ export function filterFiles(
       (file) =>
         normalizedSearch(file.name).includes(normalizedSearch(q)) &&
         (category === 'all' || fileCategory(file) === category) &&
-        (status === 'all' || (status === 'active' ? isBusy(file) : file.status === status)) &&
+        (status === 'all' ||
+          (status === 'active'
+            ? isBusy(file) || file.status === 'processing' || needsTracking(file)
+            : file.status === status)) &&
+        (area === 'all' || (area === 'attention' ? isAttention(file) : !isAttention(file))) &&
+        (scan === 'all' || file.scanStatus === scan) &&
         (section !== 'starred' || file.starred) &&
         (section !== 'recent' || now - file.createdAt < 86400000),
     )

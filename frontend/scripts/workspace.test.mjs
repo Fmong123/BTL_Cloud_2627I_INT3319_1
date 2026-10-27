@@ -82,6 +82,7 @@ test('filters compose, Vietnamese search works, source order is preserved and re
       size: 30,
       createdAt: 300,
       status: 'uploading',
+      original: {},
       starred: false,
     },
   ];
@@ -109,7 +110,10 @@ test('filters compose, Vietnamese search works, source order is preserved and re
 test('only retryable failures and cancellations can retry; fingerprints use all three fields', () => {
   assert.equal(canRetry({ status: 'error', validationError: true }), false);
   assert.equal(canRetry({ status: 'error', retryable: false }), false);
-  assert.equal(canRetry({ status: 'cancelled' }), true);
+  assert.equal(canRetry({ status: 'cancelled', original: {} }), true);
+  assert.equal(canRetry({ status: 'cancelled' }), false);
+  assert.equal(canRetry({ status: 'error', original: {}, reconciling: true }), false);
+  assert.equal(canRetry({ status: 'error', original: {}, outcomeUnknown: true }), false);
   assert.equal(canRetry({ status: 'success' }), false);
   assert.equal(
     fileFingerprint({ name: 'a', size: 2, lastModified: 3 }),

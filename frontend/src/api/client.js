@@ -1,3 +1,18 @@
+import {
+  normalizeServerFile,
+  normalizeStatus,
+  scanStates,
+  uploadStates,
+} from '../utils/processing.js';
+
+export class ApiError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'ApiError';
+    Object.assign(this, details);
+  }
+}
+
 // Kiểm tra địa chỉ backend trước khi gửi tệp.
 export function validateApiBaseUrl(value, pageProtocol = globalThis.location?.protocol) {
   if (!value?.trim()) throw new Error('Nhập địa chỉ backend để bắt đầu kết nối');
@@ -34,6 +49,8 @@ export function parseUploadResponse(text) {
   }
 
   const result = data.file ?? data;
+  if (!result || typeof result !== 'object' || Array.isArray(result))
+    throw new Error('Thông tin upload chưa hợp lệ');
   const id = result.id ?? result.file_id;
   const key = result.key ?? result.s3_key;
   if (typeof id !== 'string' && typeof id !== 'number' && typeof key !== 'string') {
@@ -43,12 +60,28 @@ export function parseUploadResponse(text) {
   if (result.storage != null && !['local', 's3'].includes(result.storage)) {
     throw new Error('API trả về loại lưu trữ chưa được hỗ trợ');
   }
-  return {
+  if (result.scan_status != null && !Object.hasOwn(scanStates, result.scan_status))
+    throw new Error('API trả trạng thái quét chưa được hỗ trợ');
+  if (result.upload_state != null && !uploadStates.includes(result.upload_state))
+    throw new Error('API trả trạng thái upload chưa được hỗ trợ');
+  const parsed = {
     id,
     key,
     storage: result.storage ?? 'unspecified',
     scanStatus: result.scan_status ?? 'unknown',
   };
+  if (result.upload_state != null) parsed.uploadState = result.upload_state;
+  if (result.created_at != null) {
+    const date = Date.parse(result.created_at);
+    if (
+      typeof result.created_at !== 'string' ||
+      !/(?:Z|[+-]\d{2}:\d{2})$/i.test(result.created_at) ||
+      !Number.isFinite(date)
+    )
+      throw new Error('Thời gian upload chưa hợp lệ');
+    parsed.createdAt = date;
+  }
+  return parsed;
 }
 
 // Ưu tiên thông báo lỗi từ backend, sau đó dùng mã HTTP.
@@ -64,7 +97,10 @@ function apiError(xhr) {
 }
 
 // Tải thật qua API: theo dõi tiến độ, hủy và xử lý lỗi.
-export function uploadFile(file, { baseUrl, signal, onProgress = () => {} }) {
+export function uploadFile(
+  file,
+  { baseUrl, signal, onProgress = () => {}, xhrFactory = () => new XMLHttpRequest() },
+) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new DOMException('Đã hủy tải lên', 'AbortError'));
     let endpoint;
@@ -74,7 +110,7 @@ export function uploadFile(file, { baseUrl, signal, onProgress = () => {} }) {
       reject(error);
       return;
     }
-    const xhr = new XMLHttpRequest();
+    const xhr = xhrFactory();
     const abort = () => xhr.abort();
     const cleanup = () => signal?.removeEventListener('abort', abort);
     xhr.open('POST', endpoint);
@@ -88,25 +124,35 @@ export function uploadFile(file, { baseUrl, signal, onProgress = () => {} }) {
     xhr.onload = () => {
       cleanup();
       if (xhr.status < 200 || xhr.status >= 300) {
-        const error = new Error(apiError(xhr));
-        error.retryable = xhr.status >= 500 || [408, 429].includes(xhr.status);
+        const error = uploadError(xhr, apiError(xhr));
         reject(error);
         return;
       }
       try {
         resolve(parseUploadResponse(xhr.responseText));
       } catch (error) {
-        reject(error);
+        // A successful HTTP write with an unreadable confirmation must not be silently resent.
+        reject(uploadError(xhr, error.message, true));
       }
     };
     xhr.onerror = () => {
       cleanup();
-      reject(new Error('Không kết nối được backend — kiểm tra địa chỉ API, mạng và cấu hình CORS'));
+      reject(
+        uploadError(
+          xhr,
+          'Không kết nối được backend — kiểm tra địa chỉ API, mạng và cấu hình CORS',
+          true,
+        ),
+      );
     };
     xhr.ontimeout = () => {
       cleanup();
       reject(
-        new Error('Backend phản hồi quá lâu — hãy kiểm tra tệp trên máy chủ trước khi thử lại'),
+        uploadError(
+          xhr,
+          'Backend phản hồi quá lâu — hãy kiểm tra tệp trên máy chủ trước khi thử lại',
+          true,
+        ),
       );
     };
     xhr.onabort = () => {
@@ -119,6 +165,109 @@ export function uploadFile(file, { baseUrl, signal, onProgress = () => {} }) {
     // Let the browser set the multipart boundary; never place AWS credentials in the client.
     xhr.send(body);
   });
+}
+
+function uploadError(xhr, message, uncertain = false) {
+  const remoteId = xhr.getResponseHeader?.('X-File-Id')?.trim() || null;
+  const key = xhr.getResponseHeader?.('X-File-Key')?.trim() || null;
+  const outcomeUnknown = uncertain || Boolean(remoteId);
+  return new ApiError(message, {
+    status: xhr.status || 0,
+    remoteId,
+    key,
+    outcomeUnknown,
+    reconciling: Boolean(remoteId),
+    retryable: !outcomeUnknown && (xhr.status >= 500 || [408, 429].includes(xhr.status)),
+  });
+}
+
+async function requestJson(
+  baseUrl,
+  path,
+  { signal, timeout = 10000, fetcher = globalThis.fetch } = {},
+) {
+  const base = validateApiBaseUrl(baseUrl);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, timeout);
+  try {
+    const response = await fetcher(`${base}${path}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      if (!response.ok)
+        throw new ApiError(`Máy chủ trả HTTP ${response.status}`, { status: response.status });
+      throw new ApiError('Máy chủ chưa trả JSON hợp lệ', {
+        status: response.status,
+        code: 'invalid_response',
+      });
+    }
+    if (!response.ok)
+      throw new ApiError(
+        typeof data?.detail === 'string' ? data.detail : `Máy chủ trả HTTP ${response.status}`,
+        { status: response.status },
+      );
+    return data;
+  } catch (error) {
+    if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+    if (controller.signal.aborted)
+      throw new ApiError('Máy chủ chưa phản hồi — hãy kiểm tra lại kết nối', {
+        status: 0,
+        code: 'timeout',
+      });
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('Không kết nối được máy chủ — kiểm tra mạng và CORS', {
+      status: 0,
+      code: 'network',
+    });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
+export async function listFiles(baseUrl, { cursor, limit = 100, signal, timeout, fetcher } = {}) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+    throw new RangeError('Giới hạn danh sách phải từ 1 đến 100');
+  if (cursor != null && (typeof cursor !== 'string' || !cursor.length || cursor.length > 2048))
+    throw new Error('Cursor danh sách chưa hợp lệ');
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor != null) query.set('cursor', cursor);
+  const data = await requestJson(baseUrl, `/files?${query}`, { signal, timeout, fetcher });
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    !Array.isArray(data.items) ||
+    (data.next_cursor != null &&
+      (typeof data.next_cursor !== 'string' ||
+        !data.next_cursor.length ||
+        data.next_cursor.length > 2048))
+  ) {
+    throw new ApiError('Danh sách tệp trả về chưa đúng định dạng', { code: 'invalid_response' });
+  }
+  try {
+    return { items: data.items.map(normalizeServerFile), nextCursor: data.next_cursor ?? null };
+  } catch (error) {
+    throw new ApiError(error.message, { code: 'invalid_response' });
+  }
+}
+
+export async function getFileStatus(baseUrl, id, options = {}) {
+  if (typeof id !== 'string' || !id.trim()) throw new Error('ID tệp chưa hợp lệ');
+  const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/status`, options);
+  try {
+    const result = normalizeStatus(data);
+    if (result.remoteId !== id) throw new Error('ID trạng thái không khớp tệp yêu cầu');
+    return result;
+  } catch (error) {
+    throw new ApiError(error.message, { code: 'invalid_response' });
+  }
 }
 
 // Chế độ trải nghiệm: mô phỏng tiến độ trong trình duyệt.

@@ -330,26 +330,21 @@ legend {
   font-size: 28px;
   letter-spacing: -0.9px;
 }
-.workspace-label {
+.sidebar-navigation {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 10px 30px;
-  font-size: 13px;
+  flex: 1;
+  flex-direction: column;
+  gap: 26px;
 }
-.workspace-label > svg {
-  color: var(--accent);
-}
-.workspace-label small {
-  display: block;
-  font-size: 11px;
-  margin-top: 2px;
+.nav-group {
+  display: grid;
+  gap: 5px;
 }
 .nav-label {
   color: var(--muted);
   font-size: 10px;
   letter-spacing: 1.3px;
-  margin: 0 12px 12px;
+  margin: 0 12px 6px;
 }
 nav {
   display: grid;
@@ -382,32 +377,10 @@ nav {
 }
 .sidebar-bottom {
   margin-top: auto;
-  padding-top: 45px;
-}
-.session-note {
-  padding: 18px 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
-  color: var(--muted);
-}
-.session-note > svg {
-  color: var(--accent);
-  margin-bottom: 12px;
-}
-.session-note strong {
-  display: block;
-  font-size: 12px;
-  color: var(--text);
-  margin-bottom: 7px;
-}
-.session-note p {
-  font-size: 11px;
-  line-height: 1.8;
-}
-.sidebar-signature {
-  font-size: 10px;
-  color: var(--muted);
-  padding: 10px 14px 0;
-  display: block;
+  display: grid;
+  gap: 5px;
 }
 .main-shell {
   margin-left: 248px;
@@ -530,6 +503,84 @@ main {
 }
 .connection-pill.api .tiny-dot {
   background: var(--blue);
+}
+.connection-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+.connection-pill[aria-expanded='true'] {
+  border-color: var(--control-border);
+}
+.connection-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 45;
+  width: 315px;
+  padding: 16px;
+  border-radius: 13px;
+  border: 1px solid var(--control-border);
+  background: var(--raised);
+  box-shadow: var(--shadow);
+}
+.connection-menu legend {
+  margin-bottom: 8px;
+}
+.connection-menu label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.connection-menu label:has(input:checked) {
+  background: var(--hover);
+}
+.connection-menu label strong {
+  display: block;
+  font-size: 12px;
+}
+.connection-menu label small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+}
+.connection-menu-hint {
+  color: var(--warning);
+  background: var(--warning-bg);
+  padding: 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.connection-server {
+  margin: 12px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.connection-server span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+.connection-server strong {
+  display: block;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.connection-menu > a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 6px;
+  border-radius: 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.connection-menu > a:hover {
+  background: var(--hover);
 }
 .upload-zone {
   display: flex;

@@ -1,0 +1,400 @@
+/* Desktop file workspace, semantic tokens inherited from the shared theme. */
+.file-workspace .file-area-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 14px 22px 0;
+  border-bottom: 1px solid var(--border);
+}
+.file-area-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  padding: 10px 12px 13px;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+}
+.file-area-tabs button[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+.file-area-tabs button:hover {
+  background: var(--hover);
+  border-radius: 8px 8px 0 0;
+}
+.file-area-tabs button span {
+  background: var(--hover);
+  border-radius: 5px;
+  font-size: 11px;
+  padding: 0 5px;
+}
+.file-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.primary-file-toolbar .search-field {
+  flex: 3 1 260px;
+}
+.primary-file-toolbar select {
+  flex: 1 1 150px;
+}
+.extra-file-filters {
+  padding: 0 25px 14px;
+  font-size: 12px;
+}
+.extra-file-filters summary {
+  color: var(--accent);
+  cursor: pointer;
+  width: fit-content;
+}
+.extra-file-filters summary svg {
+  margin-right: 5px;
+}
+.extra-file-filters > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.extra-file-filters label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.extra-file-filters select {
+  font-size: 12px;
+  padding: 8px;
+}
+.file-workspace .filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  border: 1px solid transparent;
+}
+.file-workspace .filter-chip:hover {
+  border-color: var(--accent);
+}
+.file-sync-message {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 0 25px 15px;
+  padding: 11px 14px;
+  background: var(--info-bg);
+  color: var(--info);
+  font-size: 12px;
+  border-radius: 8px;
+}
+.file-sync-message.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+.file-loading-space {
+  min-height: 150px;
+}
+.file-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.file-pagination > span {
+  font-size: 11px;
+}
+.processing-table {
+  min-width: 850px;
+}
+.processing-table .file-title-text {
+  max-width: 420px;
+  min-width: 130px;
+}
+.processing-table .file-name,
+.file-workspace .file-card .file-name {
+  font-size: 13px;
+}
+.processing-table .column-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-align: left;
+  padding: 0;
+  font-weight: inherit;
+}
+.processing-table .column-sort:hover {
+  color: var(--accent);
+}
+.processing-table .scan-badge {
+  max-width: 200px;
+  white-space: normal;
+  line-height: 1.5;
+}
+.status-badge.warning {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+.file-card-statuses {
+  display: grid;
+  gap: 7px;
+}
+.file-card-statuses > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.file-card-statuses > div > span:first-child {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+  padding-top: 4px;
+}
+.file-card-statuses .status-badge {
+  white-space: normal;
+  text-align: right;
+  line-height: 1.5;
+}
+.drive-workspace {
+  position: relative;
+}
+.drive-toolbar-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin: 0 0 17px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.drive-drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--surface);
+  border: 2px dashed var(--accent);
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 15;
+  color: var(--accent);
+  pointer-events: none;
+}
+.drive-drop-overlay > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.file-detail-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 410px;
+  max-width: calc(100vw - 200px);
+  z-index: 55;
+  border-left: 1px solid var(--control-border);
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: -15px 0 40px #00000020;
+  display: flex;
+  flex-direction: column;
+}
+.drawer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 23px 22px 15px;
+}
+.drawer-heading h2 {
+  font-size: 19px;
+}
+.drawer-heading h2:focus {
+  outline: none;
+}
+.drawer-file-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 0 22px 20px;
+}
+.drawer-file-title > div {
+  min-width: 0;
+}
+.drawer-file-title h3 {
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.drawer-file-title p {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 5px;
+}
+.drawer-tabs {
+  display: flex;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--border);
+  gap: 18px;
+}
+.drawer-tabs button {
+  padding: 10px 0;
+  font-size: 13px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+}
+.drawer-tabs button[aria-selected='true'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 700;
+}
+.drawer-content {
+  padding: 10px 22px 22px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.drawer-content .file-details > div {
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 12px;
+}
+.drawer-content .file-details .status-badge {
+  white-space: normal;
+  line-height: 1.5;
+}
+.drawer-content .copy-value {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+}
+.drawer-content .copy-value > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.technical-details {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 11px;
+  font-size: 12px;
+}
+.technical-details > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 700;
+}
+.technical-details p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.drawer-content .technical-details .file-details > div {
+  grid-template-columns: 90px minmax(0, 1fr);
+}
+.drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  padding: 15px 22px;
+  border-top: 1px solid var(--border);
+}
+.drawer-footer .button {
+  font-size: 12px;
+}
+.drawer-footer .text-button {
+  font-size: 11px;
+}
+.drawer-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 10px 22px;
+}
+.processing-timeline {
+  list-style: none;
+  padding: 10px 0;
+  margin: 0;
+}
+.processing-timeline > li {
+  display: flex;
+  gap: 12px;
+  position: relative;
+  padding: 0 0 23px;
+}
+.processing-timeline > li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 30px;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.timeline-marker {
+  width: 29px;
+  height: 29px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--hover);
+  color: var(--muted);
+}
+.processing-timeline .complete .timeline-marker {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.processing-timeline .issue .timeline-marker {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.processing-timeline h3 {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.processing-timeline p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.processing-timeline p.timeline-label {
+  font-size: 12px;
+  color: var(--text);
+}
+@media (min-width: 1600px) {
+  .has-file-detail .main-shell {
+    margin-right: 410px;
+  }
+  .has-file-detail .upload-dock {
+    right: 430px;
+  }
+}
+@media (max-width: 1200px) {
+  .file-workspace .files-heading,
+  .file-workspace .file-toolbar {
+    padding-inline: 18px;
+  }
+  .file-workspace .file-area-tabs {
+    padding-inline: 10px;
+  }
+  .extra-file-filters {
+    padding-inline: 18px;
+  }
+  .file-area-tabs button {
+    font-size: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-detail-drawer,
+  .drive-drop-overlay {
+    transition: none;
+  }
+}

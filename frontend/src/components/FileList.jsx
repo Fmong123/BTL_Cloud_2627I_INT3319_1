@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { Eye, FolderOpen, RotateCcw, SearchX, Star, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, FolderOpen, RotateCcw, SearchX, Star, X } from 'lucide-react';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
+import ScanBadge from './ScanBadge.jsx';
 import { formatBytes } from '../utils/files.js';
 import { canRetry, isBusy } from '../utils/workspace.js';
 
@@ -21,7 +22,7 @@ function Actions({ file, onStar, onInspect, onRetry, onCancel }) {
       {canRetry(file) && (
         <button
           className="icon-button"
-          title="Thử lại"
+          title="Thử lại upload"
           aria-label={`Thử lại ${file.name}`}
           onClick={() => onRetry(file.id)}
         >
@@ -30,7 +31,7 @@ function Actions({ file, onStar, onInspect, onRetry, onCancel }) {
       )}
       <button
         className={`icon-button ${file.starred ? 'starred' : ''}`}
-        title="Đánh dấu"
+        title={file.starred ? 'Bỏ đánh dấu' : 'Đánh dấu'}
         aria-label={`${file.starred ? 'Bỏ đánh dấu' : 'Đánh dấu'} ${file.name}`}
         aria-pressed={file.starred}
         onClick={() => onStar(file.id)}
@@ -52,7 +53,7 @@ function SelectAll({ files, selected, onSelectAll }) {
   const ref = useRef(null);
   const count = files.filter((file) => selected.has(file.id)).length;
   useEffect(() => {
-    ref.current.indeterminate = count > 0 && count < files.length;
+    if (ref.current) ref.current.indeterminate = count > 0 && count < files.length;
   }, [count, files.length]);
   return (
     <input
@@ -74,6 +75,8 @@ export default function FileList({
   emptyTitle = 'Chưa có tệp',
   emptyMessage = 'Tệp bạn thêm sẽ xuất hiện ở đây.',
   filtered = false,
+  sort,
+  onSort,
   ...actions
 }) {
   if (!files.length)
@@ -101,9 +104,40 @@ export default function FileList({
       />
     );
   const progress = (file) =>
-    file.status === 'uploading' && (
+    file.status === 'uploading' &&
+    file.original && (
       <progress max="100" value={file.progress} aria-label={`Tiến độ ${file.name}`} />
     );
+  const statuses = (file) => (
+    <div className="file-card-statuses">
+      <div>
+        <span>Tải lên</span>
+        <StatusBadge {...file} />
+      </div>
+      <div>
+        <span>Quét / cách ly</span>
+        <ScanBadge {...file} />
+      </div>
+    </div>
+  );
+  const sortHeader = (label, ascending, descending) => {
+    const current = sort === ascending || sort === descending;
+    return (
+      <th aria-sort={current ? (sort === ascending ? 'ascending' : 'descending') : undefined}>
+        {onSort ? (
+          <button
+            className="column-sort"
+            onClick={() => onSort(sort === ascending ? descending : ascending)}
+          >
+            {label}
+            {current && (sort === ascending ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+          </button>
+        ) : (
+          label
+        )}
+      </th>
+    );
+  };
   if (view === 'grid')
     return (
       <>
@@ -111,7 +145,7 @@ export default function FileList({
           {selected && (
             <label>
               <SelectAll files={files} selected={selected} onSelectAll={onSelectAll} />
-              Chọn tất cả kết quả
+              Chọn tất cả trên trang
             </label>
           )}
         </div>
@@ -136,9 +170,10 @@ export default function FileList({
               <p className="file-meta">
                 {formatBytes(file.size)} · {new Date(file.createdAt).toLocaleDateString('vi-VN')}
               </p>
-              <StatusBadge {...file} />
+              {statuses(file)}
               {progress(file)}
               {file.error && <p className="file-error">{file.error}</p>}
+              {file.syncError && <p className="file-error">Chưa cập nhật được kết quả</p>}
             </article>
           ))}
         </div>
@@ -146,7 +181,7 @@ export default function FileList({
     );
   return (
     <div className="table-scroll">
-      <table className="file-table">
+      <table className="file-table processing-table">
         <thead>
           <tr>
             {selected && (
@@ -154,10 +189,11 @@ export default function FileList({
                 <SelectAll files={files} selected={selected} onSelectAll={onSelectAll} />
               </th>
             )}
-            <th>Tên tệp</th>
-            <th>Kích thước</th>
-            <th>Thời gian thêm</th>
-            <th>Trạng thái</th>
+            {sortHeader('Tên tệp', 'name', 'name-desc')}
+            {sortHeader('Kích thước', 'size', 'size-desc')}
+            {sortHeader('Thời gian thêm', 'oldest', 'newest')}
+            <th>Tải lên</th>
+            <th>Quét / cách ly</th>
             <th>
               <span className="visually-hidden">Thao tác</span>
             </th>
@@ -180,6 +216,9 @@ export default function FileList({
                     </button>
                     {progress(file)}
                     {file.error && <span className="file-error">{file.error}</span>}
+                    {file.syncError && (
+                      <span className="file-error">Chưa cập nhật được kết quả</span>
+                    )}
                   </div>
                 </div>
               </td>
@@ -195,6 +234,9 @@ export default function FileList({
               </td>
               <td>
                 <StatusBadge {...file} />
+              </td>
+              <td>
+                <ScanBadge {...file} />
               </td>
               <td>
                 <Actions file={file} {...actions} />

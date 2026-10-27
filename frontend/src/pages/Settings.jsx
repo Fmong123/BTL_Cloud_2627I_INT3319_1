@@ -17,6 +17,15 @@ export default function Settings() {
   const [error, setError] = useState('');
   const request = useRef(null);
   const requestId = useRef(0);
+  useEffect(() => {
+    // A quick switch in the page header also updates an already-open settings form.
+    requestId.current++;
+    request.current?.abort();
+    setDraft({ mode: w.preferences.mode, baseUrl: w.preferences.baseUrl });
+    setResult(w.health);
+    setChecking(false);
+    setError('');
+  }, [w.preferences.mode, w.preferences.baseUrl]);
   useEffect(
     () => () => {
       requestId.current++;
