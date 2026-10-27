@@ -43,7 +43,12 @@ export function parseUploadResponse(text) {
   if (result.storage != null && !['local', 's3'].includes(result.storage)) {
     throw new Error('API trả về loại lưu trữ chưa được hỗ trợ');
   }
-  return { id, key, storage: result.storage ?? 'unspecified', scanStatus: result.scan_status ?? 'unknown' };
+  return {
+    id,
+    key,
+    storage: result.storage ?? 'unspecified',
+    scanStatus: result.scan_status ?? 'unknown',
+  };
 }
 
 // Ưu tiên thông báo lỗi từ backend, sau đó dùng mã HTTP.
@@ -83,7 +88,9 @@ export function uploadFile(file, { baseUrl, signal, onProgress = () => {} }) {
     xhr.onload = () => {
       cleanup();
       if (xhr.status < 200 || xhr.status >= 300) {
-        reject(new Error(apiError(xhr)));
+        const error = new Error(apiError(xhr));
+        error.retryable = xhr.status >= 500 || [408, 429].includes(xhr.status);
+        reject(error);
         return;
       }
       try {
@@ -121,6 +128,7 @@ export function demoUpload(file, { signal, onProgress = () => {} }) {
     let progress = 0;
     const abort = () => {
       clearInterval(timer);
+      signal?.removeEventListener('abort', abort);
       reject(new DOMException('Đã hủy tải lên', 'AbortError'));
     };
     const timer = setInterval(() => {
@@ -134,4 +142,41 @@ export function demoUpload(file, { signal, onProgress = () => {} }) {
     }, 160);
     signal?.addEventListener('abort', abort, { once: true });
   });
+}
+
+export async function checkHealth(
+  baseUrl,
+  { signal, timeout = 5000, fetcher = globalThis.fetch } = {},
+) {
+  const url = validateApiBaseUrl(baseUrl);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetcher(`${url}/health`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`Máy chủ trả HTTP ${response.status}`);
+    const data = await response.json();
+    if (
+      data?.status !== 'ok' ||
+      !['local', 's3', 'unconfigured'].includes(data.storage) ||
+      typeof data.storage_configured !== 'boolean' ||
+      !Number.isSafeInteger(data.max_file_size_bytes) ||
+      data.max_file_size_bytes <= 0
+    ) {
+      throw new Error('Phản hồi kiểm tra kết nối chưa đúng định dạng MâySec');
+    }
+    return { ...data, baseUrl: url, checkedAt: Date.now() };
+  } catch (error) {
+    if (controller.signal.aborted && !signal?.aborted)
+      throw new Error('Kiểm tra quá 5 giây — máy chủ chưa phản hồi');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+  }
 }

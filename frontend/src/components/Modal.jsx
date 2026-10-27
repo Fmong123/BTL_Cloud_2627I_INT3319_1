@@ -1,18 +1,23 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 export default function Modal({ title, children, onClose, wide = false }) {
   const ref = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const dialog = ref.current;
+    const previous = document.activeElement;
     dialog.showModal();
-    return () => dialog.close();
+    return () => {
+      dialog.close();
+      if (previous?.isConnected) previous.focus();
+    };
   }, []);
   return (
     <dialog
       ref={ref}
       className={`modal ${wide ? 'wide' : ''}`}
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
       onCancel={onClose}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -28,7 +33,7 @@ export default function Modal({ title, children, onClose, wide = false }) {
       }}
     >
       <div className="modal-header">
-        <h2 id="modal-title">{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <button className="icon-button" aria-label="Đóng" onClick={onClose}>
           <X size={20} />
         </button>

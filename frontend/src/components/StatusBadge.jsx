@@ -5,7 +5,7 @@ export default function StatusBadge({ status, mode, progress, storage }) {
     queued: { icon: Pause, text: 'Đang chờ', className: 'muted' },
     uploading: {
       icon: LoaderCircle,
-      text: progress >= 99 ? 'Đang xử lý' : `Đang tải ${progress}%`,
+      text: progress >= 99 ? 'Chờ máy chủ xác nhận' : `Đang gửi ${progress}%`,
       className: 'uploading',
     },
     success: {
@@ -23,7 +23,11 @@ export default function StatusBadge({ status, mode, progress, storage }) {
     error: { icon: CircleAlert, text: 'Chưa tải được', className: 'error' },
     cancelled: { icon: X, text: 'Đã hủy', className: 'muted' },
   };
-  const state = states[status];
+  const state = states[status] || {
+    icon: CircleAlert,
+    text: 'Chưa xác định',
+    className: 'muted',
+  };
   const Icon = state.icon;
   return (
     <span className={`status-badge ${state.className}`}>

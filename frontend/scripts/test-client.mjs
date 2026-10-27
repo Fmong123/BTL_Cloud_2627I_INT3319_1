@@ -4,20 +4,43 @@ import { parseUploadResponse, validateApiBaseUrl } from '../src/api/client.js';
 
 test('local and S3 labels survive response parsing; unintegrated scan stays explicit', () => {
   for (const storage of ['local', 's3']) {
-    assert.deepEqual(parseUploadResponse(JSON.stringify({ id: 'id', key: 'key', storage, scan_status: 'not_started' })), {
-      id: 'id', key: 'key', storage, scanStatus: 'not_started',
-    });
+    assert.deepEqual(
+      parseUploadResponse(
+        JSON.stringify({
+          id: 'id',
+          key: 'key',
+          storage,
+          scan_status: 'not_started',
+        }),
+      ),
+      {
+        id: 'id',
+        key: 'key',
+        storage,
+        scanStatus: 'not_started',
+      },
+    );
   }
 });
 
 test('legacy id/key aliases are accepted without claiming a storage provider', () => {
-  assert.equal(parseUploadResponse('{"file":{"file_id":"old","s3_key":"old-key"}}').storage, 'unspecified');
+  assert.equal(
+    parseUploadResponse('{"file":{"file_id":"old","s3_key":"old-key"}}').storage,
+    'unspecified',
+  );
   assert.equal(parseUploadResponse('{"key":"old-key"}').key, 'old-key');
   assert.equal(parseUploadResponse('{"key":"old-key"}').scanStatus, 'unknown');
 });
 
 test('malformed, failed, unconfirmed or unknown-provider responses never succeed', () => {
-  for (const text of ['<html>bad</html>', '[]', '{}', '{"success":false,"id":"id"}', '{"error":"denied","id":"id"}', '{"id":"id","storage":"mock"}']) {
+  for (const text of [
+    '<html>bad</html>',
+    '[]',
+    '{}',
+    '{"success":false,"id":"id"}',
+    '{"error":"denied","id":"id"}',
+    '{"id":"id","storage":"mock"}',
+  ]) {
     assert.throws(() => parseUploadResponse(text));
   }
 });

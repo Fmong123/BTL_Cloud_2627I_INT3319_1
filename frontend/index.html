@@ -3,8 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ede7fc" />
-    <meta name="description" content="Mây4u — Không gian lưu trữ tài liệu của bạn — chọn, tải lên và quản lý tệp trong một giao diện đơn giản" />
+    <meta name="theme-color" content="#f4f2fc" />
+    <meta
+      name="description"
+      content="MâySec — Không gian lưu trữ tài liệu của bạn — chọn, tải lên và quản lý tệp trong một giao diện đơn giản"
+    />
+    <script>
+      (() => {
+        let theme = 'system';
+        try {
+          const saved = JSON.parse(localStorage.getItem('maysec.preferences.v1'));
+          if (saved?.version === 1 && ['light', 'dark', 'system'].includes(saved.theme))
+            theme = saved.theme;
+        } catch {}
+        const resolved =
+          theme === 'system'
+            ? matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+            : theme;
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.style.colorScheme = resolved;
+        document.querySelector('meta[name="theme-color"]').content =
+          resolved === 'dark' ? '#151320' : '#f4f2fc';
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>MâySec · Không gian của bạn</title>
   </head>
