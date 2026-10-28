@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { demoUpload, uploadFile, validateApiBaseUrl } from '../api/client.js';
+import { demoUpload, uploadFile, validateApiBaseUrl, getFileContent } from '../api/client.js';
 import { validateFile } from '../utils/files.js';
 import {
   canRetry,
@@ -7,11 +7,14 @@ import {
   isBusy,
   readPreferences,
   savePreferences,
+  uiPreferenceDefaults,
 } from '../utils/workspace.js';
-import { isAttention, mergeServerFiles, scanStates } from '../utils/processing.js';
+import { isAttention, mergeServerFiles, scanStates, needsTracking } from '../utils/processing.js';
 import { UploadQueue } from '../utils/uploadQueue.js';
 import { useRemoteLibrary } from './useRemoteLibrary.js';
 import { useNotifications } from './useNotifications.js';
+import { usePersistentStars } from './usePersistentStars.js';
+import { canReadContent, previewInfo, DOWNLOAD_LIMIT } from '../utils/content.js';
 import Modal from '../components/Modal.jsx';
 
 const Context = createContext(null);
@@ -19,6 +22,7 @@ const configuredSize = Number(import.meta.env.VITE_MAX_FILE_SIZE_MB || 100);
 const defaultLimit =
   (Number.isFinite(configuredSize) && configuredSize > 0 ? configuredSize : 100) * 1024 ** 2;
 export const defaultPreferences = {
+  ...uiPreferenceDefaults,
   theme: 'system',
   view: 'list',
   sort: 'newest',
@@ -36,7 +40,6 @@ function connectionScope(connection) {
 
 export function WorkspaceProvider({ children }) {
   const [entries, renderEntries] = useState([]);
-  const [serverStars, setServerStars] = useState(new Map());
   const entriesRef = useRef([]);
   const [preferences, setPreferences] = useState(() => readPreferences(defaultPreferences));
   const scope = connectionScope(preferences);
@@ -50,6 +53,9 @@ export function WorkspaceProvider({ children }) {
   const duplicateRef = useRef(null);
   const [retryConfirmation, setRetryConfirmation] = useState(null);
   const [inspectedId, inspect] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const downloadRequest = useRef(null);
   const [storageFailed, setStorageFailed] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const mounted = useRef(true);
@@ -154,15 +160,35 @@ export function WorkspaceProvider({ children }) {
   const serverFiles = remote.records
     .filter((file) => file.scope === scope)
     .map((file) => ({ ...file, id: stableId(file) }));
-  const files = useMemo(
-    () =>
-      mergeServerFiles(localFiles, serverFiles).map((file) =>
-        !file.original && serverStars.has(`${file.scope}|${file.remoteId}`)
-          ? { ...file, starred: serverStars.get(`${file.scope}|${file.remoteId}`) }
-          : file,
-      ),
-    [entries, remote.records, scope, serverStars],
+  const baseFiles = useMemo(
+    () => mergeServerFiles(localFiles, serverFiles),
+    [entries, remote.records, scope],
   );
+  const currentHealth =
+    health && connectionScope({ mode: 'api', baseUrl: health.baseUrl }) === scope ? health : null;
+  const favoritesAvailable =
+    preferences.mode === 'api' && currentHealth?.capabilities?.persistent_favorites === true;
+  const contentAvailable =
+    preferences.mode === 'api' && currentHealth?.capabilities?.file_content === true;
+  const stars = usePersistentStars({
+    files: baseFiles,
+    scope,
+    available: favoritesAvailable,
+    notify,
+    onApply(patch) {
+      setEntries((current) => mergeServerFiles(current, [patch]));
+      if (patch.scope === scopeRef.current) remoteRef.current.applyPreferences(patch);
+    },
+  });
+  const files = baseFiles.map(stars.decorate);
+  useEffect(() => {
+    if (!downloadingId || !downloadRequest.current) return;
+    const file = files.find((item) => item.id === downloadingId);
+    if (!contentAvailable || !canReadContent(file)) {
+      downloadRequest.current.abort();
+      notify('Trạng thái tệp đã đổi, đã dừng đọc nội dung');
+    }
+  }, [files, downloadingId, contentAvailable]);
   const activityFiles = useMemo(() => {
     const ids = new Set(localFiles.map((file) => file.id));
     return files.filter((file) => ids.has(file.id));
@@ -173,6 +199,8 @@ export function WorkspaceProvider({ children }) {
   }, [preferences]);
   useEffect(() => {
     inspect(null);
+    setPreviewId(null);
+    downloadRequest.current?.abort();
     setRetryConfirmation(null);
   }, [scope]);
   useEffect(() => {
@@ -189,6 +217,7 @@ export function WorkspaceProvider({ children }) {
       mounted.current = false;
       scheduler.current?.dispose();
       scheduler.current = null;
+      downloadRequest.current?.abort();
       window.removeEventListener('online', offline);
       window.removeEventListener('offline', offline);
       window.removeEventListener('dragover', preventFileNavigation);
@@ -317,12 +346,16 @@ export function WorkspaceProvider({ children }) {
     selected,
     connection = { mode: preferences.mode, baseUrl: preferences.baseUrl },
     maxBytes = limit,
+    batch = { id: crypto.randomUUID(), createdAt: Date.now() },
   ) {
     const targetScope = connectionScope(connection);
     const next = selected.map((original) => {
       const error = validateFile(original, maxBytes);
       return {
         id: crypto.randomUUID(),
+        batchId: batch.id,
+        batchFileId: crypto.randomUUID(),
+        batchCreatedAt: batch.createdAt,
         name: original.name,
         size: original.size,
         type: original.type,
@@ -372,18 +405,25 @@ export function WorkspaceProvider({ children }) {
       (known.has(key) ? repeated : fresh).push(file);
       known.add(key);
     }
-    if (fresh.length) enqueue(fresh);
+    const batch = { id: crypto.randomUUID(), createdAt: Date.now() };
+    if (fresh.length) enqueue(fresh, undefined, limit, batch);
     if (repeated.length) {
       duplicateRef.current = {
         connection: { mode: preferences.mode, baseUrl: preferences.baseUrl },
         limit,
+        batch,
       };
       setDuplicates(repeated);
     }
   }
   function resolveDuplicates(keep) {
     if (keep && duplicateRef.current)
-      enqueue(duplicates, duplicateRef.current.connection, duplicateRef.current.limit);
+      enqueue(
+        duplicates,
+        duplicateRef.current.connection,
+        duplicateRef.current.limit,
+        duplicateRef.current.batch,
+      );
     duplicateRef.current = null;
     setDuplicates([]);
   }
@@ -437,21 +477,15 @@ export function WorkspaceProvider({ children }) {
     if (file) setRetryConfirmation(file);
   }
   function star(ids, value) {
+    if (preferences.mode === 'api') {
+      stars.star(ids, value);
+      return;
+    }
     setEntries((current) =>
       current.map((file) =>
         ids.includes(file.id) ? { ...file, starred: value ?? !file.starred } : file,
       ),
     );
-    // Store presentation flags separately, never a stale copy of server metadata.
-    setServerStars((current) => {
-      const next = new Map(current);
-      for (const id of ids) {
-        const file = files.find((file) => file.id === id);
-        if (file && !file.original)
-          next.set(`${file.scope}|${file.remoteId}`, value ?? !file.starred);
-      }
-      return next;
-    });
   }
   function remove(ids) {
     const removed = entriesRef.current.filter(
@@ -493,6 +527,86 @@ export function WorkspaceProvider({ children }) {
     const file = files.find((file) => file.id === id);
     if (file) remote.recheckFile(file);
   }
+  function preview(id) {
+    inspect(null);
+    setPreviewId(id);
+  }
+  function openFile(id) {
+    const file = files.find((item) => item.id === id);
+    if (contentAvailable && previewInfo(file).kind) preview(id);
+    else inspect(id);
+  }
+  async function download(id) {
+    const file = files.find((item) => item.id === id);
+    if (!contentAvailable || !canReadContent(file)) {
+      notify('Chỉ tải xuống tệp An toàn khi máy chủ hỗ trợ');
+      return;
+    }
+    if (file.size > DOWNLOAD_LIMIT) {
+      notify('Tải xuống tối đa 100 MiB mỗi tệp');
+      return;
+    }
+    if (downloadRequest.current) {
+      notify('Đang chuẩn bị một tệp khác');
+      return;
+    }
+    const controller = new AbortController();
+    const targetScope = scope;
+    downloadRequest.current = controller;
+    setDownloadingId(id);
+    try {
+      const blob = await getFileContent(file.connection.baseUrl, file.remoteId, {
+        mode: 'download',
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || targetScope !== scopeRef.current || !mounted.current) return;
+      const url = URL.createObjectURL(blob),
+        link = document.createElement('a');
+      link.href = url;
+      link.download = file.name.replace(/[\\/\u0000-\u001f]/g, '_');
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      notify('Đã bắt đầu tải xuống');
+    } catch (error) {
+      if (!controller.signal.aborted && mounted.current && targetScope === scopeRef.current)
+        notify(error.message);
+    } finally {
+      if (downloadRequest.current === controller) {
+        downloadRequest.current = null;
+        if (mounted.current) setDownloadingId(null);
+      }
+    }
+  }
+  const batchMap = new Map();
+  for (const file of activityFiles) {
+    const id = file.batchId || file.id;
+    if (!batchMap.has(id))
+      batchMap.set(id, { id, createdAt: file.batchCreatedAt || file.createdAt, files: [] });
+    batchMap.get(id).files.push(file);
+  }
+  const uploadBatches = [...batchMap.values()]
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((batch) => {
+      const latest = new Map();
+      for (const file of batch.files) {
+        const key = file.batchFileId || file.id;
+        if (!latest.has(key) || latest.get(key).createdAt < file.createdAt) latest.set(key, file);
+      }
+      return { ...batch, files: [...latest.values()] };
+    })
+    .map((batch) => ({
+      ...batch,
+      total: batch.files.length,
+      uploaded: batch.files.filter((file) => file.status === 'success').length,
+      active: batch.files.filter(isBusy).length,
+      failed: batch.files.filter((file) => file.status === 'error').length,
+      cancelled: batch.files.filter((file) => file.status === 'cancelled').length,
+      uncertain: batch.files.filter((file) => file.status === 'unknown').length,
+      tracking: batch.files.filter(needsTracking).length,
+      retryableIds: batch.files.filter(canRetry).map((file) => file.id),
+    }));
 
   return (
     <Context.Provider
@@ -511,6 +625,21 @@ export function WorkspaceProvider({ children }) {
         retry,
         requestRetry,
         star,
+        scope,
+        canStar: (file) =>
+          file.mode === 'demo' ||
+          (favoritesAvailable && Boolean(file.remoteId) && !file.starPending),
+        favoritesAvailable,
+        contentAvailable,
+        previewId,
+        preview,
+        openFile,
+        closePreview: () => setPreviewId(null),
+        download,
+        downloadingId,
+        uploadBatches,
+        retryBatch: (id) =>
+          retry(uploadBatches.find((batch) => batch.id === id)?.retryableIds || []),
         remove,
         notify,
         notice,

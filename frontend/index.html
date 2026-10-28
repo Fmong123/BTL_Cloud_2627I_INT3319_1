@@ -12,8 +12,11 @@
       (() => {
         let theme = 'system';
         try {
-          const saved = JSON.parse(localStorage.getItem('maysec.preferences.v1'));
-          if (saved?.version === 1 && ['light', 'dark', 'system'].includes(saved.theme))
+          const saved = JSON.parse(
+            localStorage.getItem('maysec.preferences.v2') ??
+              localStorage.getItem('maysec.preferences.v1'),
+          );
+          if ([1, 2].includes(saved?.version) && ['light', 'dark', 'system'].includes(saved.theme))
             theme = saved.theme;
         } catch {}
         const resolved =

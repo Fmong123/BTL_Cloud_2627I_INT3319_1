@@ -1,22 +1,26 @@
 import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ title, children, onClose, wide = false }) {
+export default function Modal({ title, children, onClose, wide = false, className = '' }) {
   const ref = useRef(null);
   const titleId = useId();
   useEffect(() => {
     const dialog = ref.current;
     const previous = document.activeElement;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     dialog.showModal();
+    window.scrollTo(scrollX, scrollY);
     return () => {
       dialog.close();
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      window.scrollTo(scrollX, scrollY);
     };
   }, []);
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''}`}
+      className={`modal ${wide ? 'wide' : ''} ${className}`}
       aria-labelledby={titleId}
       onCancel={onClose}
       onClick={(event) => {

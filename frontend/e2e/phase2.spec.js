@@ -31,6 +31,7 @@ const health = {
   scan_pipeline_enabled: true,
   owner_mode: 'development',
   scan_status: 'scanning',
+  capabilities: { persistent_favorites: true, file_content: false },
 };
 const sample = (name) => ({
   name,
@@ -79,6 +80,7 @@ async function apiRoutes(
   { origin = API, files = () => [], healthPatch = {}, list, status, upload } = {},
 ) {
   const calls = { health: 0, list: [], status: [], upload: [] };
+  const favorites = new Map();
   await page.route(`${origin}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -101,7 +103,7 @@ async function apiRoutes(
     if (url.pathname === '/files') {
       calls.list.push(url.searchParams.get('cursor'));
       if (list) return list(route, url, calls);
-      const all = files();
+      const all = files().map((file) => ({ ...file, ...favorites.get(file.id) }));
       const start = Number(url.searchParams.get('cursor') || 0);
       const limit = Number(url.searchParams.get('limit') || 100);
       const end = Math.min(all.length, start + limit);
@@ -109,6 +111,18 @@ async function apiRoutes(
         items: all.slice(start, end),
         next_cursor: end < all.length ? String(end) : null,
       });
+    }
+    const prefMatch = url.pathname.match(/^\/files\/([^/]+)\/preferences$/);
+    if (prefMatch && request.method() === 'PATCH') {
+      const id = decodeURIComponent(prefMatch[1]);
+      if (!files().some((file) => file.id === id))
+        return json(route, { detail: 'Không tìm thấy tệp' }, 404);
+      const patch = {
+        starred: request.postDataJSON().starred,
+        starred_updated_at: new Date().toISOString(),
+      };
+      favorites.set(id, patch);
+      return json(route, { id, ...patch });
     }
     const match = url.pathname.match(/^\/files\/([^/]+)\/status$/);
     if (match) {
@@ -233,9 +247,7 @@ test('scan and quarantine update independently of upload, move tabs and notify o
   await page.goto('/#/files');
   await expect(row(page, 'scan-file.txt')).toBeVisible();
   await expect(row(page, 'scan-file.txt').locator('.status-badge').first()).toContainText(/Đã lưu/);
-  await expect(row(page, 'scan-file.txt').locator('.scan-badge')).toContainText(
-    'Đang chờ / đang quét',
-  );
+  await expect(row(page, 'scan-file.txt').locator('.scan-badge')).toContainText('Đang quét');
   await bell(page).click();
   const notifications = page.getByRole('region', { name: 'Thông báo', exact: true });
   await expect(notifications).toContainText('Chưa có thông báo mới');

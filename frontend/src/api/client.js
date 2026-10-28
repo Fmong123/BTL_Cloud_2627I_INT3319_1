@@ -4,6 +4,7 @@ import {
   scanStates,
   uploadStates,
 } from '../utils/processing.js';
+import { DOWNLOAD_LIMIT } from '../utils/content.js';
 
 export class ApiError extends Error {
   constructor(message, details = {}) {
@@ -184,7 +185,7 @@ function uploadError(xhr, message, uncertain = false) {
 async function requestJson(
   baseUrl,
   path,
-  { signal, timeout = 10000, fetcher = globalThis.fetch } = {},
+  { signal, timeout = 10000, fetcher = globalThis.fetch, method = 'GET', body } = {},
 ) {
   const base = validateApiBaseUrl(baseUrl);
   const controller = new AbortController();
@@ -195,7 +196,13 @@ async function requestJson(
   try {
     const response = await fetcher(`${base}${path}`, {
       signal: controller.signal,
-      headers: { Accept: 'application/json' },
+      method,
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
     });
     let data;
     try {
@@ -267,6 +274,113 @@ export async function getFileStatus(baseUrl, id, options = {}) {
     return result;
   } catch (error) {
     throw new ApiError(error.message, { code: 'invalid_response' });
+  }
+}
+
+export async function updateFilePreferences(baseUrl, id, starred, options = {}) {
+  if (typeof id !== 'string' || !id.trim() || typeof starred !== 'boolean')
+    throw new Error('Tùy chọn tệp chưa hợp lệ');
+  const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/preferences`, {
+    ...options,
+    method: 'PATCH',
+    body: { starred },
+  });
+  const at = Date.parse(data?.starred_updated_at);
+  if (
+    data?.id !== id ||
+    data?.starred !== starred ||
+    !Number.isFinite(at) ||
+    !/(Z|[+-]\d{2}:\d{2})$/.test(data.starred_updated_at)
+  )
+    throw new ApiError('Máy chủ chưa xác nhận đánh dấu', { code: 'invalid_response' });
+  return { remoteId: id, starred, starredUpdatedAt: at };
+}
+
+export async function getFileContent(
+  baseUrl,
+  id,
+  { mode = 'download', signal, timeout = 60000, fetcher = globalThis.fetch } = {},
+) {
+  if (typeof id !== 'string' || !id.trim() || !['preview', 'download'].includes(mode))
+    throw new Error('Yêu cầu nội dung chưa hợp lệ');
+  const controller = new AbortController();
+  if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, timeout);
+  let reader;
+  try {
+    const response = await fetcher(
+      `${validateApiBaseUrl(baseUrl)}/files/${encodeURIComponent(id)}/content?mode=${mode}`,
+      {
+        signal: controller.signal,
+        cache: 'no-store',
+        headers: { Accept: '*/*' },
+      },
+    );
+    if (!response.ok) {
+      let detail;
+      try {
+        detail = (await response.json()).detail;
+      } catch {}
+      throw new ApiError(
+        typeof detail === 'string' ? detail : `Không đọc được tệp (HTTP ${response.status})`,
+        { status: response.status },
+      );
+    }
+    const type = (response.headers.get('Content-Type') || 'application/octet-stream')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    const previewLimits = {
+      'image/png': 10,
+      'image/jpeg': 10,
+      'image/gif': 10,
+      'image/webp': 10,
+      'application/pdf': 20,
+      'text/plain': 1,
+      'text/csv': 1,
+      'application/json': 1,
+    };
+    const limit = mode === 'download' ? DOWNLOAD_LIMIT : (previewLimits[type] || 0) * 1024 ** 2;
+    if (!limit) {
+      await response.body?.cancel();
+      throw new ApiError('Định dạng chưa hỗ trợ xem trước', { status: 415 });
+    }
+    if (Number(response.headers.get('Content-Length')) > limit) {
+      await response.body?.cancel();
+      throw new ApiError('Nội dung vượt giới hạn đọc', { status: 413 });
+    }
+    if (!response.body?.getReader) {
+      const blob = await response.blob();
+      if (blob.size > limit) throw new ApiError('Nội dung vượt giới hạn đọc', { status: 413 });
+      return blob;
+    }
+    reader = response.body.getReader();
+    const chunks = [];
+    let length = 0;
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      length += result.value.byteLength;
+      if (length > limit) {
+        await reader.cancel();
+        throw new ApiError('Nội dung vượt giới hạn đọc', { status: 413 });
+      }
+      chunks.push(result.value);
+    }
+    if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    return new Blob(chunks, { type });
+  } catch (error) {
+    if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+    if (controller.signal.aborted)
+      throw new ApiError('Đọc tệp quá lâu — hãy thử lại', { code: 'timeout' });
+    if (error instanceof ApiError) throw error;
+    throw new ApiError('Không đọc được nội dung — kiểm tra mạng và CORS', { code: 'network' });
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    reader?.releaseLock();
   }
 }
 

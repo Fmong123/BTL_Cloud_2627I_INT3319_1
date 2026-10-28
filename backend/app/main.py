@@ -129,9 +129,9 @@ def create_app(
     # CORS wraps the limiter too, so its 413 response is readable in the UI.
     app.add_middleware(
         CORSMiddleware, allow_origins=list(settings.cors_origins),
-        allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
+        allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
         allow_headers=["Content-Type"],
-        expose_headers=["X-File-Id", "X-File-Key"],
+        expose_headers=["X-File-Id", "X-File-Key", "Content-Type", "Content-Length", "Content-Disposition"],
     )
 
     @app.exception_handler(RequestValidationError)
@@ -151,6 +151,15 @@ def create_app(
 
     @app.get("/health", tags=["Health"])
     def health():
+        metadata_ready = (
+            settings.metadata_mode == "dynamodb"
+            and app.state.file_metadata is not None and app.state.audit_log is not None
+        )
+        content_ready = (
+            app.state.storage.configured
+            and callable(getattr(app.state.storage, "read", None))
+            and getattr(app.state.storage, "content_readable", True)
+        )
         return {
             "status": "ok", "storage": app.state.storage.mode,
             "storage_configured": app.state.storage.configured,
@@ -162,6 +171,10 @@ def create_app(
                 app.state.file_metadata is not None and app.state.audit_log is not None
             ),
             "owner_mode": "development",
+            "capabilities": {
+                "persistent_favorites": metadata_ready,
+                "file_content": bool(metadata_ready and content_ready),
+            },
         }
 
     app.include_router(router, tags=["Files"])

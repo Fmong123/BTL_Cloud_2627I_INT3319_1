@@ -24,11 +24,11 @@ export default function ScanBadge({ scanStatus, mode, trackingExpired }) {
       title={
         trackingExpired
           ? 'Chưa nhận kết quả mới — có thể kiểm tra lại trong chi tiết tệp'
-          : undefined
+          : state.label
       }
     >
       <Icon size={13} className={scanStatus === 'scanning' && !trackingExpired ? 'spin' : ''} />
-      {state.label}
+      <span className="scan-label">{state.label}</span>
     </span>
   );
 }

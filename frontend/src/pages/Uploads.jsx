@@ -47,6 +47,40 @@ export default function Uploads() {
       <p className="activity-steps">
         <span>Tải lên</span>→<span>Quét dữ liệu</span>→<span>Cách ly nếu cần</span>
       </p>
+      {w.uploadBatches?.length > 0 && (
+        <section className="upload-batches" aria-label="Các đợt tải lên">
+          <h2>Các đợt tải lên</h2>
+          <p>Mỗi lần chọn hoặc thả tệp là một đợt trong phiên hiện tại.</p>
+          <div className="batch-list">
+            {w.uploadBatches.map((batch, index) => (
+              <article className="batch-row" key={batch.id}>
+                <div>
+                  <h3>
+                    Đợt tải {w.uploadBatches.length - index} · {batch.total} tệp
+                  </h3>
+                  <time dateTime={new Date(batch.createdAt).toISOString()}>
+                    {new Date(batch.createdAt).toLocaleString('vi-VN')}
+                  </time>
+                </div>
+                <p>
+                  {batch.uploaded} đã tải xong · {batch.active} đang tải / chờ · {batch.failed} lỗi
+                  · {batch.tracking} chờ kết quả
+                  {batch.cancelled > 0 ? ` · ${batch.cancelled} đã hủy` : ''}
+                  {batch.uncertain > 0 ? ` · ${batch.uncertain} chưa rõ kết quả` : ''}
+                </p>
+                <button
+                  className="button secondary"
+                  disabled={!batch.retryableIds?.length}
+                  onClick={() => w.retryBatch(batch.id)}
+                >
+                  <RotateCcw size={15} />
+                  Thử lại {batch.retryableIds?.length || 0} tệp trong đợt
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       <FileBrowser activity />
     </>
   );

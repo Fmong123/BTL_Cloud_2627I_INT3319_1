@@ -210,13 +210,10 @@ test('invalid files cannot retry; duplicates default to skip; cancellation can r
   await expect(page.getByRole('button', { name: 'Thử lại empty.txt', exact: true })).toHaveCount(0);
   await filesInput(page).setInputFiles(sample('same.txt'));
   await expect(page.getByRole('button', { name: 'Thông tin same.txt', exact: true })).toBeVisible();
-  await page
-    .locator('tbody tr')
-    .filter({ hasText: 'same.txt' })
-    .getByRole('button', { name: 'Hủy tải same.txt' })
-    .click();
-  await expect(page.getByRole('button', { name: 'Thử lại same.txt', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Thử lại same.txt', exact: true }).click();
+  await page.getByRole('button', { name: 'Thao tác same.txt', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Hủy tải lên', exact: true }).click();
+  await page.getByRole('button', { name: 'Thao tác same.txt', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Thử lại upload', exact: true }).click();
   await expect(page.locator('tbody .status-badge.demo')).toHaveCount(1);
   // A File object's lastModified is stable for repeated native selections of a disk file.
   await page.evaluate(() => {
@@ -321,7 +318,7 @@ test('health and real-upload contract work, client validation uses server limit'
   expect(uploadCalls).toBe(1);
   await page.getByRole('button', { name: 'Thông tin real.txt', exact: true }).click();
   const detail = page.getByRole('region', { name: 'Thông tin tệp', exact: true });
-  await expect(detail).toContainText('Chưa bắt đầu quét');
+  await expect(detail).toContainText('Chưa quét');
   await detail.getByRole('tab', { name: 'Xử lý', exact: true }).click();
   await expect(detail).toContainText(
     'Máy chủ đã xác nhận lưu nội dung. Kết quả quét là bước riêng.',

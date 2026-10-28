@@ -45,10 +45,14 @@ export default function Overview() {
   ];
   return (
     <>
-      <p className="page-intro">
-        Mọi thứ trong tầm tay. Bắt đầu với một tệp, hoặc tiếp tục công việc của bạn.
-      </p>
-      <UploadButton compact={w.files.length > 0} />
+      {w.files.length === 0 && (
+        <>
+          <p className="page-intro">
+            Mọi thứ trong tầm tay. Bắt đầu với một tệp, hoặc tiếp tục công việc của bạn.
+          </p>
+          <UploadButton />
+        </>
+      )}
       {w.preferences.mode === 'api' && (
         <div className="overview-sync-note">
           <span>
@@ -101,6 +105,12 @@ export default function Overview() {
         <FileList
           files={[...w.files].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5)}
           onInspect={w.inspect}
+          onOpen={w.openFile}
+          onPreview={w.preview}
+          onDownload={w.download}
+          canStar={w.canStar}
+          contentAvailable={w.contentAvailable}
+          downloadingId={w.downloadingId}
           onStar={(id) => w.star([id])}
           onRetry={(id) => w.retry([id])}
           onCancel={(id) => w.cancel([id])}

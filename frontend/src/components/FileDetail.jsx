@@ -4,6 +4,8 @@ import {
   CircleAlert,
   Clock3,
   Copy,
+  Download,
+  Eye,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
@@ -11,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { formatBytes } from '../utils/files.js';
+import { canReadContent, previewInfo } from '../utils/content.js';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
@@ -136,13 +139,13 @@ export default function FileDetail({ id, onClose }) {
               icon: Check,
             },
             scanning: {
-              label: 'Đang chờ / đang quét',
+              label: 'Đang quét',
               tone: 'uploading',
               state: 'pending',
               icon: Clock3,
             },
             not_started: {
-              label: 'Chưa bắt đầu quét',
+              label: 'Chưa quét',
               tone: 'muted',
               state: 'pending',
               icon: Clock3,
@@ -376,6 +379,24 @@ export default function FileDetail({ id, onClose }) {
         )}
       </div>
       <div className="drawer-footer">
+        {w.contentAvailable && canReadContent(file) && (
+          <>
+            {previewInfo(file).kind && (
+              <button className="button secondary" onClick={() => w.preview(file.id)}>
+                <Eye size={16} />
+                Xem trước
+              </button>
+            )}
+            <button
+              className="button secondary"
+              disabled={Boolean(w.downloadingId)}
+              onClick={() => w.download(file.id)}
+            >
+              <Download size={16} />
+              {w.downloadingId === file.id ? 'Đang tải xuống…' : 'Tải xuống'}
+            </button>
+          </>
+        )}
         {file.mode === 'api' && file.remoteId && (
           <button className="button secondary" onClick={() => w.recheck?.(file.id)}>
             <RefreshCw size={16} />

@@ -10,7 +10,10 @@ from botocore.exceptions import (
     PartialCredentialsError,
 )
 
-from .storage import StorageFailure, StorageUnavailable, StoredObject
+from .storage import (
+    StorageFailure, StorageNotFound, StorageTooLarge, StorageUnavailable,
+    StoredObject, read_bounded,
+)
 
 
 class S3Uploader(Protocol):
@@ -61,6 +64,10 @@ class S3Storage:
             and callable(self.uploader)
         )
 
+    @property
+    def content_readable(self) -> bool:
+        return self.configured and callable(getattr(self.client, "get_object", None))
+
     def upload(self, file_obj: BinaryIO, *, key: str, content_type: str) -> StoredObject:
         uploader = self.uploader
         if not self.configured or uploader is None:
@@ -87,3 +94,32 @@ class S3Storage:
             raise StorageFailure("S3 uploader returned an invalid confirmation")
 
         return StoredObject(key=stored_key, storage="s3")
+
+    def read(self, *, key: str, max_bytes: int) -> bytes:
+        if not self.configured or not callable(getattr(self.client, "get_object", None)):
+            raise StorageUnavailable("S3 read dependencies are not configured")
+        body = None
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            body = response.get("Body")
+            if body is None or not callable(getattr(body, "close", None)):
+                raise StorageFailure("S3 returned an invalid body")
+            length = response.get("ContentLength")
+            if type(length) is int and length > max_bytes:
+                raise StorageTooLarge()
+            return read_bounded(body, max_bytes)
+        except (NoCredentialsError, PartialCredentialsError, NoRegionError):
+            raise StorageUnavailable("AWS configuration is unavailable") from None
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "NotFound", "404"}:
+                raise StorageNotFound() from None
+            raise StorageFailure("S3 read failed") from None
+        except (BotoCoreError, OSError):
+            raise StorageFailure("S3 read failed") from None
+        finally:
+            if body is not None:
+                try:
+                    body.close()
+                except Exception:
+                    # Cleanup must never expose SDK details or replace the read error.
+                    pass

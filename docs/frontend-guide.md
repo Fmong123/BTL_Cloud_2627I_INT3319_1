@@ -4,6 +4,24 @@ MâySec tập trung cho desktop/laptop, giữ palette pastel xanh–tím–hồn
 
 Sidebar có lối tắt Gần đây (24 giờ), Đã đánh dấu và Cách ly; mỗi lối tắt mở bộ lọc tương ứng trong Tệp của tôi. Cài đặt/Hướng dẫn nằm cuối sidebar. Cách ly chỉ liệt kê tệp được máy chủ xác nhận đã cách ly; trường hợp chưa hoàn tất vẫn ở khu Cần xử lý / Cách ly.
 
+Trang mặc định là Tệp của tôi. Sidebar thu gọn xuống 64px bằng nút có nhãn và tooltip, vẫn giữ trạng thái trang đang chọn; tùy chọn được ghi cùng theme trong preferences v2. Tổng quan chỉ hiện phần giới thiệu/upload hero khi thư viện chưa có tệp, giữ số liệu và tệp gần đây khi đã có dữ liệu.
+
+Trong Tệp của tôi, Tùy chỉnh hiển thị cho chọn mật độ Thoải mái/Gọn, ẩn cột kích thước/ngày thêm và đặt lại hiển thị. Kéo vạch cột tên hoặc dùng phím mũi tên/Home/End khi vạch nhận focus để đổi độ rộng. Cột thao tác được ghim bên phải; tiêu đề bảng và thanh chọn nhiều giữ vị trí khi cuộn.
+
+Bộ lọc thêm có Ngày thêm: hôm nay, 7/30 ngày hoặc khoảng ngày theo múi giờ thiết bị, bao gồm hết ngày kết thúc. Bộ lọc đã lưu giữ tối đa 10 cấu hình cho từng backend trên trình duyệt này, không lưu trang phân trang hay lựa chọn tệp. Có thể tải/xóa từng cấu hình; bộ lọc hiện tại vẫn nằm trên URL để Back/Forward hoạt động.
+
+Shift-click checkbox chọn một khoảng trong trang; Ctrl+A/Cmd+A chỉ chọn trang hiện tại khi focus ở danh sách, không chiếm thao tác trong ô nhập. Escape đóng menu/panel trước rồi mới bỏ chọn. Thanh chọn hiển thị số tệp và tổng dung lượng.
+
+## Xem trước, tải xuống và đợt upload
+
+Mỗi lần chọn/thả tệp tạo một đợt upload trong phiên. Hoạt động xử lý hiển thị tổng số, số đã tải xong, đang tải/chờ, lỗi và chờ quét của từng đợt. Thử lại theo đợt chỉ gửi ID đủ điều kiện; các lượt thành công, lỗi đầu vào và kết quả chưa xác định không được tự gửi lại.
+
+Đọc nội dung yêu cầu API hiện tại công bố `health.capabilities.file_content === true`, metadata `upload_state=uploaded`, `scan_status=safe` và ID máy chủ. Frontend gọi `GET /files/{id}/content?mode=preview` hoặc `mode=download`; không tự dựng URL S3 và không lấy nội dung tệp cách ly. Backend kiểm tra lại quyền/trạng thái khi đọc. Đây là khả năng riêng, không suy diễn từ việc metadata đã bật.
+
+Nhấn tên tệp mở viewer nếu hỗ trợ, còn lại mở chi tiết. Viewer dùng dialog native; chỉ mở một nội dung, giữ vị trí cuộn, hủy fetch khi đóng/đổi tệp/kết nối, bỏ kết quả cũ và thu hồi object URL. Ảnh PNG/JPEG/GIF/WebP tối đa 10 MiB; PDF tối đa 20 MiB trong trình đọc native của trình duyệt có nút tải xuống dự phòng; TXT/CSV/JSON UTF-8 tối đa 1 MiB hiển thị thành văn bản được escape. Không render HTML/SVG hoặc tài liệu từ URL bên ngoài. Tệp đủ điều kiện nhưng không hỗ trợ xem trước vẫn có thể tải xuống. Nếu trạng thái mất An toàn lúc viewer mở, viewer đóng và chuyển sang thông tin tệp.
+
+Tải xuống tối đa 100 MiB/tệp, một lượt chuẩn bị nội dung tại một thời điểm. Thông báo xác nhận trình duyệt đã bắt đầu tải, không xác nhận ghi xong lên ổ đĩa. Cần khởi động lại backend đang chạy để nhận API/capabilities mới; backend cũ không công bố capability sẽ không bật các thao tác này. Contract và giới hạn nằm trong [phase3-api.md](phase3-api.md).
+
 ## Chạy và kiểm tra
 
 Từ frontend/:
@@ -43,7 +61,7 @@ Chọn tất cả chỉ chọn tệp đang hiển thị trong trang UI; đổi k
 
 ## Upload, Scan và Quarantine độc lập
 
-Endpoints hiện có: POST /upload multipart trường file; GET /health; GET /files?limit=100&cursor=...; GET /files/{id}/status. Health kiểm cấu hình/client, không chứng minh IAM/storage ghi thành công; scan_status trên health là cấu hình khởi tạo, không phải kết quả từng file.
+Endpoints hiện có: POST /upload multipart trường file; GET /health; GET /files?limit=100&cursor=...; GET /files/{id}/status; GET /files/{id}/content?mode=preview|download; PATCH /files/{id}/star. Content/favorites chỉ bật khi health công bố capability tương ứng. Health kiểm cấu hình/client, không chứng minh IAM/storage ghi thành công; scan_status trên health là cấu hình khởi tạo, không phải kết quả từng file. owner_mode=development là định danh phát triển dùng chung, chưa thay thế xác thực/phân quyền từng người dùng.
 
 | scan_status | Ý nghĩa |
 |---|---|
@@ -56,7 +74,7 @@ Endpoints hiện có: POST /upload multipart trường file; GET /health; GET /f
 | unscanned | Không quét được; xem status_reason |
 | error | Lỗi xử lý, không suy ra an toàn |
 
-Khu thường gồm not_started/scanning/safe. Khu cần xử lý gồm flagged/quarantined/quarantine_delete_failed/unscanned/error và backend upload failed/unknown. File tự chuyển khu theo trạng thái server. Không upload trực tiếp vào quarantine, download, xóa server hay khôi phục cách ly trong bản này.
+Khu thường gồm not_started/scanning/safe. Khu cần xử lý gồm flagged/quarantined/quarantine_delete_failed/unscanned/error và backend upload failed/unknown. File tự chuyển khu theo trạng thái server. Không upload trực tiếp vào quarantine, xóa server hay khôi phục cách ly trong bản này. Chỉ tệp đã tải lên và có kết quả safe mới được đọc/tải xuống khi backend hỗ trợ.
 
 Bảng chi tiết tách Thông tin và Xử lý; hiển thị findings_count/finding_types/status_reason, thời gian scan/cách ly và cập nhật gần nhất. Phần kỹ thuật chứa ID/key có thể sao chép. Không hiển thị PII nguyên bản, không dựng thời gian hay audit history không có trong API.
 
@@ -72,7 +90,7 @@ Toast báo upload/scan/cách ly đổi trạng thái, gom thành công gần nha
 
 Giữ tối đa 200 thông báo trong phiên. Đây là sự kiện web đã quan sát, không phải audit log đầy đủ. Không xin quyền thông báo hệ điều hành. Refresh xóa thông báo và lịch sử upload cục bộ.
 
-localStorage key maysec.preferences.v1 chỉ lưu theme, list/grid, sort, mode, base URL có phiên bản schema. Không lưu byte tệp/metadata/history/thông báo. Mặc định theme Theo hệ thống; áp dụng trước React để tránh chớp nền sai. Khi storage bị chặn/đầy, web vẫn dùng được trong phiên và báo không ghi nhớ tùy chọn.
+localStorage key maysec.preferences.v2 lưu theme, list/grid, sort, mode, base URL, mật độ hàng, độ rộng cột tên, cột tùy chọn, trạng thái sidebar và bộ lọc đã lưu theo kết nối. Tự đọc/migrate cấu hình v1. Không lưu byte tệp/metadata/history/thông báo. Đánh dấu API yêu cầu persistent_favorites và xác nhận PATCH từ máy chủ, có hoàn tác trạng thái khi lỗi; đánh dấu demo chỉ trong phiên. Mặc định theme Theo hệ thống; áp dụng trước React để tránh chớp nền sai. Khi storage bị chặn/đầy, web vẫn dùng được trong phiên và báo không ghi nhớ tùy chọn.
 
 ## Giới hạn nghiệm thu
 

@@ -36,9 +36,9 @@ export default function StatusBadge({
         }[status] || { icon: Clock3, text: 'Chưa xác định', className: 'muted' };
   const Icon = state.icon;
   return (
-    <span className={`status-badge ${state.className}`}>
+    <span className={`status-badge ${state.className}`} title={state.text}>
       <Icon size={13} className={['uploading', 'processing'].includes(status) ? 'spin' : ''} />
-      {state.text}
+      <span className="status-label">{state.text}</span>
     </span>
   );
 }

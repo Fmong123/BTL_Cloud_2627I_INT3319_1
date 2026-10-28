@@ -7,10 +7,12 @@ import {
   PREFERENCES_KEY,
   readPreferences,
   savePreferences,
+  uiPreferenceDefaults,
 } from '../src/utils/workspace.js';
 import { checkHealth } from '../src/api/client.js';
 
 const defaults = {
+  ...uiPreferenceDefaults,
   theme: 'system',
   view: 'list',
   sort: 'newest',
@@ -21,7 +23,7 @@ test('preferences tolerate unavailable storage, malformed JSON and unsupported v
   for (const value of [
     'invalid',
     'null',
-    '{"version":2}',
+    '{"version":3}',
     '{"version":1,"theme":"nope","view":null}',
   ]) {
     const storage = { getItem: () => value };

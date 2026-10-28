@@ -18,7 +18,7 @@ export function useRemoteLibrary({
   const [sync, setSync] = useState(emptySync);
   const inputs = useRef(null);
   inputs.current = { localFiles, onHealth, onTransition, onRecord, onSyncError };
-  const methods = useRef({ refresh() {}, recheck() {}, seed() {} });
+  const methods = useRef({ refresh() {}, recheck() {}, seed() {}, preferences() {} });
   const cache = useRef(new Map());
 
   useEffect(() => {
@@ -235,6 +235,9 @@ export function useRemoteLibrary({
     }
     methods.current = {
       refresh,
+      preferences(patch) {
+        if (patch.scope === scope) publish([patch], { announce: false });
+      },
       recheck(file) {
         if (!file?.remoteId || file.scope !== scope) return;
         remember(file, true);
@@ -269,7 +272,7 @@ export function useRemoteLibrary({
       document.removeEventListener('visibilitychange', resume);
       window.removeEventListener('online', resume);
       window.removeEventListener('offline', resume);
-      methods.current = { refresh() {}, recheck() {}, seed() {} };
+      methods.current = { refresh() {}, recheck() {}, seed() {}, preferences() {} };
     };
   }, [scope]);
 
@@ -279,5 +282,6 @@ export function useRemoteLibrary({
     refreshFiles: () => methods.current.refresh(),
     recheckFile: (file) => methods.current.recheck(file),
     seedFile: (file) => methods.current.seed(file),
+    applyPreferences: (patch) => methods.current.preferences(patch),
   };
 }

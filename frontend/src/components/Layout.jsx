@@ -14,6 +14,8 @@ import {
   Monitor,
   Moon,
   Plus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings2,
   ShieldCheck,
@@ -28,7 +30,9 @@ import Modal from './Modal.jsx';
 import ConnectionMenu from './ConnectionMenu.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
 import FileDetail from './FileDetail.jsx';
+import FilePreview from './FilePreview.jsx';
 import '../shell-phase2.css';
+import '../phase3-shell.css';
 
 export const themeLabels = {
   light: 'Sáng',
@@ -57,6 +61,7 @@ export default function Layout() {
   const themeTrigger = useRef(null);
   const pageHeading = useRef(null);
   const [expanded, setExpanded] = useState(false);
+  const collapsed = Boolean(w.preferences.sidebarCollapsed);
   const params = new URLSearchParams(location.search);
   const shortcut =
     location.pathname === '/files'
@@ -91,6 +96,8 @@ export default function Layout() {
         to={to}
         className={`nav-item ${selected ? 'active' : ''}`}
         aria-current={selected ? 'page' : undefined}
+        aria-label={collapsed ? label : undefined}
+        title={collapsed ? label : undefined}
       >
         <Icon size={19} aria-hidden="true" />
         <span>{label}</span>
@@ -147,7 +154,7 @@ export default function Layout() {
   }, [themeOpen]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''}`}>
       <a
         className="skip-link"
         href="#main-content"
@@ -159,12 +166,26 @@ export default function Layout() {
         Đến nội dung chính
       </a>
       <aside className="sidebar">
-        <Link to="/overview" className="brand">
+        <Link
+          to="/files"
+          className="brand"
+          aria-label="MâySec · Tệp của tôi"
+          title={collapsed ? 'MâySec' : undefined}
+        >
           <span className="brand-mark">
             <Layers2 size={24} />
           </span>
           <span className="brand-wordmark">MâySec</span>
         </Link>
+        <button
+          className="sidebar-toggle icon-button"
+          aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+          title={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+          aria-expanded={!collapsed}
+          onClick={() => w.setPreferences((p) => ({ ...p, sidebarCollapsed: !p.sidebarCollapsed }))}
+        >
+          {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+        </button>
         <nav className="sidebar-navigation" aria-label="Điều hướng chính">
           <div className="nav-group">
             {navigation.slice(0, 3).map(([path, label, Icon]) => navItem(path, label, Icon))}
@@ -402,7 +423,7 @@ export default function Layout() {
           )}
         </div>
       )}
-      {w.inspectedId && <FileDetail />}
+      {w.previewId ? <FilePreview /> : w.inspectedId && <FileDetail />}
       {w.duplicates.length > 0 && (
         <Modal title="Có thể bạn đã thêm các tệp này" onClose={() => w.resolveDuplicates(false)}>
           <p>

@@ -4,6 +4,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudUpload,
+  Bookmark,
+  Columns3,
   LayoutGrid,
   List,
   RefreshCw,
@@ -15,7 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
-import { canRetry, filterFiles, isBusy, sorts } from '../utils/workspace.js';
+import { canRetry, filterFiles, isBusy, savedFilterValues, sorts } from '../utils/workspace.js';
+import { formatBytes } from '../utils/files.js';
 import { isAttention, scanStates } from '../utils/processing.js';
 import FileList from './FileList.jsx';
 import '../file-workspace.css';
@@ -45,6 +48,13 @@ const categories = {
 };
 const sections = { all: 'Tất cả tệp', recent: '24 giờ gần đây', starred: 'Đã đánh dấu' };
 const areas = { all: 'Tất cả', normal: 'Khu thường', attention: 'Cần xử lý / Cách ly' };
+const dates = {
+  all: 'Mọi thời gian',
+  today: 'Hôm nay',
+  '7d': '7 ngày gần đây',
+  '30d': '30 ngày gần đây',
+  custom: 'Khoảng ngày…',
+};
 const PAGE_SIZE = 50;
 
 export default function FileBrowser({ activity = false }) {
@@ -53,6 +63,12 @@ export default function FileBrowser({ activity = false }) {
   const [params, setParams] = useSearchParams();
   const [selection, setSelection] = useState({ key: null, ids: new Set() });
   const [now, setNow] = useState(Date.now());
+  const [filterName, setFilterName] = useState('');
+  const [savedMessage, setSavedMessage] = useState('');
+  const workspaceRef = useRef(null);
+  const anchorRef = useRef(null);
+  const savedRef = useRef(null);
+  const columnsRef = useRef(null);
   const searchRef = useRef(null);
   const source = activity ? w.activityFiles || w.files : w.files;
   const sync = w.sync || { phase: 'idle' };
@@ -64,10 +80,28 @@ export default function FileBrowser({ activity = false }) {
   const section = Object.hasOwn(sections, params.get('section')) ? params.get('section') : 'all';
   const area = !activity && Object.hasOwn(areas, params.get('area')) ? params.get('area') : 'all';
   const scan = Object.hasOwn(scanStates, params.get('scan')) ? params.get('scan') : 'all';
+  const date = Object.hasOwn(dates, params.get('date')) ? params.get('date') : 'all';
+  const dateFrom = params.get('dateFrom') || '';
+  const dateTo = params.get('dateTo') || '';
   const sort = sorts.includes(params.get('sort')) ? params.get('sort') : w.preferences.sort;
+  const scope =
+    w.scope || (w.preferences.mode === 'demo' ? 'demo' : `api:${w.preferences.baseUrl}`);
+  const saved = w.preferences.savedFilters?.[scope] || [];
+  const currentFilters = savedFilterValues({
+    q,
+    status,
+    category,
+    section,
+    sort,
+    area,
+    scan,
+    date,
+    dateFrom,
+    dateTo,
+  });
   const visible = useMemo(
-    () => filterFiles(source, { q, status, category, section, sort, area, scan }, now),
-    [source, q, status, category, section, sort, area, scan, now],
+    () => filterFiles(source, currentFilters, now),
+    [source, q, status, category, section, sort, area, scan, date, dateFrom, dateTo, now],
   );
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const requestedPage = Number(params.get('page'));
@@ -82,9 +116,17 @@ export default function FileBrowser({ activity = false }) {
     section,
     area,
     scan,
+    date,
+    dateFrom,
+    dateTo,
+    sort,
+    scope,
     page,
   ]);
-  if (selection.key !== filterKey) setSelection({ key: filterKey, ids: new Set() });
+  if (selection.key !== filterKey) {
+    setSelection({ key: filterKey, ids: new Set() });
+    anchorRef.current = null;
+  }
   const selected = selection.key === filterKey ? selection.ids : new Set();
   const selectedFiles = pageFiles.filter((file) => selected.has(file.id));
   function setSelected(change) {
@@ -100,12 +142,24 @@ export default function FileBrowser({ activity = false }) {
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    function outside(event) {
+      for (const ref of [savedRef, columnsRef])
+        if (ref.current?.open && !ref.current.contains(event.target)) ref.current.open = false;
+    }
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, []);
   function change(key, value) {
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
         if (value && value !== 'all') next.set(key, value);
         else next.delete(key);
+        if (key === 'date' && value !== 'custom') {
+          next.delete('dateFrom');
+          next.delete('dateTo');
+        }
         if (key !== 'page') next.delete('page');
         return next;
       },
@@ -113,13 +167,80 @@ export default function FileBrowser({ activity = false }) {
     );
     if (key === 'sort') w.setPreferences((p) => ({ ...p, sort: value }));
   }
-  function choose(id) {
+  function choose(id, range = false) {
+    const start = pageFiles.findIndex((file) => file.id === anchorRef.current);
+    const end = pageFiles.findIndex((file) => file.id === id);
     setSelected((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const ids =
+        range && start >= 0
+          ? pageFiles.slice(Math.min(start, end), Math.max(start, end) + 1).map((file) => file.id)
+          : [id];
+      const adding = !current.has(id);
+      for (const value of ids) {
+        if (adding) next.add(value);
+        else next.delete(value);
+      }
       return next;
     });
+    anchorRef.current = id;
+  }
+  function saveFilter(event) {
+    event.preventDefault();
+    const name = filterName.trim();
+    if (!name || saved.length >= 10) return;
+    w.setPreferences((p) => ({
+      ...p,
+      savedFilters: {
+        ...p.savedFilters,
+        [scope]: [
+          ...(p.savedFilters?.[scope] || []),
+          { id: crypto.randomUUID(), name: name.slice(0, 60), filters: currentFilters },
+        ].slice(0, 10),
+      },
+    }));
+    setFilterName('');
+    setSavedMessage(`Đã lưu “${name}”`);
+  }
+  function loadFilter(item) {
+    const values = savedFilterValues(item.filters);
+    setParams(
+      Object.fromEntries(Object.entries(values).filter(([, value]) => value && value !== 'all')),
+    );
+    if (sorts.includes(values.sort)) w.setPreferences((p) => ({ ...p, sort: values.sort }));
+    savedRef.current.open = false;
+    savedRef.current.querySelector('summary').focus();
+  }
+  function workspaceKeys(event) {
+    const target = event.target;
+    const editing = target.closest(
+      'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), textarea, select, [contenteditable=""] , [contenteditable="true"]',
+    );
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.key.toLowerCase() === 'a' &&
+      target.closest('#file-results') &&
+      !editing
+    ) {
+      event.preventDefault();
+      setSelected(new Set(pageFiles.map((file) => file.id)));
+    }
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    const layer = [savedRef.current, columnsRef.current].find((element) => element?.open);
+    if (layer) {
+      event.preventDefault();
+      event.stopPropagation();
+      layer.open = false;
+      layer.querySelector('summary')?.focus();
+      return;
+    }
+    if (
+      !document.querySelector('[role="dialog"], .file-detail-drawer, .file-viewer') &&
+      selected.size
+    ) {
+      event.preventDefault();
+      setSelected(new Set());
+    }
   }
   const removable = (file) =>
     !isBusy(file) && Boolean(file.original) && (activity || file.mode === 'demo');
@@ -133,7 +254,12 @@ export default function FileBrowser({ activity = false }) {
     setSelected(new Set());
   }
   const filtered = Boolean(
-    q || category !== 'all' || status !== 'all' || section !== 'all' || scan !== 'all',
+    q ||
+    category !== 'all' ||
+    status !== 'all' ||
+    section !== 'all' ||
+    scan !== 'all' ||
+    date !== 'all',
   );
   const partial =
     !activity &&
@@ -164,6 +290,8 @@ export default function FileBrowser({ activity = false }) {
   return (
     <section
       className="files-section file-workspace"
+      ref={workspaceRef}
+      onKeyDown={workspaceKeys}
       aria-label={activity ? 'Danh sách hoạt động' : 'Thư viện tệp'}
     >
       {!activity && (
@@ -222,6 +350,121 @@ export default function FileBrowser({ activity = false }) {
           <p>{sourceHint}</p>
         </div>
         <div className="file-heading-actions">
+          <details className="file-control-popover saved-filter-control" ref={savedRef}>
+            <summary title="Bộ lọc đã lưu">
+              <Bookmark size={17} />
+              Bộ lọc đã lưu
+            </summary>
+            <div className="file-control-panel">
+              <strong>Bộ lọc cho kết nối này</strong>
+              {!saved.length && <p>Chưa lưu bộ lọc nào.</p>}
+              <ul>
+                {saved.map((item) => (
+                  <li key={item.id}>
+                    <button onClick={() => loadFilter(item)}>{item.name}</button>
+                    <button
+                      className="icon-button"
+                      aria-label={`Xóa bộ lọc ${item.name}`}
+                      onClick={() => {
+                        w.setPreferences((p) => ({
+                          ...p,
+                          savedFilters: {
+                            ...p.savedFilters,
+                            [scope]: (p.savedFilters?.[scope] || []).filter(
+                              (value) => value.id !== item.id,
+                            ),
+                          },
+                        }));
+                        savedRef.current?.querySelector('summary')?.focus({ preventScroll: true });
+                        setSavedMessage(`Đã xóa “${item.name}”`);
+                      }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <form onSubmit={saveFilter}>
+                <label htmlFor={`saved-filter-name-${activity ? 'activity' : 'library'}`}>
+                  Lưu bộ lọc hiện tại
+                </label>
+                <input
+                  id={`saved-filter-name-${activity ? 'activity' : 'library'}`}
+                  value={filterName}
+                  maxLength={60}
+                  placeholder="Tên bộ lọc"
+                  onChange={(event) => {
+                    setFilterName(event.target.value);
+                    setSavedMessage('');
+                  }}
+                />
+                <button
+                  className="button secondary"
+                  disabled={!filterName.trim() || saved.length >= 10}
+                >
+                  Lưu bộ lọc
+                </button>
+              </form>
+              <p role="status">
+                {savedMessage || `${saved.length}/10 bộ lọc · chỉ lưu trên trình duyệt này`}
+              </p>
+            </div>
+          </details>
+          <details className="file-control-popover" ref={columnsRef}>
+            <summary title="Tùy chỉnh hiển thị">
+              <Columns3 size={17} />
+              <span className="visually-hidden">Tùy chỉnh hiển thị</span>
+            </summary>
+            <div className="file-control-panel">
+              <label>
+                Mật độ
+                <select
+                  aria-label="Mật độ hiển thị"
+                  value={w.preferences.density || 'comfortable'}
+                  onChange={(event) =>
+                    w.setPreferences((p) => ({ ...p, density: event.target.value }))
+                  }
+                >
+                  <option value="comfortable">Thoải mái</option>
+                  <option value="compact">Gọn</option>
+                </select>
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={w.preferences.showSize !== false}
+                  onChange={(event) =>
+                    w.setPreferences((p) => ({ ...p, showSize: event.target.checked }))
+                  }
+                />
+                Cột kích thước
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={w.preferences.showDate !== false}
+                  onChange={(event) =>
+                    w.setPreferences((p) => ({ ...p, showDate: event.target.checked }))
+                  }
+                />
+                Cột thời gian
+              </label>
+              <button
+                className="text-button"
+                onClick={() =>
+                  w.setPreferences((p) => ({
+                    ...p,
+                    nameColumnWidth: 320,
+                    showSize: true,
+                    showDate: true,
+                    density: 'comfortable',
+                  }))
+                }
+              >
+                Đặt lại hiển thị
+              </button>
+            </div>
+          </details>
           {!activity && w.preferences.mode === 'api' && (
             <button
               className="icon-button"
@@ -308,7 +551,7 @@ export default function FileBrowser({ activity = false }) {
       </div>
       <details
         className="extra-file-filters"
-        open={section !== 'all' || status !== 'all' || undefined}
+        open={section !== 'all' || status !== 'all' || date !== 'all' || undefined}
       >
         <summary>
           <SlidersHorizontal size={14} />
@@ -324,7 +567,11 @@ export default function FileBrowser({ activity = false }) {
                 onChange={(event) => change('section', event.target.value)}
               >
                 {Object.entries(sections).map(([v, text]) => (
-                  <option key={v} value={v}>
+                  <option
+                    key={v}
+                    value={v}
+                    disabled={v === 'starred' && w.favoritesAvailable === false}
+                  >
                     {text}
                   </option>
                 ))}
@@ -345,6 +592,49 @@ export default function FileBrowser({ activity = false }) {
               ))}
             </select>
           </label>
+          <label>
+            Ngày thêm
+            <select
+              aria-label="Ngày thêm tệp"
+              value={date}
+              onChange={(event) => change('date', event.target.value)}
+            >
+              {Object.entries(dates).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {date === 'custom' && (
+            <>
+              <label>
+                Từ
+                <input
+                  type="date"
+                  aria-label="Từ ngày"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(event) => change('dateFrom', event.target.value)}
+                />
+              </label>
+              <label>
+                Đến
+                <input
+                  type="date"
+                  aria-label="Đến ngày"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(event) => change('dateTo', event.target.value)}
+                />
+              </label>
+              {dateFrom && dateTo && dateFrom > dateTo && (
+                <p role="alert" className="file-date-error">
+                  Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.
+                </p>
+              )}
+            </>
+          )}
         </div>
       </details>
       {filtered && (
@@ -358,6 +648,11 @@ export default function FileBrowser({ activity = false }) {
           {category !== 'all' && chip('category', categories[category])}
           {status !== 'all' && chip('status', statuses[status])}
           {scan !== 'all' && chip('scan', scanStates[scan].label)}
+          {date !== 'all' &&
+            chip(
+              'date',
+              date === 'custom' ? `Ngày: ${dateFrom || '…'} → ${dateTo || '…'}` : dates[date],
+            )}
           <button
             className="text-button"
             onClick={() =>
@@ -398,11 +693,25 @@ export default function FileBrowser({ activity = false }) {
       )}
       {selectedFiles.length > 0 && (
         <div className="selection-toolbar" aria-label="Thao tác với tệp đã chọn">
-          <strong>{selectedFiles.length} đã chọn trên trang</strong>
+          <strong>
+            {selectedFiles.length} đã chọn trên trang ·{' '}
+            {formatBytes(selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0))}
+          </strong>
           <button
+            disabled={
+              !selectedFiles.some(
+                (file) => !file.starPending && (w.canStar ? w.canStar(file) : file.mode === 'demo'),
+              )
+            }
+            title={w.favoritesAvailable === false ? 'Máy chủ chưa hỗ trợ đánh dấu tệp' : undefined}
             onClick={() =>
               w.star(
-                selectedFiles.map((f) => f.id),
+                selectedFiles
+                  .filter(
+                    (file) =>
+                      !file.starPending && (w.canStar ? w.canStar(file) : file.mode === 'demo'),
+                  )
+                  .map((f) => f.id),
                 !selectedFiles.every((f) => f.starred),
               )
             }
@@ -432,6 +741,8 @@ export default function FileBrowser({ activity = false }) {
       <div
         id="file-results"
         role={!activity ? 'tabpanel' : undefined}
+        tabIndex={0}
+        aria-label={activity ? 'Tệp hoạt động — Ctrl+A chọn trang hiện tại' : undefined}
         aria-labelledby={!activity ? `area-${area}` : undefined}
       >
         {pageFiles.length || (!partial && !failure) ? (
@@ -448,12 +759,28 @@ export default function FileBrowser({ activity = false }) {
               )
             }
             onInspect={(id) => w.inspect?.(id)}
+            onOpen={(id) => (w.openFile || w.inspect)?.(id)}
+            onPreview={w.preview}
+            onDownload={w.download}
+            downloadingId={w.downloadingId}
+            canStar={w.canStar}
+            contentAvailable={w.contentAvailable}
             onStar={(id) => w.star([id])}
             onRetry={(id) => w.retry([id])}
             onCancel={(id) => w.cancel([id])}
             onChoose={() => w.inputRef.current.click()}
             sort={sort}
             onSort={(value) => change('sort', value)}
+            density={w.preferences.density}
+            nameColumnWidth={w.preferences.nameColumnWidth}
+            showSize={w.preferences.showSize}
+            showDate={w.preferences.showDate}
+            onNameResize={(value) =>
+              w.setPreferences((p) => ({
+                ...p,
+                nameColumnWidth: Math.min(720, Math.max(240, value)),
+              }))
+            }
             emptyTitle={
               filtered
                 ? 'Không có tệp phù hợp'

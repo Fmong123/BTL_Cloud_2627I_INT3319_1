@@ -99,12 +99,16 @@ for (const viewport of [
     for (const theme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme: theme });
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await expect(
+        page.getByRole('button', { name: `Thao tác ${records[0].original_name}`, exact: true }),
+      ).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       );
       await page.screenshot({
         path: testInfo.outputPath(`${theme}-${viewport.width}-library.png`),
-        fullPage: true,
+        fullPage: false,
       });
       await page.getByRole('button', { name: records[3].original_name, exact: true }).click();
       const drawer = page.getByRole('region', { name: 'Thông tin tệp', exact: true });
@@ -117,6 +121,21 @@ for (const viewport of [
       await page.screenshot({ path: testInfo.outputPath(`${theme}-${viewport.width}-drawer.png`) });
       await page.keyboard.press('Escape');
       await expect(drawer).toHaveCount(0);
+      const action = page.getByRole('button', {
+        name: `Thao tác ${records[1].original_name}`,
+        exact: true,
+      });
+      await action.focus();
+      const box = await action.boundingBox();
+      const dock = await page.locator('.upload-dock').boundingBox();
+      const overlap =
+        box &&
+        dock &&
+        box.x < dock.x + dock.width &&
+        box.x + box.width > dock.x &&
+        box.y < dock.y + dock.height &&
+        box.y + box.height > dock.y;
+      expect(overlap, 'Focused file action must remain clear of the progress dock').toBeFalsy();
     }
     expect(errors).toEqual([]);
   });

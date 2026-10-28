@@ -5,9 +5,12 @@ import logging
 import re
 import unicodedata
 from uuid import uuid4
+from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import ValidationError
+from fastapi.responses import Response
 
 from ..config import Settings
 from ..db import DynamoDBConflict, DynamoDBError, file_key, utc_timestamp
@@ -16,10 +19,13 @@ from ..dependencies import (
 )
 from ..schemas.file import (
     ErrorResponse, FileListItem, FileListResponse, FileStatusResponse, UploadResponse,
+    FilePreferencesRequest, FilePreferencesResponse,
 )
 from ..services.audit_log import AuditLogRepository
 from ..services.file_metadata import FileMetadataRepository
-from ..services.storage import Storage, StorageFailure, StorageUnavailable
+from ..services.storage import (
+    Storage, StorageFailure, StorageNotFound, StorageTooLarge, StorageUnavailable,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -323,3 +329,139 @@ def get_file_status(
         findings_count=view.findings_count, finding_types=view.finding_types,
         scanned_at=view.scanned_at, quarantined_at=view.quarantined_at,
     )
+
+
+def owned_file(metadata, owner_id: str, file_id: str) -> tuple[dict, FileListItem]:
+    try:
+        file_key(owner_id, file_id)
+    except ValueError:
+        raise HTTPException(400, "ID tệp không hợp lệ") from None
+    try:
+        item = metadata.get_file(owner_id, file_id)
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    if item is None:
+        raise HTTPException(404, "Không tìm thấy tệp")
+    view = public_file(item, owner_id)
+    if view.id != file_id:
+        raise HTTPException(503, "Metadata của tệp không khớp ID yêu cầu")
+    return item, view
+
+
+@router.patch("/files/{file_id}/preferences", response_model=FilePreferencesResponse, responses={
+    code: {"model": ErrorResponse} for code in (400, 404, 422, 503)
+})
+def set_file_preferences(
+    file_id: str, preferences: FilePreferencesRequest,
+    settings: Settings = Depends(get_settings),
+    metadata: FileMetadataRepository | None = Depends(get_file_metadata),
+    owner_id: str = Depends(get_dev_owner_id),
+) -> FilePreferencesResponse:
+    require_metadata(settings, metadata)
+    owned_file(metadata, owner_id, file_id)
+    try:
+        item = metadata.set_starred(owner_id, file_id, preferences.starred)
+    except DynamoDBConflict:
+        # The item may have been removed between the read and conditional update.
+        raise HTTPException(404, "Không tìm thấy tệp") from None
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    view = public_file(item, owner_id)
+    if view.id != file_id or view.starred != preferences.starred or view.starred_updated_at is None:
+        raise HTTPException(503, "Chưa xác nhận được thay đổi yêu thích")
+    return FilePreferencesResponse(
+        id=view.id, starred=view.starred, starred_updated_at=view.starred_updated_at,
+    )
+
+
+PREVIEW_LIMITS = {
+    "image/png": 10 * CHUNK_SIZE, "image/jpeg": 10 * CHUNK_SIZE,
+    "image/gif": 10 * CHUNK_SIZE, "image/webp": 10 * CHUNK_SIZE,
+    "application/pdf": 20 * CHUNK_SIZE,
+    "text/plain": CHUNK_SIZE, "text/csv": CHUNK_SIZE, "application/json": CHUNK_SIZE,
+}
+TEXT_PREVIEWS = {"text/plain", "text/csv", "application/json"}
+DOWNLOAD_LIMIT = 100 * CHUNK_SIZE
+
+
+def content_key(item: dict, view: FileListItem, owner_id: str, settings, storage) -> str:
+    """Only use the owned record's original upload location; never a quarantine key."""
+    prefix = f"uploads/{owner_id}/{view.id}/"
+    filename = view.key[len(prefix):] if view.key.startswith(prefix) else ""
+    if (
+        not filename or filename in {".", ".."}
+        or any(c in filename for c in "/\\:")
+        or any(ord(c) < 32 or ord(c) == 127 for c in filename)
+    ):
+        raise HTTPException(503, "Vị trí lưu tệp chưa hợp lệ")
+    if view.storage != storage.mode:
+        raise HTTPException(503, "Dịch vụ lưu trữ của tệp chưa sẵn sàng")
+    if view.storage == "s3" and (
+        not settings.s3_bucket_name
+        or item.get("upload_bucket") != settings.s3_bucket_name
+        or getattr(storage, "bucket", None) != settings.s3_bucket_name
+    ):
+        raise HTTPException(503, "Vị trí lưu tệp chưa được cấu hình")
+    return view.key
+
+
+@router.get("/files/{file_id}/content", response_class=Response, responses={
+    code: {"model": ErrorResponse} for code in (400, 404, 409, 413, 415, 422, 502, 503)
+})
+def get_file_content(
+    file_id: str, mode: Literal["preview", "download"] = Query("download"),
+    settings: Settings = Depends(get_settings),
+    storage: Storage = Depends(get_storage),
+    metadata: FileMetadataRepository | None = Depends(get_file_metadata),
+    owner_id: str = Depends(get_dev_owner_id),
+) -> Response:
+    require_metadata(settings, metadata)
+    item, view = owned_file(metadata, owner_id, file_id)
+    if view.upload_state != "uploaded" or view.scan_status != "safe":
+        raise HTTPException(409, "Tệp chỉ được xem hoặc tải xuống khi đã tải xong và quét an toàn")
+    reader = getattr(storage, "read", None)
+    if not storage.configured or not callable(reader) or not getattr(storage, "content_readable", True):
+        raise HTTPException(503, "Dịch vụ đọc tệp chưa được cấu hình hoặc chưa sẵn sàng")
+    key = content_key(item, view, owner_id, settings, storage)
+    media_type = view.content_type.split(";", 1)[0].strip().lower()
+    if media_type in {"", "application/octet-stream"}:
+        extension = view.original_name.rsplit(".", 1)[-1].lower()
+        media_type = {"txt": "text/plain", "csv": "text/csv", "json": "application/json"}.get(extension, media_type)
+    if mode == "preview" and media_type not in PREVIEW_LIMITS:
+        raise HTTPException(415, "Định dạng này chưa hỗ trợ xem trước — hãy tải xuống")
+    limit = PREVIEW_LIMITS[media_type] if mode == "preview" else DOWNLOAD_LIMIT
+    if type(item.get("size_bytes")) is not int or view.size_bytes <= 0:
+        raise HTTPException(503, "Dung lượng tệp trong metadata chưa hợp lệ")
+    if view.size_bytes > limit:
+        raise HTTPException(413, "Tệp vượt quá giới hạn dung lượng cho thao tác này")
+    try:
+        data = reader(key=key, max_bytes=limit)
+        if not isinstance(data, bytes):
+            raise StorageFailure("Invalid storage read response")
+        if len(data) > limit:
+            raise StorageTooLarge()
+    except StorageNotFound:
+        raise HTTPException(404, "Không tìm thấy nội dung tệp") from None
+    except StorageTooLarge:
+        raise HTTPException(413, "Tệp vượt quá giới hạn dung lượng cho thao tác này") from None
+    except StorageUnavailable:
+        raise HTTPException(503, "Dịch vụ đọc tệp chưa sẵn sàng") from None
+    except Exception:
+        logger.warning("Storage provider failed to read file content")
+        raise HTTPException(502, "Không đọc được nội dung tệp từ dịch vụ lưu trữ") from None
+    if len(data) != view.size_bytes:
+        raise HTTPException(502, "Nội dung tệp chưa khớp dung lượng đã lưu")
+    if mode == "preview" and media_type in TEXT_PREVIEWS:
+        try:
+            data.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            raise HTTPException(415, "Chỉ hỗ trợ xem trước văn bản UTF-8") from None
+    # Buffering is deliberately bounded: adapters close handles before this
+    # response is sent, including when a client disconnects while receiving it.
+    disposition = "inline" if mode == "preview" else "attachment"
+    filename = "".join(c for c in view.original_name.replace("\\", "/").rsplit("/", 1)[-1] if ord(c) >= 32 and ord(c) != 127)
+    filename = filename[:240] or "file"
+    return Response(data, media_type=media_type if mode == "preview" else "application/octet-stream", headers={
+        "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f"{disposition}; filename=\"{safe_filename(filename)}\"; filename*=UTF-8''{quote(filename, safe='')}",
+    })

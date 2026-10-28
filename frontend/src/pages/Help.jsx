@@ -5,7 +5,7 @@ const guides = [
     CloudUpload,
     'Tải tệp đầu tiên',
     'Dùng nút “Tải tệp lên” ở góc trên hoặc kéo thả tệp vào web. Bạn có thể chọn nhiều tệp; tối đa 5 tệp được truyền song song, các tệp còn lại xếp hàng.',
-    '/overview',
+    '/files',
     'Thêm tệp',
   ],
   [
@@ -43,6 +43,26 @@ export default function Help() {
       </div>
       <section className="settings-section faq">
         <h2>Khi bạn cần trợ giúp</h2>
+        <details>
+          <summary>Làm sao xem trước hoặc tải xuống tệp?</summary>
+          <p>
+            Bấm tên tệp để mở xem trước nếu định dạng được hỗ trợ; các tệp khác mở bảng thông tin.
+            Xem trước và tải xuống chỉ được bật khi máy chủ hỗ trợ đọc nội dung, tệp đã tải lên và
+            có kết quả An toàn. Tệp đang quét, có cảnh báo hoặc đã cách ly chỉ xem được metadata.
+            PNG/JPEG/GIF/WebP tối đa 10 MiB, PDF 20 MiB, văn bản UTF-8 TXT/CSV/JSON 1 MiB có thể xem
+            trước. Định dạng khác hoặc tệp lớn hơn giới hạn xem trước có thể tải xuống khi đủ điều
+            kiện.
+          </p>
+        </details>
+        <details>
+          <summary>Có thể thu gọn thanh điều hướng và thử lại một đợt tải không?</summary>
+          <p>
+            Dùng nút Thu gọn thanh điều hướng ở sidebar để tăng diện tích danh sách. Khi thu gọn, rê
+            chuột hoặc dùng bàn phím để đọc tên các biểu tượng. Trang Hoạt động xử lý nhóm mỗi lần
+            chọn/thả tệp thành một đợt trong phiên; nút thử lại chỉ gửi những tệp lỗi/đã hủy còn bản
+            gốc và được phép thử lại, không gửi lại tệp đã xong hoặc chưa rõ kết quả.
+          </p>
+        </details>
         <details open>
           <summary>Danh sách tệp được lấy từ đâu?</summary>
           <p>
@@ -86,9 +106,9 @@ export default function Help() {
           <summary>Đã tải xong có nghĩa là tệp an toàn?</summary>
           <p>
             Không. Tải lên hoàn tất chỉ có nghĩa nội dung được xác nhận lưu. Web tự đọc trạng thái
-            quét từ API. “An toàn” là kết quả của lần quét PII, không phải
-            bảo đảm tệp hoàn toàn an toàn hoặc không có mã độc. “Phát hiện dữ liệu” chưa có nghĩa
-            cách ly xong; “Chưa xóa được bản nguồn” cần được xử lý tiếp.
+            quét từ API. “An toàn” là kết quả của lần quét PII, không phải bảo đảm tệp hoàn toàn an
+            toàn hoặc không có mã độc. “Phát hiện dữ liệu” chưa có nghĩa cách ly xong; “Chưa xóa
+            được bản nguồn” cần được xử lý tiếp.
           </p>
         </details>
         <details>

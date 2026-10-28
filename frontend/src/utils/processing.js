@@ -1,6 +1,6 @@
 export const scanStates = {
-  not_started: { label: 'Chưa bắt đầu quét', tone: 'muted' },
-  scanning: { label: 'Đang chờ / đang quét', tone: 'uploading' },
+  not_started: { label: 'Chưa quét', tone: 'muted' },
+  scanning: { label: 'Đang quét', tone: 'uploading' },
   safe: { label: 'An toàn', tone: 'success' },
   flagged: { label: 'Phát hiện dữ liệu — chờ cách ly', tone: 'warning' },
   quarantined: { label: 'Đã cách ly', tone: 'warning' },
@@ -111,6 +111,8 @@ export function normalizeServerFile(record) {
   const type = text(record.content_type, 'định dạng tệp');
   const key = text(record.key, 'object key');
   text(record.owner_id, 'owner');
+  if (record.starred !== undefined && typeof record.starred !== 'boolean')
+    throw new Error('Đánh dấu chưa hợp lệ');
   if (
     !Number.isSafeInteger(record.size_bytes) ||
     record.size_bytes <= 0 ||
@@ -130,7 +132,8 @@ export function normalizeServerFile(record) {
     mode: 'api',
     origin: 'server',
     serverOnly: true,
-    starred: false,
+    starred: record.starred ?? false,
+    starredUpdatedAt: timestamp(record.starred_updated_at, 'thời gian đánh dấu', true) ?? 0,
   };
 }
 
@@ -166,7 +169,19 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
       record.updatedAt === previous.updatedAt &&
       previous.statusSource === 'status' &&
       record.statusSource !== 'status';
-    if (older || lowerPriority) continue;
+    const starPatch =
+      typeof record.starred === 'boolean' &&
+      ((record.starredUpdatedAt || 0) > (previous.starredUpdatedAt || 0) ||
+        (!previous.original && (record.starredUpdatedAt || 0) >= (previous.starredUpdatedAt || 0)))
+        ? { starred: record.starred, starredUpdatedAt: record.starredUpdatedAt || 0 }
+        : {
+            starred: previous.starred,
+            starredUpdatedAt: previous.starredUpdatedAt || 0,
+          };
+    if (older || lowerPriority) {
+      merged[index] = { ...previous, ...starPatch };
+      continue;
+    }
     const liveTransfer =
       Boolean(previous.original) && ['queued', 'uploading'].includes(previous.status);
     merged[index] = {
@@ -174,7 +189,7 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
       ...record,
       id: previous.id,
       original: previous.original,
-      starred: previous.starred,
+      ...starPatch,
       connection: previous.connection ?? record.connection,
       scope: previous.scope ?? record.scope,
       origin: previous.origin ?? record.origin,

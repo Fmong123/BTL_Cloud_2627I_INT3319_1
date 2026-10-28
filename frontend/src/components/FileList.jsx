@@ -1,54 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { ArrowDown, ArrowUp, Eye, FolderOpen, RotateCcw, SearchX, Star, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, FolderOpen, SearchX } from 'lucide-react';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
 import { formatBytes } from '../utils/files.js';
-import { canRetry, isBusy } from '../utils/workspace.js';
+import FileActions from './FileActions.jsx';
 
-function Actions({ file, onStar, onInspect, onRetry, onCancel }) {
-  return (
-    <div className="file-actions">
-      {isBusy(file) && (
-        <button
-          className="icon-button"
-          title="Hủy tải lên"
-          aria-label={`Hủy tải ${file.name}`}
-          onClick={() => onCancel(file.id)}
-        >
-          <X size={16} />
-        </button>
-      )}
-      {canRetry(file) && (
-        <button
-          className="icon-button"
-          title="Thử lại upload"
-          aria-label={`Thử lại ${file.name}`}
-          onClick={() => onRetry(file.id)}
-        >
-          <RotateCcw size={16} />
-        </button>
-      )}
-      <button
-        className={`icon-button ${file.starred ? 'starred' : ''}`}
-        title={file.starred ? 'Bỏ đánh dấu' : 'Đánh dấu'}
-        aria-label={`${file.starred ? 'Bỏ đánh dấu' : 'Đánh dấu'} ${file.name}`}
-        aria-pressed={file.starred}
-        onClick={() => onStar(file.id)}
-      >
-        <Star size={16} fill={file.starred ? 'currentColor' : 'none'} />
-      </button>
-      <button
-        className="icon-button"
-        title="Thông tin tệp"
-        aria-label={`Thông tin ${file.name}`}
-        onClick={() => onInspect(file.id)}
-      >
-        <Eye size={17} />
-      </button>
-    </div>
-  );
-}
 function SelectAll({ files, selected, onSelectAll }) {
   const ref = useRef(null);
   const count = files.filter((file) => selected.has(file.id)).length;
@@ -56,13 +13,15 @@ function SelectAll({ files, selected, onSelectAll }) {
     if (ref.current) ref.current.indeterminate = count > 0 && count < files.length;
   }, [count, files.length]);
   return (
-    <input
-      ref={ref}
-      type="checkbox"
-      aria-label="Chọn tất cả tệp đang hiển thị"
-      checked={count === files.length && files.length > 0}
-      onChange={onSelectAll}
-    />
+    <label className="file-checkbox-hit">
+      <input
+        ref={ref}
+        type="checkbox"
+        aria-label="Chọn tất cả tệp đang hiển thị"
+        checked={count === files.length && files.length > 0}
+        onChange={onSelectAll}
+      />
+    </label>
   );
 }
 export default function FileList({
@@ -77,6 +36,11 @@ export default function FileList({
   filtered = false,
   sort,
   onSort,
+  density = 'comfortable',
+  nameColumnWidth = 320,
+  showSize = true,
+  showDate = true,
+  onNameResize,
   ...actions
 }) {
   if (!files.length)
@@ -96,12 +60,15 @@ export default function FileList({
     );
   const checkbox = (file) =>
     selected && (
-      <input
-        type="checkbox"
-        aria-label={`Chọn ${file.name}`}
-        checked={selected.has(file.id)}
-        onChange={() => onSelect(file.id)}
-      />
+      <label className="file-checkbox-hit">
+        <input
+          type="checkbox"
+          aria-label={`Chọn ${file.name}`}
+          checked={selected.has(file.id)}
+          onChange={() => {}}
+          onClick={(event) => onSelect(file.id, event.shiftKey)}
+        />
+      </label>
     );
   const progress = (file) =>
     file.status === 'uploading' &&
@@ -120,10 +87,13 @@ export default function FileList({
       </div>
     </div>
   );
-  const sortHeader = (label, ascending, descending) => {
+  const sortHeader = (label, ascending, descending, resizable = false) => {
     const current = sort === ascending || sort === descending;
     return (
-      <th aria-sort={current ? (sort === ascending ? 'ascending' : 'descending') : undefined}>
+      <th
+        className={resizable ? 'name-column-heading' : undefined}
+        aria-sort={current ? (sort === ascending ? 'ascending' : 'descending') : undefined}
+      >
         {onSort ? (
           <button
             className="column-sort"
@@ -135,6 +105,48 @@ export default function FileList({
         ) : (
           label
         )}
+        {resizable && onNameResize && (
+          <span
+            className="name-column-resize"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Độ rộng cột tên"
+            tabIndex={0}
+            aria-valuemin={240}
+            aria-valuemax={720}
+            aria-valuenow={Math.round(nameColumnWidth)}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              onNameResize(
+                event.key === 'Home'
+                  ? 240
+                  : event.key === 'End'
+                    ? 720
+                    : nameColumnWidth +
+                      (event.key === 'ArrowRight' ? 1 : -1) * (event.shiftKey ? 40 : 10),
+              );
+            }}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              const target = event.currentTarget;
+              target.focus();
+              target.setPointerCapture(event.pointerId);
+              const start = event.clientX,
+                initial = nameColumnWidth;
+              const move = (next) => onNameResize(initial + next.clientX - start);
+              const finish = () => {
+                target.removeEventListener('pointermove', move);
+                target.removeEventListener('pointerup', finish);
+                target.removeEventListener('pointercancel', finish);
+              };
+              target.addEventListener('pointermove', move);
+              target.addEventListener('pointerup', finish);
+              target.addEventListener('pointercancel', finish);
+            }}
+          />
+        )}
       </th>
     );
   };
@@ -143,13 +155,13 @@ export default function FileList({
       <>
         <div className="grid-select">
           {selected && (
-            <label>
+            <div className="grid-select-label">
               <SelectAll files={files} selected={selected} onSelectAll={onSelectAll} />
               Chọn tất cả trên trang
-            </label>
+            </div>
           )}
         </div>
-        <div className="file-grid">
+        <div className={`file-grid density-${density}`}>
           {files.map((file) => (
             <article
               className={`file-card ${selected?.has(file.id) ? 'selected' : ''}`}
@@ -158,17 +170,22 @@ export default function FileList({
               <div className="file-card-top">
                 {checkbox(file)}
                 <FileIcon file={file} large />
-                <Actions file={file} {...actions} />
+                <FileActions file={file} {...actions} />
               </div>
               <button
                 className="file-name"
                 title={file.name}
-                onClick={() => actions.onInspect(file.id)}
+                onClick={() => (actions.onOpen || actions.onInspect)?.(file.id)}
               >
                 {file.name}
               </button>
               <p className="file-meta">
-                {formatBytes(file.size)} · {new Date(file.createdAt).toLocaleDateString('vi-VN')}
+                {[
+                  showSize ? formatBytes(file.size) : null,
+                  showDate ? new Date(file.createdAt).toLocaleDateString('vi-VN') : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </p>
               {statuses(file)}
               {progress(file)}
@@ -180,8 +197,27 @@ export default function FileList({
       </>
     );
   return (
-    <div className="table-scroll">
-      <table className="file-table processing-table">
+    <div className={`table-scroll file-table-scroll density-${density}`}>
+      <table
+        className="file-table processing-table"
+        style={{
+          minWidth:
+            nameColumnWidth +
+            (selected ? 44 : 0) +
+            (showSize ? 85 : 0) +
+            (showDate ? 100 : 0) +
+            399,
+        }}
+      >
+        <colgroup>
+          {selected && <col style={{ width: 44 }} />}
+          <col style={{ width: nameColumnWidth }} />
+          {showSize && <col style={{ width: 85 }} />}
+          {showDate && <col style={{ width: 100 }} />}
+          <col style={{ width: 115 }} />
+          <col style={{ width: 160 }} />
+          <col style={{ width: 124 }} />
+        </colgroup>
         <thead>
           <tr>
             {selected && (
@@ -189,9 +225,9 @@ export default function FileList({
                 <SelectAll files={files} selected={selected} onSelectAll={onSelectAll} />
               </th>
             )}
-            {sortHeader('Tên tệp', 'name', 'name-desc')}
-            {sortHeader('Kích thước', 'size', 'size-desc')}
-            {sortHeader('Thời gian thêm', 'oldest', 'newest')}
+            {sortHeader('Tên tệp', 'name', 'name-desc', true)}
+            {showSize && sortHeader('Kích thước', 'size', 'size-desc')}
+            {showDate && sortHeader('Thời gian thêm', 'oldest', 'newest')}
             <th>Tải lên</th>
             <th>Quét / cách ly</th>
             <th>
@@ -210,7 +246,7 @@ export default function FileList({
                     <button
                       className="file-name"
                       title={file.name}
-                      onClick={() => actions.onInspect(file.id)}
+                      onClick={() => (actions.onOpen || actions.onInspect)?.(file.id)}
                     >
                       {file.name}
                     </button>
@@ -222,16 +258,18 @@ export default function FileList({
                   </div>
                 </div>
               </td>
-              <td className="nowrap">{formatBytes(file.size)}</td>
-              <td className="nowrap">
-                {new Date(file.createdAt).toLocaleTimeString('vi-VN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-                <span className="cell-date">
-                  {new Date(file.createdAt).toLocaleDateString('vi-VN')}
-                </span>
-              </td>
+              {showSize && <td className="nowrap">{formatBytes(file.size)}</td>}
+              {showDate && (
+                <td className="nowrap">
+                  {new Date(file.createdAt).toLocaleTimeString('vi-VN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  <span className="cell-date">
+                    {new Date(file.createdAt).toLocaleDateString('vi-VN')}
+                  </span>
+                </td>
+              )}
               <td>
                 <StatusBadge {...file} />
               </td>
@@ -239,7 +277,7 @@ export default function FileList({
                 <ScanBadge {...file} />
               </td>
               <td>
-                <Actions file={file} {...actions} />
+                <FileActions file={file} {...actions} />
               </td>
             </tr>
           ))}
