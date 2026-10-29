@@ -14,3 +14,4 @@ __pycache__/
 *.py[cod]
 
 # Backend test source is tracked; temporary test data remains ignored above.
+/launcher/tests/test_local_smoke.py
