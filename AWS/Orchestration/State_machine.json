@@ -1,0 +1,189 @@
+{
+  "Comment": "MaySec: existing metadata, version-pinned scan/quarantine, owner audit, per-channel notification delivery",
+  "QueryLanguage": "JSONata",
+  "StartAt": "ScanFilePII",
+  "States": {
+    "ScanFilePII": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-scan-pii",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}}]) %}"
+      },
+      "Output": "{% $merge([$states.input, {'scan': $states.result.Payload}]) %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Output": "{% $merge([$states.input, {'scan_failure': true}]) %}",
+          "Next": "RecordNotScanned"
+        }
+      ],
+      "Next": "Route"
+    },
+    "Route": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $states.input.scan.status = 'flagged' %}",
+          "Next": "QuarantineFile"
+        },
+        {
+          "Condition": "{% $states.input.scan.status = 'safe' %}",
+          "Next": "NotifySafe"
+        },
+        {
+          "Condition": "{% $states.input.scan.status = 'unscanned' or $states.input.scan.status = 'error' %}",
+          "Next": "Done"
+        }
+      ],
+      "Default": "RecordNotScanned"
+    },
+    "QuarantineFile": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-quarantine-file",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}}]) %}"
+      },
+      "Output": "{% $merge([$states.input, {'quarantine': $states.result.Payload}]) %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Output": "{% $merge([$states.input, {'error': $states.errorOutput}]) %}",
+          "Next": "QuarantineFailed"
+        }
+      ],
+      "Next": "NotifyQuarantined"
+    },
+    "NotifyQuarantined": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-notify",
+        "Payload": "{% {'result': 'quarantined', 'key': $states.input.detail.object.key, 'owner_id': $states.input.scan.owner_id, 'file_id': $states.input.scan.file_id, 'source_version_id': $states.input.scan.source_version_id, 'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}} %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    },
+    "NotifySafe": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-notify",
+        "Payload": "{% {'result': 'safe', 'key': $states.input.detail.object.key, 'owner_id': $states.input.scan.owner_id, 'file_id': $states.input.scan.file_id, 'source_version_id': $states.input.scan.source_version_id, 'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}} %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    },
+    "RecordNotScanned": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-scan-pii",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}, 'operation': 'record_failure'}]) %}"
+      },
+      "Output": "{% $merge([$states.input, {'scan': $states.result.Payload}]) %}",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Route",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "ScanFailedEnd"
+        }
+      ]
+    },
+    "QuarantineFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Arguments": {
+        "FunctionName": "securedrive-quarantine-file",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}, 'operation': 'record_failure'}]) %}"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "QuarantineFailedEnd",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "QuarantineFailedEnd"
+        }
+      ]
+    },
+    "QuarantineFailedEnd": {
+      "Type": "Fail",
+      "Error": "QuarantineFailed",
+      "Cause": "Quarantine did not complete or persistence was not confirmed; inspect metadata. Copy failure keeps flagged; failed deletion remains quarantine_delete_failed."
+    },
+    "Done": {
+      "Type": "Succeed"
+    },
+    "ScanFailedEnd": {
+      "Type": "Fail",
+      "Error": "ScanPersistenceFailed",
+      "Cause": "Cannot confirm scan result and audit. Inspect CloudWatch and metadata before retrying."
+    }
+  }
+}

@@ -12,6 +12,8 @@ Hướng dẫn giải thích code, cấu hình, chứng minh dữ liệu lưu th
 
 Toàn bộ hướng dẫn backend/API hiện tại được tổng hợp trong **[api-guide.md](docs/api-guide.md)**: cài mới/chạy lại, biến môi trường và `.env`, Swagger/curl, demo web, kiểm tra file, kiến trúc, kiểm thử, xử lý lỗi và bàn giao adapter. Khi làm trong thư mục backend, bắt đầu từ **[backend/README.md](backend/README.md)**.
 
+Toàn bộ source Lambda, policy IAM và định nghĩa Step Functions được tập trung trong **[AWS/](AWS/README.md)**. Xem hướng dẫn tại đó để biết đường dẫn từng hàm, tên hàm trên AWS, handler và cách đóng gói.
+
 **DynamoDB cập nhật 21/10/2026:** metadata bật thì upload ghi metadata/audit, đã có GET /files và GET /files/{id}/status. Owner hiện cố định dev-user. Bắt đầu từ [hướng dẫn test FastAPI local](docs/dynamodb-fastapi-local-test-guide.md); pytest kiểm cả DB giả và byte local, chưa cần gọi AWS.
 
 ## Chế độ sử dụng
