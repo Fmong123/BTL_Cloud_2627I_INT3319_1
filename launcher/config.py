@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = Path(__file__).resolve().parent / "runtime"
-MIB = 1024 * 1024
+MB = 1_000_000
 MODES = {
     "demo": ("Demo — chỉ giao diện", None, "disabled"),
     "local": ("Local — không AWS", "local", "disabled"),
@@ -20,7 +20,7 @@ MODES = {
 BACKEND_DEFAULTS = {
     "MAYSEC_STORAGE_MODE": "unconfigured", "MAYSEC_METADATA_MODE": "disabled",
     "MAYSEC_SCAN_PIPELINE_ENABLED": "false", "MAYSEC_LOCAL_STORAGE_DIR": "data",
-    "MAYSEC_MAX_FILE_SIZE_BYTES": str(100 * MIB),
+    "MAYSEC_MAX_FILE_SIZE_BYTES": str(100 * MB),
     "MAYSEC_CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "AWS_PROFILE": "", "S3_BUCKET_NAME": "", "AWS_REGION": "",
     "DYNAMODB_REGION": "ap-southeast-2", "DYNAMODB_FILES_TABLE": "securedrive-files",
@@ -137,11 +137,11 @@ class Settings:
     def size_bytes(value) -> int:
         try:
             amount = Decimal(str(value))
-            if not amount.is_finite() or not 0 < amount <= 10240 or amount * MIB != int(amount * MIB):
+            if not amount.is_finite() or not 0 < amount <= 100 or amount * MB != int(amount * MB):
                 raise ValueError
-            return int(amount * MIB)
+            return int(amount * MB)
         except (ValueError, InvalidOperation, OverflowError):
-            raise ValueError("Dung lượng phải lớn hơn 0, tối đa 10240 MB và tương ứng số byte nguyên.") from None
+            raise ValueError("Dung lượng phải lớn hơn 0, tối đa 100 MB mỗi tệp và tương ứng số byte nguyên.") from None
 
     def save(self):
         self.validate()
@@ -177,14 +177,14 @@ class Settings:
             size = self.size_bytes(self.data["max_file_mb"])
             size_source = "Launcher đã lưu"
         elif sources["MAYSEC_MAX_FILE_SIZE_BYTES"] != "Mặc định":
-            size = int(backend["MAYSEC_MAX_FILE_SIZE_BYTES"])
-            self.size_bytes(Decimal(size) / MIB)
+            size = min(int(backend["MAYSEC_MAX_FILE_SIZE_BYTES"]), 100 * MB)
+            self.size_bytes(Decimal(size) / MB)
             size_source = sources["MAYSEC_MAX_FILE_SIZE_BYTES"]
         else:
             size = self.size_bytes(frontend["VITE_MAX_FILE_SIZE_MB"])
             size_source = sources["VITE_MAX_FILE_SIZE_MB"]
         put(backend, "MAYSEC_MAX_FILE_SIZE_BYTES", size, size_source)
-        put(frontend, "VITE_MAX_FILE_SIZE_MB", format(Decimal(size) / MIB, "f"), "Launcher · đồng bộ giới hạn")
+        put(frontend, "VITE_MAX_FILE_SIZE_MB", format(Decimal(size) / MB, "f"), "Launcher · đồng bộ giới hạn")
         origins = [v.strip() for v in backend["MAYSEC_CORS_ORIGINS"].split(",") if v.strip()]
         origins += [f"http://127.0.0.1:{self.data['web_port']}", f"http://localhost:{self.data['web_port']}"]
         put(backend, "MAYSEC_CORS_ORIGINS", ",".join(dict.fromkeys(origins)), "Launcher · đồng bộ CORS")

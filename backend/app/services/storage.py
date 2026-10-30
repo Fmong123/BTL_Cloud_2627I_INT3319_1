@@ -16,6 +16,30 @@ class StorageFailure(Exception):
     """Provider failed to confirm a write."""
 
 
+class StorageNotFound(Exception):
+    """The server-owned object no longer exists."""
+
+
+class StorageTooLarge(Exception):
+    """The object exceeds the bounded read allowance."""
+
+
+def read_bounded(body: BinaryIO, max_bytes: int) -> bytes:
+    """Read no more than the limit plus one sentinel byte; caller owns closing."""
+    chunks = []
+    total = 0
+    while True:
+        chunk = body.read(min(1024 * 1024, max_bytes + 1 - total))
+        if not chunk:
+            return b"".join(chunks)
+        if not isinstance(chunk, bytes):
+            raise StorageFailure("Storage returned invalid bytes")
+        total += len(chunk)
+        if total > max_bytes:
+            raise StorageTooLarge()
+        chunks.append(chunk)
+
+
 @dataclass(frozen=True)
 class StoredObject:
     key: str
@@ -49,9 +73,24 @@ class LocalStorage:
 
     mode = "local"
     configured = True
+    content_readable = True
 
     def __init__(self, directory: Path):
         self.directory = directory.resolve()
+
+    def read(self, *, key: str, max_bytes: int) -> bytes:
+        try:
+            target = (self.directory / key).resolve()
+            if not target.is_relative_to(self.directory) or target == self.directory:
+                raise StorageFailure("Invalid storage key")
+            with target.open("rb") as source:
+                if os.fstat(source.fileno()).st_size > max_bytes:
+                    raise StorageTooLarge()
+                return read_bounded(source, max_bytes)
+        except FileNotFoundError:
+            raise StorageNotFound() from None
+        except OSError:
+            raise StorageFailure("Local read failed") from None
 
     def upload(self, file_obj: BinaryIO, *, key: str, content_type: str) -> StoredObject:
         target = (self.directory / key).resolve()

@@ -82,6 +82,26 @@ class FileMetadataRepository:
         """Only update upload fields, even if a scanner has already marked the file safe."""
         return self._mark_upload(owner_id, file_id, "uploaded", updated_at=updated_at)
 
+    def set_starred(self, owner_id: str, file_id: str, starred: bool) -> dict:
+        """Atomically change preferences without touching the scanner's version/state."""
+        if type(starred) is not bool:
+            raise ValueError("starred must be a boolean")
+        response = call_dynamodb(
+            self.client, "update_item", TableName=self.table_name,
+            Key=serialize_item(file_key(owner_id, file_id)),
+            UpdateExpression="SET #starred = :starred, #starred_updated = :timestamp",
+            ConditionExpression="attribute_exists(#owner) AND attribute_exists(#file)",
+            ExpressionAttributeNames={
+                "#owner": "owner_id", "#file": "file_id", "#starred": "starred",
+                "#starred_updated": "starred_updated_at",
+            },
+            ExpressionAttributeValues=serialize_item({
+                ":starred": starred, ":timestamp": utc_timestamp(),
+            }),
+            ReturnValues="ALL_NEW",
+        )
+        return deserialize_item(response["Attributes"])
+
     def mark_upload_failed(
         self, owner_id: str, file_id: str, *, outcome_unknown: bool = False,
         updated_at: str | None = None,

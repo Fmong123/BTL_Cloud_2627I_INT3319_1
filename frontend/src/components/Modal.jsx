@@ -1,18 +1,27 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ title, children, onClose, wide = false }) {
+export default function Modal({ title, children, onClose, wide = false, className = '' }) {
   const ref = useRef(null);
+  const titleId = useId();
   useEffect(() => {
     const dialog = ref.current;
+    const previous = document.activeElement;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
     dialog.showModal();
-    return () => dialog.close();
+    window.scrollTo(scrollX, scrollY);
+    return () => {
+      dialog.close();
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+      window.scrollTo(scrollX, scrollY);
+    };
   }, []);
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''}`}
-      aria-labelledby="modal-title"
+      className={`modal ${wide ? 'wide' : ''} ${className}`}
+      aria-labelledby={titleId}
       onCancel={onClose}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -28,7 +37,7 @@ export default function Modal({ title, children, onClose, wide = false }) {
       }}
     >
       <div className="modal-header">
-        <h2 id="modal-title">{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <button className="icon-button" aria-label="Đóng" onClick={onClose}>
           <X size={20} />
         </button>

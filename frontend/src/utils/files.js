@@ -1,8 +1,11 @@
+export const MB = 1_000_000;
+export const UPLOAD_LIMIT = 100 * MB;
+
 export function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: index ? 1 : 0 }).format(bytes / 1024 ** index)} ${units[index]}`;
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1000)), units.length - 1);
+  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: index ? 1 : 0 }).format(bytes / 1000 ** index)} ${units[index]}`;
 }
 
 export function fileCategory(file) {
@@ -27,8 +30,9 @@ export function normalizedSearch(value) {
     .toLowerCase();
 }
 
-export function validateFile(file, maxBytes) {
+export function validateFile(file, maxBytes = UPLOAD_LIMIT) {
   if (file.size === 0) return 'Tệp trống — hãy chọn một tệp có nội dung';
-  if (file.size > maxBytes) return `Tệp vượt quá giới hạn ${formatBytes(maxBytes)}`;
+  const limit = Math.min(maxBytes, UPLOAD_LIMIT);
+  if (file.size > limit) return `Tệp vượt quá giới hạn ${formatBytes(limit)}`;
   return null;
 }

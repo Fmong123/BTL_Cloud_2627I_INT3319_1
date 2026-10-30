@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 
 from ..db import utc_timestamp
 
@@ -45,6 +45,29 @@ class FileListItem(UploadResponse, ScanSummary):
     upload_state: UploadState = Field(...)
     created_at: str = Field(...)
     updated_at: str
+    starred: StrictBool = False
+    starred_updated_at: str | None = None
+
+    @field_validator("starred_updated_at")
+    @classmethod
+    def normalize_star_timestamp(cls, value: str | None) -> str | None:
+        return utc_timestamp(value) if value is not None else None
+
+
+class FilePreferencesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    starred: StrictBool
+
+
+class FilePreferencesResponse(BaseModel):
+    id: str
+    starred: StrictBool
+    starred_updated_at: str
+
+    @field_validator("starred_updated_at")
+    @classmethod
+    def normalize_timestamp(cls, value: str) -> str:
+        return utc_timestamp(value)
 
 
 class FileListResponse(BaseModel):

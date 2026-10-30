@@ -1,5 +1,7 @@
 # MaySec / Mây4u — kho lưu trữ cá nhân
 
+**Frontend mới:** MâySec có 5 trang (Tổng quan, Tệp của tôi, Hoạt động tải lên, Cài đặt, Hướng dẫn), dark mode theo bảng màu pastel, chọn nhiều và hoàn tác. Xem [hướng dẫn frontend hiện tại](docs/frontend-guide.md) để chạy, cấu hình và kiểm thử. Những mô tả frontend theo giao diện một trang bên dưới thuộc bản trước; API upload vẫn giữ hợp đồng hiện có.
+
 Frontend **React + Vite**, giao diện tiếng Việt, đã nối với **FastAPI**. Khi chưa có phần AWS của đồng đội, API hỗ trợ demo lưu file thật trên đĩa với nhãn local rõ ràng.
 
 ```text

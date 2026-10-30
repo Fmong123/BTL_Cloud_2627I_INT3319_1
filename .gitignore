@@ -28,3 +28,9 @@ conftest.py
 
 # Local test run outputs.
 pytest-*/
+
+# Browser checks required by the file library layout.
+!frontend/e2e/
+!frontend/e2e/library-layout.spec.js
+!frontend/e2e/support/
+!frontend/e2e/support/built-app.js

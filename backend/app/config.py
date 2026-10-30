@@ -6,6 +6,8 @@ from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIB = 1024 * 1024
+MB = 1_000_000
+MAX_UPLOAD_BYTES = 100 * MB
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -18,7 +20,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 @dataclass(frozen=True)
 class Settings:
     storage_mode: str = "unconfigured"
-    max_file_size_bytes: int = 100 * MIB
+    max_file_size_bytes: int = MAX_UPLOAD_BYTES
     local_storage_dir: Path = BACKEND_DIR / "data"
     cors_origins: tuple[str, ...] = (
         "http://localhost:5173", "http://127.0.0.1:5173",
@@ -56,8 +58,10 @@ class Settings:
                     raise ValueError("DynamoDB table names must start with securedrive-")
         if self.storage_mode not in {"unconfigured", "local", "s3"}:
             raise ValueError("MAYSEC_STORAGE_MODE must be unconfigured, local or s3")
-        if self.max_file_size_bytes <= 0:
+        if type(self.max_file_size_bytes) is not int or self.max_file_size_bytes <= 0:
             raise ValueError("MAYSEC_MAX_FILE_SIZE_BYTES must be positive")
+        if self.max_file_size_bytes > MAX_UPLOAD_BYTES:
+            object.__setattr__(self, "max_file_size_bytes", MAX_UPLOAD_BYTES)
         if self.s3_multipart_threshold_bytes <= 0:
             raise ValueError("MAYSEC_S3_MULTIPART_THRESHOLD_BYTES must be positive")
         if not 5 * MIB <= self.s3_multipart_chunksize_bytes <= 5 * 1024 * MIB:
@@ -77,7 +81,7 @@ class Settings:
             directory = BACKEND_DIR / directory
         return cls(
             storage_mode=os.getenv("MAYSEC_STORAGE_MODE", "unconfigured").strip().lower(),
-            max_file_size_bytes=int(os.getenv("MAYSEC_MAX_FILE_SIZE_BYTES", str(100 * MIB))),
+            max_file_size_bytes=int(os.getenv("MAYSEC_MAX_FILE_SIZE_BYTES", str(MAX_UPLOAD_BYTES))),
             local_storage_dir=directory.resolve(),
             cors_origins=tuple(origin.strip() for origin in os.getenv(
                 "MAYSEC_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"

@@ -1,116 +1,81 @@
 import { useRef, useState } from 'react';
-import {
-  ArrowUpRight,
-  CloudUpload,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  Plus,
-} from 'lucide-react';
+import { ArrowUpRight, CloudUpload, Plus } from 'lucide-react';
+import { useWorkspace } from '../state/Workspace.jsx';
+import { formatBytes } from '../utils/files.js';
 
-export default function UploadButton({ onFiles, maxSizeMB, inputRef }) {
+export default function UploadButton({ compact = false }) {
+  const w = useWorkspace();
   const [dragging, setDragging] = useState(false);
-  // Đếm các lớp kéo thả để không tắt trạng thái khi đi qua phần tử con.
-  const dragDepth = useRef(0);
-
+  const depth = useRef(0);
   return (
     <section
-      className={`upload-zone ${dragging ? 'dragging' : ''}`}
+      className={`upload-zone ${compact ? 'compact' : ''} ${dragging ? 'dragging' : ''}`}
       aria-label="Khu vực tải tệp lên"
-      onDragEnter={(e) => {
-        e.preventDefault();
-        dragDepth.current++;
+      onDragEnter={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+        event.preventDefault();
+        depth.current++;
         setDragging(true);
       }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
       }}
-      onDragLeave={(e) => {
-        e.preventDefault();
-        dragDepth.current--;
-        if (dragDepth.current <= 0) setDragging(false);
+      onDragLeave={() => {
+        depth.current = Math.max(0, depth.current - 1);
+        if (!depth.current) setDragging(false);
       }}
-      onDrop={(e) => {
-        e.preventDefault();
-        dragDepth.current = 0;
+      onDrop={(event) => {
+        event.preventDefault();
+        depth.current = 0;
         setDragging(false);
-        onFiles(Array.from(e.dataTransfer.files));
+        w.addFiles(Array.from(event.dataTransfer.files));
       }}
     >
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        className="visually-hidden"
-        tabIndex={-1}
-        aria-label="Chọn tệp để tải lên"
-        onChange={(e) => {
-          onFiles(Array.from(e.target.files));
-          e.target.value = '';
-        }}
-      />
-
-      {/* Nội dung và nút chọn tệp */}
       <div className="upload-copy">
         <span className="eyebrow">
-          <span className="tiny-dot" /> THÊM MỘT CHÚT NGĂN NẮP
+          {compact ? 'THÊM TỆP VÀO KHÔNG GIAN' : 'MỘT NƠI CHO MỌI TỆP'}
         </span>
         <h2>
-          Mọi tệp của bạn
-          <br />
-          Một nơi để lưu giữ
+          {compact ? (
+            'Thêm tệp, tiếp tục công việc'
+          ) : (
+            <>
+              Gọn gàng hơn.
+              <br />
+              Nhẹ nhàng hơn.
+            </>
+          )}
         </h2>
-        <p>Kéo thả tệp vào đây, để phần còn lại cho Mây</p>
+        <p>Kéo thả tệp vào đây hoặc chọn từ máy tính của bạn.</p>
         <div className="upload-cta">
-          <button className="button primary" onClick={() => inputRef.current.click()}>
+          <button className="button primary" onClick={() => w.inputRef.current.click()}>
             <Plus size={18} />
-            Chọn tệp tải lên
+            Chọn tệp
             <ArrowUpRight size={16} />
           </button>
-          <span>Tối đa {maxSizeMB} MB / tệp</span>
-        </div>
-      </div>
-
-      {/* Hình minh họa trang trí */}
-      <div className="upload-art" aria-hidden="true">
-        <div className="art-orbit orbit-one" />
-        <div className="art-orbit orbit-two" />
-        <div className="floating-sheet sheet-back">
-          <span />
-          <span />
-          <span />
-        </div>
-        <div className="floating-sheet sheet-front">
-          <span className="sheet-icon">
-            <CloudUpload size={37} strokeWidth={1.4} />
+          <span>
+            Tối đa {formatBytes(w.limit)} / tệp
+            {!w.health && w.preferences.mode === 'api' ? ' · chưa xác minh' : ''}
           </span>
-          <span className="sheet-line" />
-          <span className="sheet-line short" />
-          <div className="sheet-dots">
-            <i />
-            <i />
-            <i />
-          </div>
         </div>
-        <div className="art-type art-image">
-          <FileImage size={24} strokeWidth={1.6} />
-        </div>
-        <div className="art-type art-doc">
-          <FileText size={24} strokeWidth={1.6} />
-        </div>
-        <div className="art-type art-sheet">
-          <FileSpreadsheet size={24} strokeWidth={1.6} />
-        </div>
-        <span className="art-spark spark-one">+</span>
-        <span className="art-spark spark-two">+</span>
       </div>
-
-      {/* Lớp hướng dẫn khi kéo tệp vào khu vực tải lên */}
+      {!compact && (
+        <div className="upload-art" aria-hidden="true">
+          <div className="floating-sheet">
+            <CloudUpload size={52} strokeWidth={1.3} />
+            <span />
+            <span />
+            <span />
+          </div>
+          <span className="art-caption">a little more space</span>
+        </div>
+      )}
       {dragging && (
         <div className="drop-overlay">
-          <CloudUpload size={40} />
-          <strong>Thả tệp để bắt đầu tải lên</strong>
+          <CloudUpload size={35} />
+          <strong>Thả tệp để bắt đầu</strong>
         </div>
       )}
     </section>

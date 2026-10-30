@@ -16,7 +16,7 @@ class UploadBodyLimitMiddleware:
             await self.app(scope, receive, send)
             return
         response = JSONResponse(status_code=413, content={
-            "detail": "Nội dung request vượt giới hạn upload (gồm phần multipart)"
+            "detail": "Yêu cầu tải lên vượt giới hạn dung lượng cho phép"
         })
         for name, value in scope.get("headers", []):
             if name == b"content-length":
