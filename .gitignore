@@ -13,4 +13,18 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 
-# Backend test source is tracked; temporary test data remains ignored above.
+# Local tests and utility scripts at any directory depth.
+test/
+tests/
+__tests__/
+e2e/
+script/
+scripts/
+test_*
+*_test.*
+*.test.*
+*.spec.*
+conftest.py
+
+# Local test run outputs.
+pytest-*/

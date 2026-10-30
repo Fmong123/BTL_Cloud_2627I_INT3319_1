@@ -421,7 +421,7 @@ Kỳ vọng 413. Sau demo, đặt server `MAYSEC_MAX_FILE_SIZE_BYTES=104857600`,
 | `services/storage.py` | Interface dùng chung; thống nhất trước khi sửa |
 | `services/s3_storage.py`, `services/s3_service.py` | Adapter và uploader S3 đã nối; giữ cùng S3Uploader Protocol |
 | `main.py`, `config.py`, `requirements.txt` | Phối hợp/giao một người ghép adapter và dependencies |
-| `lambdas/scan_file/handler.py`, cấu hình AWS | Có code scanner, chưa nối kết quả vào API/UI; hạ tầng cần Sang xác minh/bàn giao |
+| `AWS/Lambda_AWS/scan_file/handler.py`, `AWS/Lambda_AWS/quarantine/handler.py`, `AWS/Lambda_AWS/notification/handler.py` | Source ba Lambda; đối chiếu bản đang triển khai và nghiệm thu pipeline theo [hướng dẫn AWS](../AWS/README.md) |
 
 Folder `backend/` dùng chung cho API và xử lý AWS; không cần tạo thêm backend thứ hai. Sau khi khung được commit/push, teammate cập nhật nhánh chung trước khi bắt đầu và làm trên branch riêng. Cùng tạo `main.py` hoặc cùng sửa đoạn config có thể gây conflict; tạo adapter mới và bàn giao hợp đồng trước giúp giảm xung đột.
 

@@ -1,7 +1,7 @@
 """securedrive-scan-pii: quét dữ liệu nhạy cảm (CCCD, thẻ tín dụng) trong tệp mới tải lên.
 
-Payload trả về cho Step Functions (đúng 4 giá trị status, viết đúng chính tả):
-    {"status": "flagged|safe|unscanned|error", "findings": [...], "reason": "..."}
+Payload giữ bốn status và bổ sung owner/file/version cùng summary đầy đủ.
+findings trong workflow chỉ giữ type, giới hạn số phần tử; location ở DB nội bộ.
 - flagged   : findings không rỗng
 - safe      : findings rỗng, đã đọc được nội dung và không thấy dữ liệu nhạy cảm
 - unscanned : định dạng chưa hỗ trợ / vượt giới hạn quét (có reason)
@@ -18,14 +18,15 @@ import logging
 import os
 import re
 import time
-import urllib.parse
-import uuid
 from collections import Counter
-from datetime import datetime, timezone
 from functools import lru_cache
 
 import boto3
 from botocore.exceptions import ClientError
+from pipeline_common import (
+    PipelineConflict, conditional_failure, put_audit, read_file, source_from_event,
+    status_fields, summary, update_file, utc,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -33,8 +34,8 @@ logger.setLevel(logging.INFO)
 # ---- Cấu hình (có thể ghi đè bằng biến môi trường của Lambda) ----
 FILES_TABLE = os.environ.get("FILES_TABLE", "securedrive-files")
 AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "securedrive-audit-log")
-# Cho phép chạy mượt với Step Functions ngay cả khi nhánh Hạ tầng chưa tạo xong bảng DynamoDB
-STRICT_DB_WRITE = os.environ.get("STRICT_DB_WRITE", "false").lower() == "true"
+# Integrated pipeline requires confirmed metadata/audit before notification.
+STRICT_DB_WRITE = os.environ.get("STRICT_DB_WRITE", "true").lower() == "true"
 
 MAX_SCAN_BYTES = int(os.environ.get("MAX_SCAN_BYTES", str(50 * 1024 * 1024)))
 MAX_OCR_IMAGE_BYTES = 10 * 1024 * 1024  # giới hạn Textract đồng bộ
@@ -61,6 +62,12 @@ class Unsupported(Exception):
 
 class Unreadable(Exception):
     """Không đọc được nội dung -> error."""
+
+
+class Incomplete(Unsupported):
+    def __init__(self, reason, text=""):
+        super().__init__(reason)
+        self.text = text
 
 
 @lru_cache(maxsize=None)
@@ -115,7 +122,12 @@ def _pdf_text(data: bytes):
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted and not reader.decrypt(""):
             raise Unreadable("PDF có mật khẩu, không đọc được")
-        text = "\n".join((page.extract_text() or "") for page in reader.pages)
+        pages = list(reader.pages)
+        texts = [(page.extract_text() or "") for page in pages]
+        # Mixed PDFs must go through OCR instead of accepting only their text layer.
+        if not pages or any(not text.strip() or bool(page.images) for page, text in zip(pages, texts)):
+            return None
+        text = "\n".join(texts)
     except Unreadable:
         raise
     except Exception:
@@ -127,22 +139,31 @@ def _lines(blocks):
     return [b["Text"] for b in blocks if b.get("BlockType") == "LINE" and "Text" in b]
 
 
-def _ocr_image(bucket, key) -> str:
+def _ocr_image(bucket, key, version=None) -> str:
+    obj = {"Bucket": bucket, "Name": key}
+    if version:
+        obj["Version"] = version
     try:
         resp = _client("textract").detect_document_text(
-            Document={"S3Object": {"Bucket": bucket, "Name": key}})
+            Document={"S3Object": obj})
     except ClientError as exc:
         if exc.response["Error"]["Code"] in TEXTRACT_UNREADABLE:
             raise Unreadable("Không đọc được nội dung ảnh (OCR)") from None
         raise
-    return "\n".join(_lines(resp["Blocks"]))
+    text = "\n".join(_lines(resp.get("Blocks", [])))
+    if not text.strip():
+        raise Incomplete("ocr_no_text")
+    return text
 
 
-def _ocr_pdf(bucket, key, context) -> str:
+def _ocr_pdf(bucket, key, context, version=None) -> str:
     textract = _client("textract")
+    obj = {"Bucket": bucket, "Name": key}
+    if version:
+        obj["Version"] = version
     try:
         job = textract.start_document_text_detection(
-            DocumentLocation={"S3Object": {"Bucket": bucket, "Name": key}})["JobId"]
+            DocumentLocation={"S3Object": obj})["JobId"]
     except ClientError as exc:
         if exc.response["Error"]["Code"] in TEXTRACT_UNREADABLE:
             raise Unreadable("Không đọc được nội dung PDF (OCR)") from None
@@ -152,38 +173,56 @@ def _ocr_pdf(bucket, key, context) -> str:
     while True:
         resp = textract.get_document_text_detection(JobId=job)
         status = resp["JobStatus"]
-        if status == "SUCCEEDED":
+        if status in ("SUCCEEDED", "PARTIAL_SUCCESS"):
             break
-        if status in ("FAILED", "PARTIAL_SUCCESS"):
+        if status == "FAILED":
             raise Unreadable("OCR không đọc được toàn bộ nội dung PDF")
         if time.monotonic() > deadline:
             raise Unreadable("OCR PDF quá thời gian cho phép")
         time.sleep(2)
-    lines = _lines(resp["Blocks"])
+    partial = status == "PARTIAL_SUCCESS"
+    blocks = list(resp.get("Blocks", []))
+    expected_pages = resp.get("DocumentMetadata", {}).get("Pages")
     token = resp.get("NextToken")
     while token:
+        if time.monotonic() > deadline:
+            raise Incomplete("ocr_timeout", "\n".join(_lines(blocks)))
         resp = textract.get_document_text_detection(JobId=job, NextToken=token)
-        lines += _lines(resp["Blocks"])
+        blocks += resp.get("Blocks", [])
+        partial = partial or resp.get("JobStatus") == "PARTIAL_SUCCESS"
         token = resp.get("NextToken")
-    return "\n".join(lines)
+    text = "\n".join(_lines(blocks))
+    pages_with_text = {b.get("Page") for b in blocks if b.get("BlockType") == "LINE" and b.get("Text", "").strip()}
+    if partial or not text.strip() or not expected_pages or len(pages_with_text) < expected_pages:
+        raise Incomplete("ocr_incomplete", text)
+    return text
 
 
-def extract_text(bucket, key, context) -> str:
-    size = _client("s3").head_object(Bucket=bucket, Key=key)["ContentLength"]
+def extract_text(bucket, key, context, version=None) -> str:
+    args = {"Bucket": bucket, "Key": key}
+    if version:
+        args["VersionId"] = version
+    size = _client("s3").head_object(**args)["ContentLength"]
     if size == 0:
         raise Unreadable("Tệp rỗng, không có nội dung để quét")
     if size > MAX_SCAN_BYTES:
         raise Unsupported("Tệp vượt giới hạn dung lượng có thể quét")
-    data = _client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
+    body = _client("s3").get_object(**args)["Body"]
+    try:
+        data = body.read(MAX_SCAN_BYTES + 1)
+    finally:
+        body.close()
+    if len(data) != size or len(data) > MAX_SCAN_BYTES:
+        raise Unreadable("source_size_mismatch")
     kind = _detect_kind(data)
     if kind == "text":
         return _decode_text(data)
     if kind == "pdf":
         text = _pdf_text(data)
-        return text if text is not None else _ocr_pdf(bucket, key, context)
+        return text if text is not None else _ocr_pdf(bucket, key, context, version)
     if size > MAX_OCR_IMAGE_BYTES:
         raise Unsupported("Ảnh vượt giới hạn dung lượng của OCR")
-    return _ocr_image(bucket, key)
+    return _ocr_image(bucket, key, version)
 
 
 # ---------------------------------------------------------------- quét PII
@@ -210,134 +249,86 @@ def find_pii(text: str):
     return findings, dict(counts)
 
 
-# ---------------------------------------------------------------- ghi DynamoDB
-def _now_iso():
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+# ---------------------------------------------------------------- persistence / handler
+def payload_from_record(row, source):
+    scan = row.get("scan_result") or {}
+    if not isinstance(scan, dict):
+        scan = {}
+    status = scan.get("status")
+    status = status or ("flagged" if row["status"] in {"quarantined", "quarantine_delete_failed"} else row["status"])
+    if status not in {SAFE, FLAGGED, UNSCANNED, ERROR}:
+        raise PipelineConflict("scan_result_not_ready")
+    return {"status": status, "owner_id": source["owner_id"], "file_id": source["file_id"],
+            "source_version_id": source["version"], **summary(row),
+            "findings": [{"type": f["type"]} for f in scan.get("findings", [])[:MAX_FINDINGS]],
+            "reason": row.get("scan_reason", row.get("status_reason", "")),
+            "scanned_at": row.get("scanned_at"), "extraction_complete": row.get("extraction_complete", True)}
 
 
-def _is_conditional_fail(exc):
-    return isinstance(exc, ClientError) and exc.response["Error"]["Code"] == "ConditionalCheckFailedException"
+def audit_scan(row, source):
+    result = payload_from_record(row, source)
+    put_audit(_table(AUDIT_TABLE), source, "scan_" + result["status"], result["status"],
+              {**summary(row), "reason": result["reason"], "extraction_complete": result["extraction_complete"]},
+              row["scanned_at"], execution_id=row.get("execution_id"))
+    return result
 
 
-def record_result(owner_id, file_id, key, status, findings, counts, reason, ctx):
-    """Cập nhật securedrive-files + ghi securedrive-audit-log.
-    Không làm sập luồng Step Functions nếu bảng DB chưa sẵn sàng (trừ khi STRICT_DB_WRITE=true)."""
-    if not owner_id or not file_id:
-        logger.warning("Key không đúng dạng uploads/<owner_id>/<file_id>/<tên>, bỏ qua ghi DynamoDB")
-        return
-
-    now = _now_iso()
-    scan_result = {"findings": findings, "finding_counts": counts}
-    names = {"#s": "status"}
-    values = {
-        ":s": status, ":r": scan_result, ":t": now,
-        ":n": sum(counts.values()), ":ft": sorted(counts),
-        ":q": "quarantined", ":qf": "quarantine_delete_failed",
-    }
-    expr = ("SET #s = :s, scan_result = :r, findings_count = :n, finding_types = :ft, "
-            "scanned_at = :t, updated_at = :t")
+def record_result(source, status, findings, counts, reason, ctx, *, complete=True):
+    timestamp = utc()
+    fields = {**status_fields(status, source["file_id"], timestamp),
+              "scan_result": {"status": status, "findings": findings, "finding_counts": counts},
+              "findings_count": sum(counts.values()), "finding_types": sorted(counts),
+              "scanned_at": timestamp, "scan_reason": reason or "", "extraction_complete": complete}
+    if source["version"]:
+        fields["source_version_id"] = source["version"]
+    if ctx.get("execution"):
+        fields["execution_id"] = ctx["execution"]
+    if status == FLAGGED:
+        fields["quarantine_status"] = "pending"
     if reason:
-        expr += ", status_reason = :reason"
-        values[":reason"] = reason
-    else:
-        expr += " REMOVE status_reason"
-
+        fields["status_reason"] = reason
     try:
-        try:
-            # Không lùi trạng thái: nếu file đã được cách ly thì không ghi đè bằng kết quả quét
-            _table(FILES_TABLE).update_item(
-                Key={"owner_id": owner_id, "file_id": file_id},
-                UpdateExpression=expr,
-                ConditionExpression="attribute_not_exists(#s) OR NOT (#s IN (:q, :qf))",
-                ExpressionAttributeNames=names, ExpressionAttributeValues=values)
-        except ClientError as exc:
-            if not _is_conditional_fail(exc):
-                raise
-            logger.info("File đã ở trạng thái cuối, giữ nguyên status hiện tại")
-
-        details = {"key": key, "finding_counts": counts}
-        if reason:
-            details["reason"] = reason
-        occurred_at = ctx.get("entered_at") or now
-        event_id = f"scan_{status}-{ctx.get('execution') or uuid.uuid4()}"
-        try:
-            _table(AUDIT_TABLE).put_item(
-                Item={
-                    "file_id": file_id,
-                    "event_key": f"{occurred_at}#{event_id}",
-                    "event_id": event_id,
-                    "occurred_at": occurred_at,
-                    "actor": "lambda:securedrive-scan-pii",
-                    "action": f"scan_{status}",
-                    "status": status,
-                    "details": details,
-                },
-                ConditionExpression="attribute_not_exists(event_key)")
-        except ClientError as exc:
-            if not _is_conditional_fail(exc):  # retry cùng execution: bỏ qua dòng trùng
-                raise
-    except Exception as exc:
-        if STRICT_DB_WRITE:
+        row = update_file(_table(FILES_TABLE), source, fields, statuses=["not_started", "scanning"],
+                          remove=[] if reason else ["status_reason"], execution=ctx.get("execution"))
+    except ClientError as exc:
+        if not conditional_failure(exc):
             raise
-        logger.warning("Bỏ qua ghi DynamoDB (bảng chưa tạo hoặc thiếu quyền IAM): %s", exc)
-
-
-# ---------------------------------------------------------------- handler
-def _payload(status, findings=None, reason=None):
-    out = {"status": status, "findings": findings or []}
-    if status in (UNSCANNED, ERROR):
-        out["reason"] = reason or "Không rõ lý do"
-    return out
-
-
-def _parse_event(event):
-    """Hỗ trợ sự kiện EventBridge (detail.bucket/object), S3 Records và dạng {"bucket","key"}."""
-    if "Records" in event and event["Records"]:
-        s3_info = event["Records"][0].get("s3", {})
-        bucket = s3_info.get("bucket", {}).get("name")
-        raw_key = s3_info.get("object", {}).get("key")
-    else:
-        detail = event.get("detail", event)
-        bucket = detail["bucket"]["name"] if isinstance(detail.get("bucket"), dict) else detail["bucket"]
-        raw_key = detail["object"]["key"] if isinstance(detail.get("object"), dict) else detail["key"]
-
-    if not bucket or not raw_key:
-        raise ValueError("Thiếu bucket hoặc key")
-
-    key = urllib.parse.unquote_plus(raw_key)
-    parts = [p for p in key.split("/") if p]
-    # Quy ước chuẩn từ Backend: uploads/<owner_id>/<file_id>/<tên-an-toàn>
-    # Key sai cấu trúc (vd test trên S3 Console) vẫn quét được nhưng không ghi DynamoDB
-    if len(parts) >= 4 and parts[0] == "uploads":
-        owner_id, file_id = parts[1], parts[2]
-    else:
-        owner_id, file_id = None, None
-    return bucket, key, owner_id, file_id
+        row = read_file(_table(FILES_TABLE), source)
+        # Replay may repair missing audit, but never return a newly computed stale result.
+        if row.get("status") in {"not_started", "scanning"}:
+            raise PipelineConflict("scan_execution_conflict") from exc
+    return audit_scan(row, source)
 
 
 def lambda_handler(event, context):
-    try:
-        bucket, key, owner_id, file_id = _parse_event(event)
-    except (KeyError, TypeError, ValueError, AttributeError, IndexError):
-        logger.error("Sự kiện đầu vào không hợp lệ")
-        return _payload(ERROR, reason="Sự kiện đầu vào không hợp lệ")
-
+    if not STRICT_DB_WRITE:
+        raise ValueError("Integrated pipeline requires STRICT_DB_WRITE=true")
+    source = source_from_event(event)
+    if not source["version"]:
+        raise PipelineConflict("source_version_required")
     ctx = event.get("ctx") or {}
-    logger.info("Quét owner_id=%s file_id=%s key=%s", owner_id, file_id, key)
-    findings, counts, reason = [], {}, None
+    row = read_file(_table(FILES_TABLE), source)
+    if row["status"] not in {"not_started", "scanning"}:
+        return audit_scan(row, source)
+    if event.get("operation") == "record_failure":
+        return record_result(source, ERROR, [], {}, "scan_crashed", ctx, complete=False)
+    fields = {**status_fields("scanning", source["file_id"]), "source_version_id": source["version"]}
+    if ctx.get("execution"):
+        fields["execution_id"] = ctx["execution"]
+    update_file(_table(FILES_TABLE), source, fields, statuses=["not_started", "scanning"], execution=ctx.get("execution"))
+    findings, counts, reason, complete = [], {}, None, True
     try:
-        text = extract_text(bucket, key, context)
+        text = extract_text(source["bucket"], source["key"], context, source["version"])
         findings, counts = find_pii(text)
         status = FLAGGED if counts else SAFE
-    except Unsupported as exc:
-        status, reason = UNSCANNED, str(exc)
-    except Unreadable as exc:
-        status, reason = ERROR, str(exc)
+    except Incomplete as exc:
+        findings, counts = find_pii(exc.text)
+        status, reason, complete = (FLAGGED if counts else UNSCANNED), str(exc), False
+    except Unsupported:
+        status, reason, complete = UNSCANNED, "unsupported_type_or_size", False
+    except Unreadable:
+        status, reason, complete = ERROR, "unreadable_document", False
     except Exception:
-        # Không đưa chi tiết SDK/đường dẫn nội bộ vào reason; chi tiết nằm ở CloudWatch.
-        logger.exception("Lỗi không mong đợi khi quét file_id=%s", file_id)
-        status, reason = ERROR, "Lỗi hệ thống khi quét tệp"
-
-    record_result(owner_id, file_id, key, status, findings, counts, reason, ctx)
-    logger.info("Kết quả file_id=%s status=%s", file_id, status)
-    return _payload(status, findings, reason)
+        logger.exception("Scan failed for file_id=%s", source["file_id"])
+        status, reason, complete = ERROR, "scan_failed", False
+    return record_result(source, status, findings, counts, reason, ctx, complete=complete)

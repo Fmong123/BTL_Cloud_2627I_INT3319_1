@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WriteFileStatus",
+      "Effect": "Allow",
+      "Action": "dynamodb:UpdateItem",
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-files"
+    },
+    {
+      "Sid": "InvokePipelineWriters",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": [
+        "arn:aws:lambda:ap-southeast-2:018913575473:function:securedrive-scan-pii",
+        "arn:aws:lambda:ap-southeast-2:018913575473:function:securedrive-quarantine-file",
+        "arn:aws:lambda:ap-southeast-2:018913575473:function:securedrive-notify"
+      ]
+    }
+  ]
+}
