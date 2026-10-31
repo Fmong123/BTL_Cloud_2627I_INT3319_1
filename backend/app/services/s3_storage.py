@@ -123,3 +123,33 @@ class S3Storage:
                 except Exception:
                     # Cleanup must never expose SDK details or replace the read error.
                     pass
+
+    def delete_file_versions(self, *, bucket: str, prefix: str):
+        """Erase every version/delete marker under exactly one owned file ID."""
+        if self.client is None:
+            raise StorageUnavailable("S3 deletion dependencies are not configured")
+        parts = prefix.split("/")
+        if (len(parts) != 4 or parts[0] != "uploads" or parts[-1] != ""
+                or any(not p or p in {".", ".."} or "\\" in p for p in parts[1:3])):
+            raise StorageFailure("Invalid deletion prefix")
+        try:
+            versions = []
+            for page in self.client.get_paginator("list_object_versions").paginate(Bucket=bucket, Prefix=prefix):
+                for obj in page.get("Versions", []) + page.get("DeleteMarkers", []):
+                    if not obj["Key"].startswith(prefix):
+                        raise StorageFailure("S3 returned a foreign key")
+                    versions.append({"Key": obj["Key"], "VersionId": obj["VersionId"]})
+            # Listing completes before erasure so pagination markers cannot be
+            # invalidated by deleting the objects that they refer to.
+            for offset in range(0, len(versions), 1000):
+                result = self.client.delete_objects(Bucket=bucket,
+                    Delete={"Objects": versions[offset:offset + 1000], "Quiet": True})
+                if result.get("Errors"):
+                    raise StorageFailure("S3 did not confirm complete deletion")
+            remaining = self.client.list_object_versions(Bucket=bucket, Prefix=prefix, MaxKeys=1)
+            if remaining.get("Versions") or remaining.get("DeleteMarkers") or remaining.get("IsTruncated"):
+                raise StorageFailure("S3 still contains file versions")
+        except (NoCredentialsError, PartialCredentialsError, NoRegionError):
+            raise StorageUnavailable("AWS deletion is not configured") from None
+        except (ClientError, BotoCoreError, OSError, KeyError):
+            raise StorageFailure("S3 deletion failed") from None

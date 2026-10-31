@@ -1,0 +1,50 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageDevFilesQuotaHistoryNotifications",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem",
+        "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-files",
+      "Condition": {
+        "ForAllValues:StringEquals": {
+          "dynamodb:LeadingKeys": ["dev-user", "!quota!dev-user", "!history!dev-user", "!notifications!dev-user"]
+        }
+      }
+    },
+    {
+      "Sid": "BackendAudit",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:PutItem"],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-audit-log"
+    },
+    {
+      "Sid": "ListOnlyOwnedFileVersions",
+      "Effect": "Allow",
+      "Action": "s3:ListBucketVersions",
+      "Resource": [
+        "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an",
+        "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an"
+      ],
+      "Condition": {"StringLike": {"s3:prefix": "uploads/dev-user/*/"}}
+    },
+    {
+      "Sid": "UploadAndReadOwnedSource",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:GetObjectVersion", "s3:AbortMultipartUpload"],
+      "Resource": "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an/uploads/dev-user/*"
+    },
+    {
+      "Sid": "PermanentlyEraseOwnedVersions",
+      "Effect": "Allow",
+      "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": [
+        "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an/uploads/dev-user/*",
+        "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an/uploads/dev-user/*"
+      ]
+    }
+  ]
+}

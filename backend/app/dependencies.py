@@ -23,6 +23,10 @@ def get_audit_log(request: Request) -> AuditLogRepository | None:
     return request.app.state.audit_log
 
 
+def get_rescanner(request: Request):
+    return request.app.state.rescanner
+
+
 def get_dev_owner_id() -> str:
     """Development only. Replace with verified application identity before shared use."""
     return "dev-user"

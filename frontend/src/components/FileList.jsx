@@ -330,6 +330,12 @@ export default function FileList({
                       {file.name}
                     </button>
                     {progress(file)}
+                    {file.lifecycleState === 'purged' && (
+                      <span className="file-error">Đã xóa vĩnh viễn · chỉ còn lịch sử</span>
+                    )}
+                    {['trashed', 'deleting'].includes(file.lifecycleState) && (
+                      <span className="file-error">Trong Thùng rác</span>
+                    )}
                     {file.error && <span className="file-error">{file.error}</span>}
                     {file.syncError && (
                       <span className="file-error">Chưa cập nhật được kết quả</span>

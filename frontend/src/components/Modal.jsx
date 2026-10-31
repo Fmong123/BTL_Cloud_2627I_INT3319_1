@@ -22,7 +22,10 @@ export default function Modal({ title, children, onClose, wide = false, classNam
       ref={ref}
       className={`modal ${wide ? 'wide' : ''} ${className}`}
       aria-labelledby={titleId}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
 

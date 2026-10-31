@@ -1,69 +1,59 @@
-# Đồng bộ source AWS với backend
+# Cập nhật AWS cho MâySec
 
-## Phạm vi
+Dùng [hướng dẫn cài đặt](../docs/AWS-HANDOFF-QUICKSTART-2026-10-31.md) làm checklist chính. Tài liệu này chỉ giữ các ràng buộc triển khai; [phụ lục](../docs/AWS-HANDOFF-2026-10-31.md) tóm tắt IAM/dữ liệu và xử lý lỗi.
 
-Source giữ nguyên ba tên Lambda, tên bảng và khóa files `owner_id/file_id`, audit `file_id/event_key`, đường dẫn `uploads/{owner_id}/{file_id}/{filename}` và mapping API `file_id -> id`, `status -> scan_status`. Không yêu cầu Cognito để test với `dev-user`; owner được đọc động từ key, không hardcode trong Lambda.
+## Thứ tự
 
-Đã kiểm tra trong máy: 24 ca AWS mới, 58 ca repository/cấu hình/checker backend và 67 ca HTTP backend. Các ca đều dùng client giả hoặc SDK Stubber, không gọi dịch vụ AWS thật. Môi trường giới hạn chặn socket nội bộ của TestClient; 67 ca HTTP đã chạy thành công bên ngoài giới hạn đó. Chưa validate definition bằng API AWS hoặc nghiệm thu bản triển khai thật.
+1. Xác minh account/region, principal backend, bucket Upload/Quarantine, KMS, SNS và ARN workflow STANDARD; sao lưu code/config/policy đang chạy.
+2. Bổ sung IAM backend cho quota/lifecycle/activity và quét lại; role Lambda/Step Functions/EventBridge giữ quyền riêng.
+3. Cập nhật đồng bộ ba Lambda pipeline với pipeline_common.py có guard rescan và Thùng rác. Đối chiếu workflow JSONata, ctx.execution và source version.
+4. Cấu hình backend, gồm bucket cách ly và ARN, restart mọi worker; phát hành frontend từ repository.
+5. Triển khai cleanup, role và lịch ở trạng thái DISABLED. Kiểm tra upload/quota/report/rescan/trash/restore/purge/history/notifications rồi mới bật lịch.
 
-Các file trong thư mục này chưa được tự động áp dụng lên AWS. Không dùng bản repo để suy ra cấu hình thực tế đã thay đổi. Lấy code và cấu hình đang triển khai để đối chiếu trước khi cập nhật.
+Source chưa tự triển khai lên AWS. /health chỉ xác nhận readiness cấu hình/client, không chứng minh quyền AWS đủ.
 
-## Hợp đồng dữ liệu mới
+## Thành phần
 
-- Backend tạo metadata trước upload; Lambda chỉ cập nhật item đã tồn tại, đúng bucket/key/version, storage S3 và trạng thái cho phép. Không tự tạo item thiếu metadata.
-- Scan đọc chính xác version từ sự kiện, ghi `source_version_id`, `execution_id`, `scanned_at`, `status_time`, `findings_count`, `finding_types`, `scan_result`, `extraction_complete` và lý do khi cần. Workflow nhận summary và findings chỉ có type; không truyền location hoặc văn bản OCR.
-- `findings_count` là tổng phát hiện, độc lập giới hạn `MAX_FINDINGS`. Quarantine không tính lại hoặc ghi đè summary của Scan.
-- Copy/kiểm tra copy thất bại giữ `status=flagged`, ghi `quarantine_status=copy_failed` và lý do. Xóa nguồn lỗi dùng `quarantine_delete_failed`/`delete_failed`. Hoàn tất dùng `quarantined`/`completed`.
-- Cách ly lưu `quarantine_bucket`, `quarantine_key`, `quarantine_version_id` khi có, `source_version_id`, `kms_key`, `quarantined_at`; ghi bằng chứng bản copy trước khi xóa đúng version nguồn. Retry giữ vị trí bản đã copy và không copy lại khi bản đó đã xác minh.
-- Thành công sau lỗi cách ly xóa lý do lỗi cách ly cũ. Nếu Scan chỉ đọc được một phần nhưng đã phát hiện PII, vẫn giữ `flagged` rồi cách ly và giữ lý do trích xuất chưa đầy đủ.
-- Audit có owner/file, UTC milliseconds, action và execution ID. Action chuẩn: `scan_safe`, `scan_flagged`, `scan_unscanned`, `scan_error`, `quarantine_completed`, `quarantine_failed`, `quarantine_delete_failed`, `notify_safe`, `notify_quarantined`, `notify_failed`. Có thêm audit thành công theo kênh `notify_{result}_sns/webhook`.
-- Quarantine và Notify không thay đổi `upload_state`. Gửi thông báo lỗi không đổi kết quả safe/quarantined.
+| Thành phần | Yêu cầu |
+| --- | --- |
+| Upload bucket | Versioning Enabled; sự kiện Object Created/prefix uploads/ có version-id |
+| EventBridge | Đúng bucket nguồn; quyền StartExecution vào workflow; Quarantine không kích lại luồng upload |
+| Scan | FILES_TABLE/AUDIT_TABLE đúng; STRICT_DB_WRITE=true; S3 version read, Textract và files/audit |
+| Quarantine | QUARANTINE_BUCKET/KMS_KEY_ID đúng; copy/kiểm tra đích, xóa version nguồn, KMS và files/audit |
+| Notify | SNS_TOPIC_ARN, webhook tùy chọn; trạng thái giao nhận trên files và audit, Logs |
+| Step Functions | STANDARD; InvokeFunction ba Lambda; ctx.execution=$states.context.Execution.Id |
+| Cleanup | Python 3.12, handler.lambda_handler; FILES_TABLE/UPLOAD_BUCKET/QUARANTINE_BUCKET; role riêng, Logs |
+| Lịch cleanup | rate(1 hour), mặc định DISABLED; template có Lambda resource permission cho EventBridge |
 
-Các quy ước copy thất bại giữ flagged trong tài liệu này theo báo cáo tiến độ 2; một số tài liệu cũ ở `docs/` vẫn mô tả copy thất bại thành error và cần được cập nhật khi nhóm chốt toàn bộ tài liệu.
+Upload ZIP không tự sửa env/layer/IAM/runtime/timeout hoặc alias. Publish/trỏ alias đồng bộ nếu môi trường đang dùng version/alias. Không ghi đè bản cloud khác/newer mà chưa đối chiếu.
 
-## Cấu hình trên AWS cần đối chiếu
+## Giới hạn quét
 
-| Thành phần | Cập nhật |
-|---|---|
-| S3 Upload | Versioning Enabled; thử bằng file mới có version ID. Không đổi bucket hoặc xóa dữ liệu để test. |
-| EventBridge | Giữ rule đúng bucket Upload và prefix uploads/, truyền nguyên sự kiện có detail.bucket.name, detail.object.key và detail.object.version-id. Workflow trong repo nhận định dạng EventBridge. |
-| Scan | Đúng FILES_TABLE/AUDIT_TABLE; STRICT_DB_WRITE=true; quyền GetItem/UpdateItem files, GetItem/PutItem audit, GetObjectVersion nguồn và Textract. |
-| Quarantine | Đúng FILES_TABLE/AUDIT_TABLE, QUARANTINE_BUCKET, KMS_KEY_ID là key ARN hoặc key UUID thực tế; source không nhận KMS alias chưa phân giải. Quyền đọc DB, copy/đọc đích, xóa đúng version và KMS. |
-| Notify | Đúng FILES_TABLE/AUDIT_TABLE, SNS_TOPIC_ARN và WEBHOOK_URL nếu dùng; quyền GetItem/UpdateItem files để giữ trạng thái giao nhận và GetItem/PutItem audit. |
-| Step Functions | Cập nhật State_machine.json và role có lambda:InvokeFunction cho ba Lambda. Nhánh lỗi gọi lại writer với operation=record_failure, không thực hiện lại việc gửi thông báo hoặc xóa S3. |
+Upload dùng 100 MB = 100.000.000 byte; quota 1 GB/owner. Scan mặc định MAX_SCAN_BYTES=52.428.800 byte, OCR ảnh 10 MiB. Ngoài giới hạn/định dạng hỗ trợ phải unscanned/error, không nhận safe.
 
-ARN trong policy là tài nguyên hiện có của nhóm; xác minh tài khoản/region/bucket/key trước khi áp dụng. Backend dùng `DYNAMODB_FILES_TABLE`/`DYNAMODB_AUDIT_TABLE`, Lambda dùng `FILES_TABLE`/`AUDIT_TABLE`; tên biến khác nhau nhưng giá trị phải trỏ cùng bảng. Client DynamoDB của Lambda dùng region của Lambda; triển khai tại Sydney `ap-southeast-2` như backend.
+Ba ZIP pipeline không tự cài pypdf; dùng layer/dependency tương thích runtime nếu trích PDF trực tiếp. OCR thiếu trang/partial/rỗng không coi safe. Giữ timeout/memory đủ cho mẫu OCR nghiệm thu; source hiện phát hiện CCCD và số thẻ, không quét mã độc/mật khẩu/API key.
 
-Timeout Lambda Scan cần đủ cho OCR (ví dụ 150 giây để kiểm thử mục tiêu 120 giây); kiểm tra bộ nhớ, dependency và khả năng Textract thực tế. Scan giữ giới hạn 50 MiB, backend upload mặc định 100 MiB: file ngoài giới hạn Scan được ghi unscanned, không tự giảm giới hạn upload. PDF có ảnh/vùng scan chuyển qua OCR để tránh coi riêng lớp chữ là toàn bộ tài liệu. OCR rỗng, thiếu trang hoặc partial không nhận safe. Khả năng OCR và chất lượng phát hiện vẫn cần nghiệm thu với mẫu thật; source hiện có bộ phát hiện CCCD và số thẻ, chưa bổ sung detector mật khẩu/bí mật nghiệp vụ theo phạm vi mở rộng.
+## Dữ liệu và tính an toàn khi thử lại
 
-## Đóng gói và kiểm thử trong máy
+Giữ files owner_id/file_id, audit file_id/event_key và key uploads/{owner}/{file}/{filename}. Lambda chỉ cập nhật bản ghi đã tồn tại, đúng bucket/key/version/execution và đang active.
 
-Từ thư mục project chính, dùng Python có boto3 và pytest (venv backend hiện có):
+Copy cách ly lỗi giữ flagged; xóa nguồn lỗi là quarantine_delete_failed; hoàn tất mới quarantined. Ghi vị trí/bằng chứng copy trước khi xóa đúng version. Quarantine và Notify không thay upload_state.
+
+Quét lại tạo request/execution mới nhưng đọc đúng source_version_id; chặn execution cũ. Rác/purged không được Lambda ghi sống lại. Xóa vĩnh viễn xóa Versions/DeleteMarkers rồi mới lưu lịch sử và bỏ metadata sống; lỗi giữ quota.
+
+Thông báo có trạng thái riêng theo kênh/result (sending/sent/failed/unknown). Nếu gửi chưa rõ kết quả, source không tự gửi lại sending/unknown; vận hành đối chiếu receipt/log trước khi quyết định. Chưa có API quản trị tự động cho việc này.
+
+## Builder và kiểm tra hiện hành
+
+Từ gốc repo:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe AWS\scripts\build_packages.py
-.\backend\.venv\Scripts\python.exe -m pytest AWS\tests -q --basetemp=AWS/build/pytest-local
+.\backend\.venv\Scripts\python.exe AWS\tools\build_trash_cleanup.py
+.\backend\.venv\Scripts\python.exe AWS\tools\build_handoff.py --date 2026-10-31 --version 2.1
 ```
 
-Script tạo ba ZIP trong `AWS/build/`, mỗi ZIP có `handler.py` và `pipeline_common.py`. Boto3 được Lambda Python runtime cung cấp; nếu dùng pypdf để trích xuất trực tiếp thì thêm dependency tương thích runtime vào gói hoặc layer. ZIP source hiện tại không tự cài pypdf. Thư mục build bị bỏ qua trong Git.
+Từ backend/: .venv/Scripts/python.exe -m pytest -q. Từ frontend/: npm test, npm run build và npm run test:ui -- --project=chrome.
 
-Chỉ kiểm thử bằng client giả trong máy; không có lệnh tự triển khai hoặc tự gọi AWS trong script đóng gói/tests. Các kiểm tra local không thay thế việc validate definition trên AWS và chạy integration test sau triển khai.
+Không yêu cầu khôi phục script/test cũ. Bộ hiện hành có kiểm tra quota, report/rescan, guard và cleanup bằng client giả/Moto; nghiệm thu toàn pipeline cloud vẫn thực hiện riêng bằng dữ liệu tổng hợp được phép.
 
-## Thứ tự cập nhật môi trường đang chạy
-
-1. Lưu và đối chiếu code, handler, biến môi trường, layer, role, workflow và các version/alias đang dùng. Đợi các execution hiện tại hoàn tất trước khi thay đổi bộ mã phối hợp; các hàm không gắn version có thể được gọi bằng mã mới ngay trong execution cũ.
-2. Bổ sung IAM cần thiết từ các policy trong `IAM/`; giữ quyền ghi log, trust policy, EventBridge StartExecution và key policy KMS phù hợp. Các file policy riêng không thay thế toàn bộ cấu hình role.
-3. Đưa ba gói ZIP lên đúng Lambda, handler `handler.lambda_handler`; cấu hình biến môi trường và dependency như bảng trên. Nếu dùng alias, publish version và trỏ alias đúng bản cần kiểm thử.
-4. Validate rồi cập nhật workflow. Nếu workflow hoặc Lambda đang được gọi bằng alias/version ARN, cập nhật tham chiếu tương ứng; file trong repo hiện gọi tên Lambda không gắn version.
-5. Upload file mới qua backend cấu hình s3 + dynamodb + pipeline=true. Kiểm file sạch, PII giả, unsupported, copy lỗi, xóa lỗi, DB/audit lỗi và thông báo lỗi theo kế hoạch test của nhóm. Không tạo lỗi bằng cách sửa policy hoặc xóa object dùng chung đang phục vụ người khác.
-6. Đối chiếu cùng owner/file/version giữa API, DynamoDB, execution, S3 và audit. Kiểm email thật riêng; SNS MessageId chưa chứng minh thư đã đến hộp thư.
-
-Không cần tạo lại bảng để thêm thuộc tính. Item cũ không tự được bổ sung trường mới hoặc trạng thái giao nhận. Ưu tiên nghiệm thu bằng file upload mới; đối soát dữ liệu cũ trước khi replay để tránh gửi lại thông báo đã gửi bằng code cũ.
-
-## Giới hạn thử lại và thông báo
-
-Notify giữ trạng thái riêng `notify_{safe|quarantined}_{sns|webhook}_state` trên item files, cùng `_token`, `_at`, `_sent_at`, `_receipt`. Trạng thái có thể là sending/sent/failed/unknown. Conditional claim chặn hai lượt cùng gửi, kênh sent được bỏ qua khi retry, lỗi từ chối rõ ràng có thể thử lại. Không lưu webhook URL hay nội dung PII vào audit.
-
-Nếu timeout hoặc không chắc dịch vụ ngoài đã nhận, giữ unknown; nếu process chết/DB lỗi sau gửi, có thể còn sending. Source không tự gửi lại hai trạng thái này để tránh trùng. Admin cần đối chiếu CloudWatch, SNS message/log hoặc hệ thống nhận, rồi quyết định đánh dấu sent (kèm receipt) hay failed để cho phép retry. Việc đối soát này chưa có API quản trị tự động. SNS/webhook không được bảo đảm exactly-once ở mọi trường hợp.
-
-Execution ID bảo vệ việc ghi kết quả của lượt đang xử lý. Với file còn scanning/flagged sau một execution thất bại, ưu tiên redrive/retry cùng execution; chuyển quyền xử lý sang execution khác cần đối soát và mở khóa execution_id có kiểm soát. Source không tự tiếp quản một lượt chưa xác định kết quả. File đã safe/quarantined có thể replay kết quả và sửa audit thiếu, không quét lại hoặc hạ trạng thái.
+Gói handoff giữ local, có manifest/SHA256 và không chứa .env thật hoặc credentials. Khi rollback, tắt lịch/quét lại và khôi phục code/config đã sao lưu; nội dung đã xóa vĩnh viễn không khôi phục bằng rollback.

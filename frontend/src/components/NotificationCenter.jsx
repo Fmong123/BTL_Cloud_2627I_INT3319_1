@@ -45,7 +45,16 @@ export default function NotificationCenter() {
     w.markRead(event.id);
     setOpen(false);
     if (event.fileId) {
-      navigate('/files');
+      const file = [...(w.allFiles || w.files), ...(w.activityFiles || [])].find(
+        (item) => item.id === event.fileId || item.remoteId === event.fileId,
+      );
+      navigate(
+        file?.lifecycleState === 'purged'
+          ? '/uploads'
+          : ['trashed', 'deleting'].includes(file?.lifecycleState)
+            ? '/trash'
+            : '/files',
+      );
       w.inspect(event.fileId);
     } else {
       // A grouped upload event represents several files rather than one detail drawer.
@@ -83,7 +92,7 @@ export default function NotificationCenter() {
               <h2 tabIndex={-1} ref={heading}>
                 Thông báo
               </h2>
-              <p>Cập nhật trong phiên hiện tại</p>
+              <p>Thông báo đã lưu · trạng thái đọc được ghi nhớ</p>
             </div>
             <button
               className="icon-button"
@@ -115,6 +124,11 @@ export default function NotificationCenter() {
             </button>
           </div>
           <div className="notification-events">
+            {w.notificationStorageError && (
+              <p className="banner warning" role="status">
+                {w.notificationStorageError}
+              </p>
+            )}
             {visible.length ? (
               visible.map((event) => (
                 <article

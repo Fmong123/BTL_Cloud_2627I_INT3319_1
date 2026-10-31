@@ -132,6 +132,7 @@ class Launcher:
             print(" [6] Chọn AWS profile")
             print(" [7] Bật / tắt cờ pipeline quét")
             print(" [8] Bỏ các giá trị launcher ghi đè, đọc lại ENV (giữ chế độ)")
+            print(" [9] Chỉnh ARN workflow quét lại")
             print(" [0] Quay lại")
             choice = ask("Chọn: ")
             if choice == "0":
@@ -153,6 +154,7 @@ class Launcher:
                     self.edit_fields([("MAYSEC_LOCAL_STORAGE_DIR", "Thư mục, tương đối tính từ backend/")])
                 elif choice == "5":
                     self.edit_fields([("S3_BUCKET_NAME", "Bucket S3"), ("AWS_REGION", "Region S3"),
+                                      ("MAYSEC_QUARANTINE_BUCKET_NAME", "Bucket cách ly"),
                                       ("DYNAMODB_FILES_TABLE", "Bảng files"), ("DYNAMODB_AUDIT_TABLE", "Bảng audit"),
                                       ("DYNAMODB_USERS_TABLE", "Bảng users")])
                     print("DynamoDB của project dùng cố định ap-southeast-2.")
@@ -168,6 +170,9 @@ class Launcher:
                 elif choice == "8":
                     if ask("Bỏ ghi đè của launcher? (y/N): ").lower() == "y":
                         self.update(lambda d: d.update(overrides={}, web_port=5173, api_port=8000, max_file_mb=None))
+                elif choice == "9":
+                    print("Quét lại chỉ có hiệu lực khi dùng S3 + DynamoDB và pipeline đã bật.")
+                    self.edit_fields([("MAYSEC_RESCAN_STATE_MACHINE_ARN", "ARN workflow STANDARD (Sydney)")])
                 else:
                     raise ValueError("Lựa chọn không hợp lệ.")
             attempt(action)

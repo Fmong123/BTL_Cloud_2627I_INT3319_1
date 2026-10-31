@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIB = 1024 * 1024
@@ -32,12 +33,20 @@ class Settings:
     s3_max_concurrency: int = 2
     metadata_mode: str = "disabled"
     scan_pipeline_enabled: bool = False
+    rescan_state_machine_arn: str = ""
+    quarantine_bucket_name: str = ""
     dynamodb_region: str = "ap-southeast-2"
     dynamodb_files_table: str = "securedrive-files"
     dynamodb_audit_table: str = "securedrive-audit-log"
     dynamodb_users_table: str = "securedrive-users"
 
     def __post_init__(self) -> None:
+        if self.rescan_state_machine_arn and (
+            not self.scan_pipeline_enabled or not re.fullmatch(
+                r"arn:aws:states:ap-southeast-2:\d{12}:stateMachine:[A-Za-z0-9_-]+", self.rescan_state_machine_arn
+            )
+        ):
+            raise ValueError("Rescan requires the S3 pipeline and an unqualified Sydney state machine ARN")
         if type(self.scan_pipeline_enabled) is not bool:
             raise ValueError("MAYSEC_SCAN_PIPELINE_ENABLED must be a boolean")
         if self.scan_pipeline_enabled and (
@@ -81,6 +90,7 @@ class Settings:
             directory = BACKEND_DIR / directory
         return cls(
             storage_mode=os.getenv("MAYSEC_STORAGE_MODE", "unconfigured").strip().lower(),
+            quarantine_bucket_name=os.getenv("MAYSEC_QUARANTINE_BUCKET_NAME", "").strip(),
             max_file_size_bytes=int(os.getenv("MAYSEC_MAX_FILE_SIZE_BYTES", str(MAX_UPLOAD_BYTES))),
             local_storage_dir=directory.resolve(),
             cors_origins=tuple(origin.strip() for origin in os.getenv(
@@ -97,6 +107,7 @@ class Settings:
             s3_max_concurrency=int(os.getenv("MAYSEC_S3_MAX_CONCURRENCY", "2")),
             metadata_mode=os.getenv("MAYSEC_METADATA_MODE", "disabled").strip().lower(),
             scan_pipeline_enabled=env_bool("MAYSEC_SCAN_PIPELINE_ENABLED"),
+            rescan_state_machine_arn=os.getenv("MAYSEC_RESCAN_STATE_MACHINE_ARN", "").strip(),
             dynamodb_region=os.getenv("DYNAMODB_REGION", "ap-southeast-2").strip(),
             dynamodb_files_table=os.getenv(
                 "DYNAMODB_FILES_TABLE", "securedrive-files"

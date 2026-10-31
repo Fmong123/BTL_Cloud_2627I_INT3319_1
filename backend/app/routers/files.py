@@ -15,16 +15,19 @@ from fastapi.responses import Response, StreamingResponse
 from ..config import MB, Settings
 from ..db import DynamoDBConflict, DynamoDBError, file_key, utc_timestamp
 from ..dependencies import (
-    get_audit_log, get_dev_owner_id, get_file_metadata, get_settings, get_storage,
+    get_audit_log, get_dev_owner_id, get_file_metadata, get_settings, get_storage, get_rescanner,
 )
 from ..schemas.file import (
     ErrorResponse, FileListItem, FileListResponse, FileStatusResponse, UploadResponse,
     FilePreferencesRequest, FilePreferencesResponse,
+    FileScanReport, RescanRequest,
 )
 from ..services.audit_log import AuditLogRepository
 from ..services.file_metadata import FileMetadataRepository
+from ..services.quota import reserve_upload, usage, QuotaExceeded, QuotaBusy
+from ..services.lifecycle import state as lifecycle_state
 from ..services.storage import (
-    Storage, StorageFailure, StorageNotFound, StorageTooLarge, StorageUnavailable,
+    Storage, LocalStorage, StorageFailure, StorageNotFound, StorageTooLarge, StorageUnavailable,
 )
 
 router = APIRouter()
@@ -131,6 +134,7 @@ def public_file(item: dict, owner_id: str) -> FileListItem:
         return FileListItem(**{
             **item, **scan_summary_aliases(item),
             "id": item["file_id"], "scan_status": item["status"],
+            "original_name": item.get("display_name") or item["original_name"],
             # Transitional alias used by the deployed Scan handoff. Canonical wins.
             "status_reason": item.get("status_reason") or item.get("reason"),
         })
@@ -178,7 +182,7 @@ def safe_filename(value: str) -> str:
 
 
 @router.post("/upload", status_code=201, response_model=UploadResponse, response_model_exclude_none=True, responses={
-    code: {"model": ErrorResponse} for code in (400, 413, 422, 502, 503)
+    code: {"model": ErrorResponse} for code in (400, 413, 422, 429, 502, 503)
 })
 def upload_file(
     file: UploadFile = File(...),
@@ -206,6 +210,8 @@ def upload_file(
         metadata_enabled = settings.metadata_mode == "dynamodb"
         if metadata_enabled:
             require_metadata(settings, metadata, audit, writing=True)
+        elif storage.mode == "s3":
+            raise HTTPException(503, "Cần bật metadata để kiểm tra hạn mức 1 GB trước khi tải lên S3")
         file_id = str(uuid4())
         key = f"uploads/{owner_id}/{file_id}/{safe_filename(file.filename)}"
         content_type = file.content_type or "application/octet-stream"
@@ -214,19 +220,24 @@ def upload_file(
             created = False
             timestamp = utc_timestamp()
             try:
-                record = metadata.create_upload_record(
-                    owner_id=owner_id, file_id=file_id, original_name=file.filename,
-                    key=key, size_bytes=size, content_type=content_type, storage=storage.mode,
-                    upload_bucket=settings.s3_bucket_name if storage.mode == "s3" else None,
-                    created_at=timestamp,
-                    pipeline_enabled=settings.scan_pipeline_enabled,
-                )
+                with reserve_upload(metadata, owner_id, size) as lease:
+                    record = metadata.create_upload_record(
+                        owner_id=owner_id, file_id=file_id, original_name=file.filename,
+                        key=key, size_bytes=size, content_type=content_type, storage=storage.mode,
+                        upload_bucket=settings.s3_bucket_name if storage.mode == "s3" else None,
+                        created_at=timestamp, pipeline_enabled=settings.scan_pipeline_enabled,
+                        quota_lease=lease,
+                    )
                 created = True
                 audit.write_event(
                     owner_id=owner_id, file_id=file_id, event_id=f"{file_id}:upload_started",
                     occurred_at=timestamp, action="upload_started", actor="fastapi",
                     details={"storage": storage.mode, "key": key, "size_bytes": size},
                 )
+            except QuotaExceeded:
+                raise HTTPException(413, "Không đủ dung lượng trong gói miễn phí 1 GB") from None
+            except QuotaBusy:
+                raise HTTPException(429, "Đang giữ chỗ dung lượng cho lượt tải khác — hãy thử lại", headers={"Retry-After": "2"}) from None
             except DynamoDBError as exc:
                 if created:
                     record_upload_failure(
@@ -239,6 +250,11 @@ def upload_file(
             result = storage.upload(file.file, key=key, content_type=content_type)
             if result.key != key or result.storage not in {"local", "s3"} or result.storage != storage.mode:
                 raise StorageFailure("Adapter returned an invalid result")
+        except QuotaExceeded:
+            if metadata_enabled:
+                record_upload_failure(metadata, audit, owner_id, file_id, unknown=False,
+                                      reason="quota_exceeded", pipeline_enabled=settings.scan_pipeline_enabled)
+            raise HTTPException(413, "Không đủ dung lượng trong gói miễn phí 1 GB") from None
         except StorageUnavailable:
             if metadata_enabled:
                 record_upload_failure(metadata, audit, owner_id, file_id, unknown=False, reason="storage_unavailable", pipeline_enabled=settings.scan_pipeline_enabled)
@@ -278,6 +294,26 @@ def upload_file(
         file.file.close()
 
 
+@router.get("/storage/usage")
+def get_storage_usage(
+    settings: Settings = Depends(get_settings),
+    storage: Storage = Depends(get_storage),
+    metadata: FileMetadataRepository | None = Depends(get_file_metadata),
+    owner_id: str = Depends(get_dev_owner_id),
+):
+    try:
+        if settings.metadata_mode == "dynamodb":
+            require_metadata(settings, metadata)
+            return usage(metadata, owner_id)
+        if isinstance(storage, LocalStorage):
+            return storage.storage_usage(owner_id)
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    except (StorageFailure, StorageUnavailable, OSError):
+        raise HTTPException(503, "Chưa đọc được dung lượng lưu trữ") from None
+    raise HTTPException(503, "Chưa có dịch vụ kiểm tra hạn mức lưu trữ")
+
+
 @router.get("/files", response_model=FileListResponse, responses={
     code: {"model": ErrorResponse} for code in (400, 422, 503)
 })
@@ -287,6 +323,7 @@ def list_files(
     settings: Settings = Depends(get_settings),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
     owner_id: str = Depends(get_dev_owner_id),
+    area: Literal["active", "trash", "all"] = Query("active"),
 ) -> FileListResponse:
     require_metadata(settings, metadata)
     start_key = decode_cursor(cursor, owner_id)
@@ -295,7 +332,8 @@ def list_files(
     except DynamoDBError as exc:
         raise metadata_failure(exc) from None
     return FileListResponse(
-        items=[public_file(item, owner_id) for item in page.items],
+        items=[public_file(item, owner_id) for item in page.items if area == "all"
+               or ((lifecycle_state(item) != "active") if area == "trash" else lifecycle_state(item) == "active")],
         next_cursor=encode_cursor(page.next_key),
     )
 
@@ -328,6 +366,8 @@ def get_file_status(
         updated_at=view.updated_at, status_reason=view.status_reason,
         findings_count=view.findings_count, finding_types=view.finding_types,
         scanned_at=view.scanned_at, quarantined_at=view.quarantined_at,
+        **{k: getattr(view, k) for k in ("lifecycle_state", "lifecycle_updated_at", "trashed_at",
+            "trash_expires_at", "display_name", "name_updated_at")},
     )
 
 
@@ -346,6 +386,63 @@ def owned_file(metadata, owner_id: str, file_id: str) -> tuple[dict, FileListIte
     if view.id != file_id:
         raise HTTPException(503, "Metadata của tệp không khớp ID yêu cầu")
     return item, view
+
+
+def scan_report(item, view):
+    scan = item.get("scan_result")
+    counts = scan.get("finding_counts") if isinstance(scan, dict) else None
+    valid = isinstance(counts, dict) and all(
+        isinstance(name, str) and re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", name)
+        and type(count) is int and count >= 0 for name, count in counts.items()
+    )
+    complete = bool(valid and sum(counts.values()) == view.findings_count)
+    reason = item.get("scan_reason") or view.status_reason
+    # Never expose raw OCR text, findings values/locations, SDK errors or the nested document.
+    if reason and not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", reason):
+        reason = "scan_detail_unavailable"
+    return FileScanReport(**view.model_dump(),
+        finding_counts=[{"type": name, "count": count} for name, count in sorted(counts.items())] if valid else [],
+        counts_complete=complete,
+        extraction_complete=item.get("extraction_complete") if type(item.get("extraction_complete")) is bool else None,
+        scan_reason=reason,
+        rescan_requested_at=item.get("rescan_requested_at"), rescan_request_id=item.get("scan_request_id"),
+        rescan_dispatch=item.get("rescan_dispatch"))
+
+
+@router.get("/files/{file_id}/scan-report", response_model=FileScanReport)
+def get_scan_report(
+    file_id: str, settings: Settings = Depends(get_settings),
+    metadata: FileMetadataRepository | None = Depends(get_file_metadata),
+    owner_id: str = Depends(get_dev_owner_id),
+):
+    require_metadata(settings, metadata)
+    item, view = owned_file(metadata, owner_id, file_id)
+    return scan_report(item, view)
+
+
+@router.post("/files/{file_id}/rescan", status_code=202, response_model=FileScanReport)
+def rescan_file(
+    file_id: str, request: RescanRequest,
+    settings: Settings = Depends(get_settings), storage: Storage = Depends(get_storage),
+    metadata: FileMetadataRepository | None = Depends(get_file_metadata),
+    audit: AuditLogRepository | None = Depends(get_audit_log),
+    owner_id: str = Depends(get_dev_owner_id), rescanner=Depends(get_rescanner),
+):
+    require_metadata(settings, metadata, audit, writing=True)
+    if not settings.scan_pipeline_enabled or rescanner is None:
+        raise HTTPException(503, "Chưa cấu hình dịch vụ quét lại")
+    item, view = owned_file(metadata, owner_id, file_id)
+    if view.lifecycle_state != "active":
+        raise HTTPException(409, "Khôi phục tệp khỏi Thùng rác trước khi quét lại")
+    content_key(item, view, owner_id, settings, storage)
+    if view.storage != "s3" or getattr(storage, "client", None) is None:
+        raise HTTPException(503, "Quét lại cần bản gốc trên S3")
+    try:
+        rescanner.request(item, str(request.request_id), metadata, storage, audit)
+        item, view = owned_file(metadata, owner_id, file_id)
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    return scan_report(item, view)
 
 
 @router.patch("/files/{file_id}/preferences", response_model=FilePreferencesResponse, responses={
@@ -431,7 +528,7 @@ def get_file_content(
 ) -> Response:
     require_metadata(settings, metadata)
     item, view = owned_file(metadata, owner_id, file_id)
-    if view.upload_state != "uploaded" or view.scan_status != "safe":
+    if view.lifecycle_state != "active" or view.upload_state != "uploaded" or view.scan_status != "safe":
         raise HTTPException(409, "Tệp chỉ được xem hoặc tải xuống khi đã tải xong và quét an toàn")
     reader = getattr(storage, "read", None)
     if not storage.configured or not callable(reader) or not getattr(storage, "content_readable", True):

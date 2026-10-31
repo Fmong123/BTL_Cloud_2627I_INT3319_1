@@ -1,7 +1,7 @@
 """File metadata repository; does not upload bytes or write audit automatically."""
 
 from ..db import (
-    QueryPage, call_dynamodb, deserialize_item, file_key, query_page,
+    DynamoDBConflict, QueryPage, call_dynamodb, deserialize_item, file_key, query_page,
     query_parameters, require_table, require_text, serialize_item, utc_timestamp,
 )
 
@@ -17,6 +17,7 @@ class FileMetadataRepository:
         size_bytes: int, content_type: str, storage: str,
         upload_bucket: str | None = None, pipeline_enabled: bool = False,
         created_at: str | None = None, record_type: str | None = None,
+        quota_lease: dict | None = None,
     ) -> dict:
         identity = file_key(owner_id, file_id)
         require_text(original_name, "original_name")
@@ -51,12 +52,21 @@ class FileMetadataRepository:
             record["upload_bucket"] = upload_bucket
         if record_type is not None:
             record["record_type"] = require_text(record_type, "record_type")
-        call_dynamodb(
-            self.client, "put_item", TableName=self.table_name,
-            Item=serialize_item(record),
-            ConditionExpression="attribute_not_exists(#owner) AND attribute_not_exists(#file)",
-            ExpressionAttributeNames={"#owner": "owner_id", "#file": "file_id"},
-        )
+        put = dict(TableName=self.table_name, Item=serialize_item(record),
+                   ConditionExpression="attribute_not_exists(#owner) AND attribute_not_exists(#file)",
+                   ExpressionAttributeNames={"#owner": "owner_id", "#file": "file_id"})
+        if quota_lease:
+            import time
+            call_dynamodb(self.client, "transact_write_items", TransactItems=[
+                {"ConditionCheck": {
+                    "TableName": self.table_name, "Key": quota_lease["key"],
+                    "ConditionExpression": "#token = :token AND #expires >= :now",
+                    "ExpressionAttributeNames": {"#token": "token", "#expires": "expires"},
+                    "ExpressionAttributeValues": serialize_item({":token": quota_lease["token"], ":now": int(time.time())}),
+                }}, {"Put": put},
+            ])
+        else:
+            call_dynamodb(self.client, "put_item", **put)
         return record
 
     def get_file(self, owner_id: str, file_id: str) -> dict | None:
@@ -81,6 +91,55 @@ class FileMetadataRepository:
     ) -> dict:
         """Only update upload fields, even if a scanner has already marked the file safe."""
         return self._mark_upload(owner_id, file_id, "uploaded", updated_at=updated_at)
+
+    def claim_rescan(self, owner_id, file_id, previous, *, request_id, execution, version):
+        timestamp = utc_timestamp()
+        fields = {
+            "status": "scanning", "updated_at": timestamp, "status_time": f"{timestamp}#{file_id}",
+            "execution_id": execution, "scan_request_id": request_id,
+            "rescan_requested_at": timestamp, "rescan_dispatch": "pending",
+            "source_version_id": version, "findings_count": 0, "finding_types": [],
+        }
+        names = {"#upload": "upload_state", "#previous": "updated_at", "#status": "status", "#life": "lifecycle_state"}
+        values = {":uploaded": "uploaded", ":previous": previous["updated_at"], ":status": previous["status"], ":active": "active"}
+        sets = []
+        for index, (name, value) in enumerate(fields.items()):
+            names[f"#s{index}"] = name
+            values[f":s{index}"] = value
+            sets.append(f"#s{index} = :s{index}")
+        remove = ["scan_result", "status_reason", "reason", "scan_reason", "extraction_complete", "scanned_at"]
+        for index, name in enumerate(remove):
+            names[f"#r{index}"] = name
+        response = call_dynamodb(self.client, "update_item", TableName=self.table_name,
+            Key=serialize_item(file_key(owner_id, file_id)),
+            UpdateExpression="SET " + ", ".join(sets) + " REMOVE " + ", ".join(f"#r{i}" for i in range(len(remove))),
+            ConditionExpression="#upload = :uploaded AND #previous = :previous AND #status = :status AND (attribute_not_exists(#life) OR #life = :active)",
+            ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values), ReturnValues="ALL_NEW")
+        return deserialize_item(response["Attributes"])
+
+    def set_rescan_dispatch(self, owner_id, file_id, request_id, state):
+        names = {"#request": "scan_request_id", "#dispatch": "rescan_dispatch"}
+        values = {":request": request_id, ":state": state}
+        expression = "SET #dispatch = :state"
+        condition = "#request = :request"
+        if state == "unknown":
+            # A late timeout must not undo another dispatch's acknowledgement.
+            condition += " AND #dispatch IN (:pending, :unknown)"
+            values.update({":pending": "pending", ":unknown": "unknown"})
+        if state == "failed":
+            names.update({"#status": "status", "#reason": "status_reason", "#updated": "updated_at", "#time": "status_time"})
+            stamp = utc_timestamp()
+            values.update({":scanning": "scanning", ":error": "error", ":reason": "rescan_start_failed", ":at": stamp, ":time": f"{stamp}#{file_id}"})
+            condition += " AND #status = :scanning"
+            expression += ", #status = :error, #reason = :reason, #updated = :at, #time = :time"
+        try:
+            call_dynamodb(self.client, "update_item", TableName=self.table_name,
+                Key=serialize_item(file_key(owner_id, file_id)), UpdateExpression=expression,
+                ConditionExpression=condition, ExpressionAttributeNames=names,
+                ExpressionAttributeValues=serialize_item(values))
+        except DynamoDBConflict:
+            if state != "unknown":
+                raise
 
     def set_starred(self, owner_id: str, file_id: str, starred: bool) -> dict:
         """Atomically change preferences without touching the scanner's version/state."""

@@ -1,8 +1,12 @@
+> This document covers favorites and content. The complete current endpoint/lifecycle/activity contract is [api-contract.md](api-contract.md); installation is in [api-guide.md](api-guide.md).
+
 # Phase 3: file preferences and content
 
 The application still uses the development owner dependency (`dev-user`). Each
 request looks up metadata using that owner and the path file ID. These endpoints
-do not accept storage locations from the browser and do not start a scan.
+do not accept storage locations from the browser. The new explicit rescan route
+starts a configured workflow; see [quota-scan.md](quota-scan.md) for current quota,
+report and rescan contracts and deployment requirements.
 
 ## Capabilities
 

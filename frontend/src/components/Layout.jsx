@@ -22,6 +22,7 @@ import {
   Star,
   Sun,
   X,
+  Trash2,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { isBusy } from '../utils/workspace.js';
@@ -32,9 +33,7 @@ import NotificationCenter from './NotificationCenter.jsx';
 import FileDetail from './FileDetail.jsx';
 import FilePreview from './FilePreview.jsx';
 import SidebarStorage from './SidebarStorage.jsx';
-import '../shell-phase2.css';
-import '../phase3-shell.css';
-import '../library-layout.css';
+import '../shell.css';
 
 export const themeLabels = {
   light: 'Sáng',
@@ -45,6 +44,7 @@ const navigation = [
   ['/overview', 'Tổng quan', LayoutDashboard],
   ['/files', 'Tệp của tôi', HardDrive],
   ['/uploads', 'Hoạt động xử lý', CloudUpload],
+  ['/trash', 'Thùng rác', Trash2],
   ['/settings', 'Cài đặt', Settings2],
   ['/help', 'Hướng dẫn', CircleHelp],
 ];
@@ -62,7 +62,7 @@ export default function Layout() {
   const headerSearchRef = useRef(null);
   const userMenuRef = useRef(null);
   const filesPage = location.pathname === '/files';
-  const workspacePage = ['/files', '/overview', '/uploads'].includes(location.pathname);
+  const workspacePage = ['/files', '/overview', '/uploads', '/trash'].includes(location.pathname);
   const searchValue = filesPage ? searchParams.get('q') || '' : '';
   const [themeOpen, setThemeOpen] = useState(false);
   const themeRef = useRef(null);
@@ -93,6 +93,7 @@ export default function Layout() {
   const counts = {
     '/files': w.files.length,
     '/uploads': active.length || null,
+    '/trash': w.trashFiles?.length || null,
     starred: w.files.filter((file) => file.starred).length || null,
     quarantine: w.files.filter((file) => file.scanStatus === 'quarantined').length || null,
   };
@@ -245,11 +246,12 @@ export default function Layout() {
                 LỐI TẮT
               </span>
               {shortcuts.map(([key, path, label, Icon]) => navItem(path, label, Icon, key))}
+              {navItem('/trash', 'Thùng rác', Trash2)}
             </div>
             <SidebarStorage collapsed={collapsed} />
           </div>
           <div className="sidebar-bottom">
-            {navigation.slice(3).map(([path, label, Icon]) => navItem(path, label, Icon))}
+            {navigation.slice(4).map(([path, label, Icon]) => navItem(path, label, Icon))}
           </div>
         </nav>
       </aside>
@@ -365,8 +367,8 @@ export default function Layout() {
           )}
           {w.storageFailed && (
             <p className="banner warning" role="status">
-              Không thể ghi nhớ tùy chọn trên trình duyệt này. Bạn vẫn có thể dùng trong phiên hiện
-              tại.
+              Không thể ghi nhớ tùy chọn hoặc lịch sử trên trình duyệt này. Bạn vẫn có thể dùng
+              trong phiên hiện tại.
             </p>
           )}
           <Outlet />
@@ -512,7 +514,8 @@ export default function Layout() {
       {w.previewId ? (
         <FilePreview />
       ) : (
-        !workspacePage && w.inspectedId && <FileDetail initialTab={w.inspectedTab} />
+        (!workspacePage || location.pathname === '/trash') &&
+        w.inspectedId && <FileDetail initialTab={w.inspectedTab} />
       )}
       {w.duplicates.length > 0 && (
         <Modal title="Có thể bạn đã thêm các tệp này" onClose={() => w.resolveDuplicates(false)}>

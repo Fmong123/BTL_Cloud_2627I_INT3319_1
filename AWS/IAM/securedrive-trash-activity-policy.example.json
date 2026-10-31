@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "FileTrashHistoryAndNotifications",
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:UpdateItem", "dynamodb:PutItem", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:ACCOUNT_ID:table/securedrive-files"
+    },
+    {
+      "Sid": "ListOwnedVersionsForConfirmedErasure",
+      "Effect": "Allow",
+      "Action": "s3:ListBucketVersions",
+      "Resource": ["arn:aws:s3:::UPLOAD_BUCKET", "arn:aws:s3:::QUARANTINE_BUCKET"],
+      "Condition": {"StringLike": {"s3:prefix": ["uploads/*/*/"]}}
+    },
+    {
+      "Sid": "EraseOwnedObjectVersions",
+      "Effect": "Allow",
+      "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": ["arn:aws:s3:::UPLOAD_BUCKET/uploads/*", "arn:aws:s3:::QUARANTINE_BUCKET/uploads/*"]
+    }
+  ]
+}

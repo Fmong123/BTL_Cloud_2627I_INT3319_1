@@ -6,7 +6,7 @@ Nhấp đúp **`MaySec.cmd` ở thư mục gốc project**. Launcher mở menu t
 
 1. Chọn **4 → 1** để kiểm tra môi trường. Nếu thiếu thư viện, dùng **4 → 2**; nếu thiếu pnpm, dùng **4 → 4** để cài pnpm vào riêng `launcher/runtime/tools/`.
 2. Chọn **2** để chọn Demo, Local, Local + DynamoDB hoặc S3 + DynamoDB.
-3. Chọn **3 → 1** để xem cấu hình hiệu lực và nguồn của từng giá trị. Có thể chỉnh port, dung lượng, thư mục local, bucket, region, tên bảng, profile và cờ pipeline trong menu này.
+3. Chọn **3 → 1** để xem cấu hình hiệu lực và nguồn của từng giá trị. Có thể chỉnh port, dung lượng, thư mục local, bucket nguồn/cách ly, region, tên bảng, profile, cờ pipeline và ARN quét lại trong menu này.
 4. Với chế độ AWS, chọn **5** để tạo/chọn profile, đăng nhập và kiểm tra danh tính. Không cần AWS để chạy Demo/Local.
 5. Chọn **1** để khởi động. Launcher chờ API và frontend sẵn sàng rồi mở trình duyệt. Các dịch vụ chạy đồng thời dưới sự quản lý của cùng một cửa sổ.
 6. **6** mở trạng thái/log và các lối mở nhanh. **7** khởi động lại với cấu hình mới. **8** dừng dịch vụ, giữ menu. **0** thoát và dừng dịch vụ.
@@ -23,7 +23,6 @@ launcher/
   environment.py            Kiểm tra/cài dependency
   aws_profiles.py           Profile, xác thực, kiểm tra AWS
   project.py                Server, Job Object, khóa, log
-  tests/                    Kiểm thử launcher
   runtime/                  Cấu hình riêng, log, khóa, pnpm riêng (Git bỏ qua)
 ```
 
@@ -38,13 +37,15 @@ Thứ tự xử lý: **mặc định → file ENV → biến terminal → giá t
 - Backend: đọc `backend/.env`.
 - Frontend: đọc `.env`, `.env.local`, `.env.development`, `.env.development.local` trong `frontend/`, theo thứ tự này. `.env.example` là tài liệu mẫu, không được tự nạp.
 - Chế độ quyết định `VITE_UPLOAD_MODE`, storage và metadata. Launcher đồng bộ URL API, CORS của port frontend và giới hạn byte/MB. Không cần tạo `frontend/.env.local` để chạy bằng launcher.
-- Nếu cả hai bên có giới hạn khác nhau, backend được ưu tiên; nếu backend không cấu hình riêng thì dùng frontend. Giá trị dung lượng bạn lưu trên launcher ưu tiên cả hai. Giữ quy ước hiện tại của app: 1 MB trong UI = 1048576 byte.
+- Nếu cả hai bên có giới hạn khác nhau, backend được ưu tiên; nếu backend không cấu hình riêng thì dùng frontend. Giá trị dung lượng bạn lưu trên launcher ưu tiên cả hai. Giữ quy ước hiện tại của app: 1 MB trong UI = 1.000.000 byte; tối đa 100 MB/tệp.
 - Chỉ nạp các biến được ứng dụng hỗ trợ, không chuyển toàn bộ nội dung ENV sang frontend. Key/secret/token AWS từ terminal không được kế thừa vào các server. AWS của backend được chọn bằng profile; frontend không nhận cấu hình AWS.
 - Các giá trị không ghi đè được đọc lại từ ENV mỗi lần chạy. Thay đổi cấu hình không thay đổi tiến trình đang chạy; menu nhắc khởi động lại.
 - ENV hỗ trợ `KEY=value`, `export KEY=value`, BOM UTF-8, nháy đơn/đôi và comment. Không hỗ trợ giá trị nhiều dòng hoặc nội suy `${...}`: launcher báo rõ dòng cần sửa, không âm thầm nạp sai hoặc thực thi nội dung file.
 - `launcher/runtime/settings.json` chỉ chứa các trường cấu hình cho phép, không chứa credentials. File lỗi được giữ để kiểm tra, không tự ghi đè mất dữ liệu.
 
-Backend vẫn chạy bình thường bằng lệnh Uvicorn cũ và `--env-file .env` khi không dùng launcher.
+Menu 3 → 5 chỉnh bucket cách ly; 3 → 9 chỉnh ARN workflow STANDARD. Hai giá trị được đọc từ .env/terminal/override giống các cấu hình khác. Khi chọn Local/Demo hoặc tắt pipeline, ARN hiệu lực để trống; giá trị đã lưu được giữ để dùng lại khi bật S3 pipeline.
+
+Backend vẫn chạy bình thường bằng lệnh Uvicorn và `--env-file .env` khi không dùng launcher.
 
 ## AWS / profile
 
@@ -82,18 +83,4 @@ Từ gốc project:
 
 Ba lựa chọn trên không cài thư viện, không mở server và không xác thực/gọi AWS. `--check` trả mã 1 nếu có mục môi trường cần xử lý; AWS CLI không bắt buộc cho Local/Demo.
 
-Kiểm thử cấu hình, profile giả, khóa, port và cây tiến trình (không gọi AWS):
-
-```powershell
-python -m unittest discover -s launcher/tests -p test_launcher.py -v
-```
-
-Kiểm thử tích hợp chạy Vite + FastAPI thật ở các port rảnh, upload file nhỏ vào thư mục tạm, kiểm tra CORS, chuyển sang Demo rồi dọn server (không gọi AWS):
-
-```powershell
-$env:MAYSEC_LAUNCHER_SMOKE = '1'
-python -m unittest discover -s launcher/tests -p test_local_smoke.py -v
-Remove-Item Env:MAYSEC_LAUNCHER_SMOKE
-```
-
-Các test kết nối localhost cần môi trường cho phép loopback; sandbox chặn mạng sẽ khiến chúng thất bại dù server đã mở. Test thư mục runtime được tự dọn, không dùng dữ liệu upload hay profile AWS thật.
+Không yêu cầu các script/test launcher cũ. Kiểm tra cấu hình bằng --show-config; nghiệm thu chức năng theo docs/api-guide.md và handoff.

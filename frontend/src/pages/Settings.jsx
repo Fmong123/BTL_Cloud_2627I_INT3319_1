@@ -199,7 +199,8 @@ export default function Settings() {
               <span>
                 <strong>Trải nghiệm giao diện</strong>
                 <small>
-                  Mô phỏng tiến độ, không gửi nội dung tệp. Danh sách mất khi tải lại trang.
+                  Mô phỏng tiến độ, không gửi nội dung tệp. Chỉ ghi nhớ thông tin tệp trên trình
+                  duyệt này.
                 </small>
               </span>
             </label>

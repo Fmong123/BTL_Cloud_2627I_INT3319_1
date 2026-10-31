@@ -1,6 +1,37 @@
 export const MB = 1_000_000;
 export const UPLOAD_LIMIT = 100 * MB;
 
+const formatNames = {
+  __proto__: null,
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+  'image/gif': 'GIF',
+  'image/webp': 'WEBP',
+  'image/svg+xml': 'SVG',
+  'image/tiff': 'TIFF',
+  'image/avif': 'AVIF',
+  'image/heic': 'HEIC',
+  'application/pdf': 'PDF',
+  'text/plain': 'TXT',
+  'text/csv': 'CSV',
+  'application/json': 'JSON',
+  'application/msword': 'DOC',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+  'application/vnd.ms-excel': 'XLS',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+  'application/vnd.ms-powerpoint': 'PPT',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+  'application/zip': 'ZIP',
+  'application/x-7z-compressed': '7Z',
+};
+
+export function formatFileType(file) {
+  const mime = (file.type || '').split(';')[0].trim().toLowerCase();
+  if (formatNames[mime]) return formatNames[mime];
+  const extension = file.name?.includes('.') ? file.name.split('.').pop() : '';
+  return /^[a-z0-9]{1,10}$/i.test(extension) ? extension.toUpperCase() : 'Không xác định';
+}
+
 export function formatBytes(bytes) {
   if (!bytes) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];

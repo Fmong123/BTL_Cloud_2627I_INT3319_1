@@ -4,12 +4,19 @@ import { FREE_STORAGE_BYTES, formatStorageUsage, storedBytes } from '../utils/st
 
 export default function SidebarStorage({ collapsed }) {
   const w = useWorkspace();
-  const used = storedBytes(w.files);
+  const serverQuota = w.storageQuota;
+  const authoritative = w.quotaAvailable && Number.isSafeInteger(serverQuota?.used);
+  const used = authoritative
+    ? serverQuota.used
+    : storedBytes((w.allFiles || w.files).filter((file) => file.lifecycleState !== 'purged'));
   const demo = w.preferences.mode === 'demo';
   const phase = w.sync?.phase || 'idle';
   const known =
-    demo || used > 0 || Boolean(w.sync?.lastSyncedAt) || ['ready', 'disabled'].includes(phase);
+    authoritative ||
+    (!w.quotaAvailable &&
+      (demo || used > 0 || Boolean(w.sync?.lastSyncedAt) || ['ready', 'disabled'].includes(phase)));
   const partial =
+    !authoritative &&
     !demo &&
     (phase !== 'ready' ||
       Boolean(w.sync?.skippedItems?.length) ||
@@ -21,13 +28,17 @@ export default function SidebarStorage({ collapsed }) {
     : `${pending} trong tổng số 1 GB`;
   const note = demo
     ? 'Dữ liệu trải nghiệm'
-    : partial
-      ? phase === 'error'
-        ? 'Chưa đồng bộ đầy đủ'
-        : 'Dung lượng tạm tính'
-      : used >= FREE_STORAGE_BYTES
-        ? 'Đã dùng hết dung lượng miễn phí'
-        : 'Gói miễn phí';
+    : serverQuota?.error
+      ? 'Chưa cập nhật được dung lượng'
+      : serverQuota?.reserved > 0
+        ? `Đang giữ chỗ ${formatStorageUsage(serverQuota.reserved)} cho upload`
+        : partial
+          ? phase === 'error'
+            ? 'Chưa đồng bộ đầy đủ'
+            : 'Dung lượng tạm tính'
+          : used >= FREE_STORAGE_BYTES
+            ? 'Đã dùng hết dung lượng miễn phí'
+            : 'Gói miễn phí';
   return (
     <section
       className={`sidebar-storage ${used >= FREE_STORAGE_BYTES * 0.9 ? 'storage-near-limit' : ''}`}

@@ -1,3 +1,5 @@
+> **Schema nền để tham chiếu.** Hợp đồng HTTP và các trường lifecycle/history/notifications hiện hành ở [API contract](api-contract.md) và [phụ lục AWS](AWS-HANDOFF-2026-10-31.md). Các mô tả tiến độ/test cũ bên dưới không thay hướng dẫn cài hiện hành.
+
 # Schema item DynamoDB cho MaySec / SecureDrive
 
 Cập nhật: **23/10/2026**, bổ sung tương thích bàn giao AWS mới.

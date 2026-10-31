@@ -16,6 +16,7 @@ export function useRemoteLibrary({
 }) {
   const [records, setRecords] = useState([]);
   const [sync, setSync] = useState(emptySync);
+  const [checks, setChecks] = useState({ scope, items: {} });
   const inputs = useRef(null);
   inputs.current = { localFiles, onHealth, onTransition, onRecord, onSyncError };
   const methods = useRef({ refresh() {}, recheck() {}, seed() {}, preferences() {} });
@@ -36,10 +37,25 @@ export function useRemoteLibrary({
     const controllers = new Set();
     const tracking = new Map();
     const sessionIds = new Set();
+    const removedIds = new Set();
     const statusActive = new Map();
+    const manualChecks = new Set();
     const connection = { mode: preferences.mode, baseUrl: preferences.baseUrl };
     setRecords(library);
     setSync(state);
+    setChecks({ scope, items: {} });
+
+    function checkFeedback(id, result) {
+      if (alive)
+        setChecks((previous) => ({
+          scope,
+          items: { ...(previous.scope === scope ? previous.items : {}), [id]: result },
+        }));
+    }
+    function finishCheck(id, result) {
+      if (!manualChecks.delete(id)) return;
+      checkFeedback(id, result);
+    }
 
     function emitSync(patch) {
       if (!alive) return;
@@ -53,13 +69,21 @@ export function useRemoteLibrary({
     function publish(incoming, { replace = false, announce = true } = {}) {
       if (!alive) return;
       const previous = library;
-      library = mergeServerFiles(library, scoped(incoming), { replace });
+      library = mergeServerFiles(
+        library,
+        scoped(incoming.filter((file) => !removedIds.has(file.remoteId))),
+        { replace },
+      );
       setRecords(library);
       for (const record of library) {
-        const prior = previous.find((item) => item.remoteId === record.remoteId);
+        const prior =
+          previous.find((item) => item.remoteId === record.remoteId) ||
+          inputs.current.localFiles.find(
+            (item) => item.scope === scope && item.remoteId === record.remoteId,
+          );
         if (record === prior) continue;
         inputs.current.onRecord?.(record);
-        if (announce && (initialized || sessionIds.has(record.remoteId)))
+        if (announce && (initialized || sessionIds.has(record.remoteId) || prior))
           inputs.current.onTransition?.(record, prior);
       }
       cache.current.set(scope, { records: library, sync: { ...state, loaded: library.length } });
@@ -103,6 +127,7 @@ export function useRemoteLibrary({
             return;
           }
           const page = await listFiles(connection.baseUrl, {
+            area: health.capabilities?.file_lifecycle ? 'all' : undefined,
             cursor,
             limit: 100,
             signal: request.signal,
@@ -172,6 +197,22 @@ export function useRemoteLibrary({
         });
         entry.failures = 0;
         entry.nextAt = Date.now() + (Date.now() - entry.startedAt < 60000 ? 3000 : 10000);
+        const changed =
+          [
+            'scanStatus',
+            'uploadState',
+            'findingsCount',
+            'statusReason',
+            'scannedAt',
+            'quarantinedAt',
+          ].some((key) => previous[key] !== patch[key]) ||
+          JSON.stringify(previous.findingTypes) !== JSON.stringify(patch.findingTypes);
+        finishCheck(
+          file.remoteId,
+          patch.updatedAt < previous.updatedAt
+            ? { phase: 'error', error: 'Máy chủ trả dữ liệu cũ — hãy thử lại.' }
+            : { phase: 'success', checkedAt: Date.now(), changed },
+        );
       } catch (error) {
         if (!alive || error.name === 'AbortError') return;
         entry.nextAt = Date.now() + Math.min(30000, 5000 * 2 ** entry.failures++);
@@ -185,6 +226,7 @@ export function useRemoteLibrary({
         };
         publish([patch], { announce: false });
         inputs.current.onRecord?.(patch);
+        finishCheck(file.remoteId, { phase: 'error', error: patch.syncError });
       } finally {
         controllers.delete(request);
         statusActive.delete(file.remoteId);
@@ -199,13 +241,20 @@ export function useRemoteLibrary({
       )
         void refresh();
       if (enabled === false) return;
-      for (const file of currentCandidates()) {
+      const candidates = currentCandidates().sort(
+        (a, b) => Number(manualChecks.has(b.remoteId)) - Number(manualChecks.has(a.remoteId)),
+      );
+      for (const file of candidates) {
         if (!needsTracking(file) && !tracking.get(file.remoteId)?.forced) continue;
         remember(file);
         const entry = tracking.get(file.remoteId);
         if (entry.expired || statusActive.has(file.remoteId)) continue;
         if (now - entry.startedAt >= 600000) {
           entry.expired = true;
+          finishCheck(file.remoteId, {
+            phase: 'error',
+            error: 'Đã hết thời gian chờ — hãy thử lại.',
+          });
           const patch = { ...file, trackingExpired: true };
           publish([patch], { announce: false });
           inputs.current.onRecord?.(patch);
@@ -240,8 +289,31 @@ export function useRemoteLibrary({
       preferences(patch) {
         if (patch.scope === scope) publish([patch], { announce: false });
       },
-      recheck(file) {
+      remove(id) {
+        removedIds.add(id);
+        library = library.filter((file) => file.remoteId !== id);
+        setRecords(library);
+        tracking.delete(id);
+        cache.current.set(scope, { records: library, sync: state });
+      },
+      recheck(file, { manual = false } = {}) {
         if (!file?.remoteId || file.scope !== scope) return;
+        if (manual) {
+          if (manualChecks.has(file.remoteId)) return;
+          if (!navigator.onLine || enabled === false) {
+            checkFeedback(file.remoteId, {
+              phase: 'error',
+              error: !navigator.onLine
+                ? 'Đang ngoại tuyến — hãy kết nối mạng rồi thử lại.'
+                : 'Máy chủ chưa bật chức năng đọc trạng thái.',
+            });
+            return;
+          }
+          manualChecks.add(file.remoteId);
+          checkFeedback(file.remoteId, { phase: 'checking' });
+          // Join a current poll instead of starting a duplicate request.
+          if (statusActive.has(file.remoteId)) return;
+        }
         remember(file, true);
         tracking.get(file.remoteId).forced = true;
         tick();
@@ -281,9 +353,11 @@ export function useRemoteLibrary({
   return {
     records,
     sync,
+    statusChecks: checks.scope === scope ? checks.items : {},
     refreshFiles: () => methods.current.refresh(),
-    recheckFile: (file) => methods.current.recheck(file),
+    recheckFile: (file, options) => methods.current.recheck(file, options),
     seedFile: (file) => methods.current.seed(file),
     applyPreferences: (patch) => methods.current.preferences(patch),
+    removeFile: (id) => methods.current.remove?.(id),
   };
 }

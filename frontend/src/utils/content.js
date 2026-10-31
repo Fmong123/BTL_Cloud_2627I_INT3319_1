@@ -4,11 +4,15 @@ export function canReadContent(file) {
   return Boolean(
     file?.mode === 'api' &&
     file.remoteId &&
+    (!file.lifecycleState || file.lifecycleState === 'active') &&
     file.uploadState === 'uploaded' &&
     file.scanStatus === 'safe',
   );
 }
 export function downloadBlockReason(file, { contentAvailable = false, downloadingId = null } = {}) {
+  if (file?.lifecycleState === 'purged') return 'Tệp đã xóa vĩnh viễn';
+  if (['trashed', 'deleting'].includes(file?.lifecycleState))
+    return 'Không thể tải tệp trong Thùng rác';
   if (!contentAvailable) return 'Máy chủ chưa hỗ trợ tải nội dung';
   if (!canReadContent(file)) return 'Chỉ tải tệp đã lưu và không phát hiện dữ liệu nhạy cảm';
   if (file.size > DOWNLOAD_LIMIT) return 'Tải xuống tối đa 100 MB mỗi tệp';
@@ -16,6 +20,8 @@ export function downloadBlockReason(file, { contentAvailable = false, downloadin
   return '';
 }
 export function previewInfo(file) {
+  if (file?.lifecycleState && file.lifecycleState !== 'active')
+    return { kind: null, reason: 'Không thể xem nội dung tệp đã xóa', limit: 0 };
   if (!canReadContent(file))
     return {
       kind: null,

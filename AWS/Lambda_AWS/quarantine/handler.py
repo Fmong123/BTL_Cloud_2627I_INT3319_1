@@ -88,6 +88,8 @@ def lambda_handler(event, context):
     source = source_from_event(event)
     ctx = event.get("ctx") or {}
     row = read_file(_table(FILES_TABLE), source)
+    from pipeline_common import verify_rescan_execution
+    verify_rescan_execution(row, event)
     if row["status"] not in {"flagged", "quarantine_delete_failed", "quarantined"}:
         raise PipelineConflict("file_not_flagged")
     if event.get("operation") == "record_failure":

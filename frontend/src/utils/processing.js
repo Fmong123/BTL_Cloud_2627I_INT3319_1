@@ -31,6 +31,13 @@ const scanReasons = {
   storage_unconfirmed: 'Chưa xác nhận lưu tệp.',
   storage_unavailable: 'Lưu trữ chưa sẵn sàng.',
   initial_audit_unconfirmed: 'Chưa xác nhận lịch sử tải lên.',
+  ocr_no_text: 'OCR chưa đọc được chữ trong tệp.',
+  ocr_incomplete: 'OCR chưa đọc đủ nội dung hoặc số trang.',
+  ocr_timeout: 'OCR quá thời gian xử lý.',
+  scan_crashed: 'Dịch vụ quét bị gián đoạn.',
+  rescan_start_failed: 'Chưa khởi chạy được lượt quét lại.',
+  scan_detail_unavailable: 'Máy chủ chưa cung cấp lý do có thể hiển thị.',
+  quota_exceeded: 'Không đủ dung lượng trong gói 1 GB.',
 };
 export function scanExplanation(file) {
   return (
@@ -68,6 +75,7 @@ export function isAttention(file) {
 export function needsTracking(file) {
   return (
     file.mode === 'api' &&
+    (!file.lifecycleState || file.lifecycleState === 'active') &&
     Boolean(file.remoteId) &&
     (['scanning', 'flagged'].includes(file.scanStatus) ||
       ['uploading', 'unknown'].includes(file.uploadState) ||
@@ -133,6 +141,7 @@ export function normalizeStatus(record, source = 'status') {
   }
   return {
     remoteId,
+    ...fileEdits(record),
     updatedAt: timestamp(record.updated_at, 'thời gian cập nhật'),
     uploadState: record.upload_state,
     scanStatus: record.scan_status,
@@ -141,6 +150,24 @@ export function normalizeStatus(record, source = 'status') {
     statusSource: source,
     ...summary(record),
   };
+}
+
+function fileEdits(record) {
+  const result = {};
+  if (record.lifecycle_state != null) {
+    if (!['active', 'trashed', 'deleting', 'purged'].includes(record.lifecycle_state))
+      throw new Error('Trạng thái Thùng rác chưa hợp lệ');
+    result.lifecycleState = record.lifecycle_state;
+    result.lifecycleUpdatedAt =
+      timestamp(record.lifecycle_updated_at, 'thời gian thay đổi tệp', true) || 0;
+    result.trashedAt = timestamp(record.trashed_at, 'thời gian xóa', true);
+    result.trashExpiresAt = timestamp(record.trash_expires_at, 'thời hạn khôi phục', true);
+  }
+  if (record.name_updated_at) {
+    result.nameUpdatedAt = timestamp(record.name_updated_at, 'thời gian đổi tên');
+    if (record.display_name) result.name = text(record.display_name, 'tên hiển thị');
+  }
+  return result;
 }
 
 export function normalizeServerFile(record) {
@@ -199,6 +226,20 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
       continue;
     }
     const previous = merged[index];
+    // An archived file ID cannot become live again through a delayed list/poll.
+    if (previous.lifecycleState === 'purged' && record.lifecycleState !== 'purged') continue;
+    const erasedPatch =
+      record.lifecycleState === 'purged'
+        ? {
+            lifecycleState: 'purged',
+            lifecycleUpdatedAt: Math.max(
+              record.lifecycleUpdatedAt || 0,
+              previous.lifecycleUpdatedAt || 0,
+            ),
+            original: undefined,
+            retryable: false,
+          }
+        : {};
     const older =
       Number.isFinite(previous.updatedAt) &&
       Number.isFinite(record.updatedAt) &&
@@ -216,8 +257,18 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
             starred: previous.starred,
             starredUpdatedAt: previous.starredUpdatedAt || 0,
           };
+    const editPatch = {};
+    for (const [stamp, keys] of [
+      ['lifecycleUpdatedAt', ['lifecycleState', 'trashedAt', 'trashExpiresAt']],
+      ['nameUpdatedAt', ['name']],
+    ]) {
+      const source =
+        (record[stamp] || 0) >= (previous[stamp] || 0) && record[stamp] != null ? record : previous;
+      for (const key of [stamp, ...keys])
+        if (source[key] !== undefined) editPatch[key] = source[key];
+    }
     if (older || lowerPriority) {
-      merged[index] = { ...previous, ...starPatch };
+      merged[index] = { ...previous, ...starPatch, ...editPatch, ...erasedPatch };
       continue;
     }
     const liveTransfer =
@@ -228,6 +279,7 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
       id: previous.id,
       original: previous.original,
       ...starPatch,
+      ...editPatch,
       connection: previous.connection ?? record.connection,
       scope: previous.scope ?? record.scope,
       origin: previous.origin ?? record.origin,
@@ -244,6 +296,7 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
               retryable: Boolean(previous.original) && !previous.validationError,
             }
           : {}),
+      ...erasedPatch,
     };
   }
   return merged;

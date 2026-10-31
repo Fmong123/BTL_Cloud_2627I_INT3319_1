@@ -1,3 +1,5 @@
+> **Tài liệu tham chiếu lịch sử.** Các mốc tính năng, giới hạn và lệnh script/test bên dưới thuộc bản trước. Cài/chạy theo [API guide hiện hành](api-guide.md), endpoint theo [API contract](api-contract.md), triển khai AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md). Không cần khôi phục script/test cũ.
+
 # Test frontend → FastAPI → S3 → Lambda → DynamoDB
 
 Muốn thao tác hoàn toàn thủ công, không chạy script: xem [hướng dẫn kiểm tra thủ công](aws-pipeline-manual-test-guide.md).

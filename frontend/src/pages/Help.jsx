@@ -65,8 +65,8 @@ export default function Help() {
           <p>
             Dùng nút Thu gọn thanh điều hướng ở sidebar để tăng diện tích danh sách. Khi thu gọn, rê
             chuột hoặc dùng bàn phím để đọc tên các biểu tượng. Trang Hoạt động xử lý nhóm mỗi lần
-            chọn/thả tệp thành một đợt trong phiên; nút thử lại chỉ gửi những tệp lỗi/đã hủy còn bản
-            gốc và được phép thử lại, không gửi lại tệp đã xong hoặc chưa rõ kết quả.
+            chọn/thả tệp thành một đợt được ghi nhớ; nút thử lại chỉ gửi những tệp lỗi/đã hủy còn
+            bản gốc và được phép thử lại, không gửi lại tệp đã xong hoặc chưa rõ kết quả.
           </p>
         </details>
         <details open>
@@ -75,8 +75,18 @@ export default function Help() {
             Với Lưu trữ thật và metadata đã bật, web gọi FastAPI GET /files; backend đọc metadata
             trong DynamoDB rồi trả danh sách. Web không truy cập AWS trực tiếp. Nội dung tệp nằm
             trên S3 hoặc storage local. Bạn có thể làm mới để đọc lại danh sách sau khi tải lại
-            trang. Nếu metadata chưa bật, chỉ tệp đã tải trong phiên hiện tại được hiển thị. Chế độ
-            Trải nghiệm không gọi API và mất danh sách khi refresh.
+            trang. Nếu metadata chưa bật, lịch sử chỉ lưu trên trình duyệt này. Chế độ Trải nghiệm
+            không gọi API và chỉ lưu thông tin mô phỏng, không lưu nội dung tệp.
+          </p>
+        </details>
+        <details>
+          <summary>Đổi tên và Thùng rác hoạt động thế nào?</summary>
+          <p>
+            Trong menu ba chấm của tệp, chọn Đổi tên hoặc Chuyển vào Thùng rác. Đổi tên không thay
+            đổi nội dung hay kết quả quét. Tệp trong Thùng rác vẫn tính vào 1 GB, có thể khôi phục
+            trong 30 ngày và vẫn giữ trạng thái cách ly. Xóa vĩnh viễn cần xác nhận, chỉ giải phóng
+            dung lượng khi máy chủ xóa hết nội dung và các phiên bản. Nếu xóa chưa hoàn tất, chọn
+            xóa lại; tệp chờ xóa không thể khôi phục. Tác vụ dọn tự động cần được bật trên máy chủ.
           </p>
         </details>
         <details>
@@ -124,14 +134,28 @@ export default function Help() {
             không tự kích hoạt quét lại. Mở bảng chi tiết rồi chọn Cập nhật trạng thái để đọc trạng
             thái mới. Hết thời gian theo dõi hoặc lỗi mạng không được coi là kết quả scan lỗi.
           </p>
+          <p>
+            Trong chi tiết tệp, chọn Báo cáo quét để xem số lượng theo loại và mức độ đọc đủ nội
+            dung. Quét lại tệp gửi một lượt xử lý mới khi dịch vụ đã bật; tệp đang xử lý hoặc cách
+            ly không thể quét lại tại đây. Mỗi lượt mới cách nhau tối thiểu 60 giây.
+          </p>
+        </details>
+        <details>
+          <summary>Hạn mức 1 GB được tính thế nào?</summary>
+          <p>
+            Gói miễn phí có 1 GB, mỗi tệp tối đa 100 MB. Tệp cách ly và tệp trong Thùng rác vẫn được
+            tính vào dung lượng. Máy chủ giữ chỗ cho tệp đang tải hoặc chưa xác nhận kết quả, và từ
+            chối lượt tải vượt dung lượng còn lại. Sidebar hiển thị riêng dung lượng đã dùng và đang
+            giữ chỗ.
+          </p>
         </details>
         <details>
           <summary>Thông báo được giữ bao lâu?</summary>
           <p>
-            Biểu tượng chuông giữ các cập nhật mới mà web quan sát trong phiên, gồm tải lên, quét và
-            cách ly. Có thể lọc chưa đọc hoặc cần chú ý. Dữ liệu nạp lần đầu không tạo một loạt
-            thông báo cũ; refresh sẽ xóa lịch sử thông báo cục bộ. Bảng này không thay thế audit log
-            trên máy chủ.
+            Biểu tượng chuông giữ các cập nhật mà web quan sát, gồm tải lên, quét, cách ly và thao
+            tác tệp. Thông báo và trạng thái đã đọc được giữ khi mở lại trang, đồng bộ máy chủ khi
+            dịch vụ hỗ trợ. Khi mất mạng, dữ liệu tạm lưu trên trình duyệt; tối đa 2.000 thông báo
+            gần nhất được lưu tại đây. Bảng này không thay thế audit log trên máy chủ.
           </p>
         </details>
         <details>

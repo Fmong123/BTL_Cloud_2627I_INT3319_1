@@ -1,3 +1,5 @@
+> **Tài liệu tham chiếu lịch sử.** Các mốc tính năng, giới hạn và lệnh script/test bên dưới thuộc bản trước. Cài/chạy theo [API guide hiện hành](api-guide.md), endpoint theo [API contract](api-contract.md), triển khai AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md). Không cần khôi phục script/test cũ.
+
 # Hướng dẫn kiểm tra thủ công toàn luồng MaySec trên AWS
 
 Cập nhật: **25/10/2026**.

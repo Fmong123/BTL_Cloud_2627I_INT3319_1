@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CheckQuotaLeaseInUploadTransaction",
+      "Effect": "Allow",
+      "Action": "dynamodb:ConditionCheckItem",
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:ACCOUNT_ID:table/securedrive-files"
+    },
+    {
+      "Sid": "ManageOnlyQuotaLeases",
+      "Effect": "Allow",
+      "Action": ["dynamodb:PutItem", "dynamodb:DeleteItem"],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:ACCOUNT_ID:table/securedrive-files",
+      "Condition": {"ForAllValues:StringLike": {"dynamodb:LeadingKeys": ["!quota!*"]}}
+    },
+    {
+      "Sid": "StartRescanWorkflow",
+      "Effect": "Allow",
+      "Action": ["states:DescribeStateMachine", "states:StartExecution"],
+      "Resource": "arn:aws:states:ap-southeast-2:ACCOUNT_ID:stateMachine:STATE_MACHINE_NAME"
+    },
+    {
+      "Sid": "VerifyRescanSourceVersion",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:GetObjectVersion"],
+      "Resource": "arn:aws:s3:::UPLOAD_BUCKET/uploads/*"
+    }
+  ]
+}

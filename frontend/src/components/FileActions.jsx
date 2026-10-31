@@ -1,6 +1,16 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Eye, Info, MoreHorizontal, RotateCcw, Star, X } from 'lucide-react';
+import {
+  Download,
+  Eye,
+  Info,
+  MoreHorizontal,
+  RotateCcw,
+  Star,
+  X,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { canRetry, isBusy } from '../utils/workspace.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
 
@@ -15,6 +25,9 @@ export default function FileActions({
   canStar,
   contentAvailable = false,
   downloadingId,
+  onRename,
+  onTrash,
+  canManage,
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({});
@@ -139,6 +152,38 @@ export default function FileActions({
               <Info size={16} />
               Thông tin tệp
             </button>
+            {onRename && (
+              <button
+                role="menuitem"
+                disabled={
+                  !canManage?.(file) || (file.lifecycleState && file.lifecycleState !== 'active')
+                }
+                onClick={() => run(onRename)}
+              >
+                <Pencil size={16} />
+                Đổi tên
+              </button>
+            )}
+            {onTrash && (
+              <button
+                role="menuitem"
+                disabled={
+                  !canManage?.(file) ||
+                  ['scanning', 'flagged'].includes(file.scanStatus) ||
+                  ['uploading', 'unknown'].includes(file.uploadState) ||
+                  (file.lifecycleState && file.lifecycleState !== 'active')
+                }
+                title={
+                  ['scanning', 'flagged'].includes(file.scanStatus)
+                    ? 'Chờ xử lý quét hoàn tất'
+                    : undefined
+                }
+                onClick={() => run(onTrash)}
+              >
+                <Trash2 size={16} />
+                Chuyển vào Thùng rác
+              </button>
+            )}
             <button
               role="menuitem"
               disabled={!starAllowed}

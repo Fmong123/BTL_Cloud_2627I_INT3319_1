@@ -1,11 +1,14 @@
 """Boundary handed to AWS-B: synchronous upload, success only after storage confirms."""
 
 from dataclasses import dataclass
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import shutil
+import sqlite3
 from typing import BinaryIO, Literal, Protocol
 from uuid import uuid4
+from .quota import FREE_STORAGE_BYTES, QuotaExceeded, quota_view
 
 
 class StorageUnavailable(Exception):
@@ -78,6 +81,56 @@ class LocalStorage:
     def __init__(self, directory: Path):
         self.directory = directory.resolve()
 
+    @contextmanager
+    def quota_lock(self):
+        try:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(self.directory / ".maysec-quota.sqlite3", timeout=5)
+        except (OSError, sqlite3.Error):
+            raise StorageUnavailable("Local quota is unavailable") from None
+        try:
+            # A filesystem-backed SQLite lock coordinates all local API workers.
+            connection.execute("BEGIN IMMEDIATE")
+            yield
+        except sqlite3.Error:
+            raise StorageUnavailable("Local quota is busy") from None
+        finally:
+            connection.close()
+
+    def storage_usage(self, owner_id):
+        if not owner_id or owner_id in {".", ".."} or any(c in owner_id for c in "/\\"):
+            raise StorageFailure("Invalid owner")
+        with self.quota_lock():
+            return quota_view(self._used_bytes(owner_id))
+
+    def _used_bytes(self, owner_id):
+        root = self.directory / "uploads" / owner_id
+        return sum(path.stat().st_size for path in root.rglob("*") if path.is_file())
+
+    def delete_file(self, *, prefix):
+        parts = prefix.rstrip("/").split("/")
+        if (len(parts) != 3 or parts[0] != "uploads"
+                or any(not p or p in {".", ".."} or "\\" in p for p in parts)):
+            raise StorageFailure("Invalid deletion prefix")
+        target = self.directory.joinpath(*parts)
+        try:
+            with self.quota_lock():
+                if target.is_symlink() or not target.resolve().is_relative_to(self.directory):
+                    raise StorageFailure("Invalid deletion location")
+                # Resolve every candidate before deleting any content.
+                paths = list(target.rglob("*")) if target.exists() else []
+                if any(p.is_symlink() or not p.resolve().is_relative_to(target.resolve()) for p in paths):
+                    raise StorageFailure("Invalid deletion location")
+                for path in paths:
+                    if path.is_file():
+                        path.unlink(missing_ok=True)
+                for path in sorted((p for p in paths if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+                    path.rmdir()
+                if target.exists():
+                    target.rmdir()
+        except OSError:
+            raise StorageFailure("Local deletion failed") from None
+
     def read(self, *, key: str, max_bytes: int) -> bytes:
         try:
             target = (self.directory / key).resolve()
@@ -93,6 +146,17 @@ class LocalStorage:
             raise StorageFailure("Local read failed") from None
 
     def upload(self, file_obj: BinaryIO, *, key: str, content_type: str) -> StoredObject:
+        parts = key.split("/")
+        if len(parts) != 4 or parts[0] != "uploads" or any(not p or p in {".", ".."} or "\\" in p for p in parts):
+            raise StorageFailure("Invalid storage key")
+        with self.quota_lock():
+            size = file_obj.seek(0, 2)
+            file_obj.seek(0)
+            if self._used_bytes(parts[1]) + size > FREE_STORAGE_BYTES:
+                raise QuotaExceeded()
+            return self._upload(file_obj, key=key, content_type=content_type)
+
+    def _upload(self, file_obj: BinaryIO, *, key: str, content_type: str) -> StoredObject:
         target = (self.directory / key).resolve()
         if not target.is_relative_to(self.directory) or target == self.directory:
             raise StorageFailure("Invalid storage key")

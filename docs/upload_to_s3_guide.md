@@ -1,3 +1,5 @@
+> **Tài liệu tham chiếu lịch sử.** Các mốc tính năng, giới hạn và lệnh script/test bên dưới thuộc bản trước. Cài/chạy theo [API guide hiện hành](api-guide.md), endpoint theo [API contract](api-contract.md), triển khai AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md). Không cần khôi phục script/test cũ.
+
 HƯỚNG DẪN CÀI ĐẶT MÔI TRƯỜNG & CHẠY LUỒNG UPLOAD AWS S3
 Dự án: MaySec (Hệ thống lưu trữ tài liệu tự động phát hiện và cách ly thông tin nhạy cảm - Nhóm 4)
 Nhánh làm việc: API_S3/upload

@@ -1,5 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { demoUpload, uploadFile, validateApiBaseUrl, getFileContent } from '../api/client.js';
+import {
+  demoUpload,
+  uploadFile,
+  validateApiBaseUrl,
+  getFileContent,
+  changeFile,
+} from '../api/client.js';
 import { MB, UPLOAD_LIMIT, validateFile } from '../utils/files.js';
 import {
   canRetry,
@@ -14,6 +20,9 @@ import { UploadQueue } from '../utils/uploadQueue.js';
 import { useRemoteLibrary } from './useRemoteLibrary.js';
 import { useNotifications } from './useNotifications.js';
 import { usePersistentStars } from './usePersistentStars.js';
+import { useStorageQuota } from './useStorageQuota.js';
+import { useUploadHistory } from './useUploadHistory.js';
+import { HISTORY_KEY, historySnapshot, readHistory, writeRecords } from '../utils/persistence.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
 import { saveFile } from '../utils/saveFile.js';
 import Modal from '../components/Modal.jsx';
@@ -42,8 +51,8 @@ function connectionScope(connection) {
 }
 
 export function WorkspaceProvider({ children }) {
-  const [entries, renderEntries] = useState([]);
-  const entriesRef = useRef([]);
+  const [entries, renderEntries] = useState(readHistory);
+  const entriesRef = useRef(entries);
   const [preferences, setPreferences] = useState(() => readPreferences(defaultPreferences));
   const scope = connectionScope(preferences);
   const scopeRef = useRef(scope);
@@ -61,13 +70,33 @@ export function WorkspaceProvider({ children }) {
   const [downloadingId, setDownloadingId] = useState(null);
   const downloadRequest = useRef(null);
   const [storageFailed, setStorageFailed] = useState(false);
+  const [historyStorageFailed, setHistoryStorageFailed] = useState(false);
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const [fileDialog, setFileDialog] = useState(null);
+  const [dialogValue, setDialogValue] = useState('');
+  const [dialogError, setDialogError] = useState(null);
+  const [changingFiles, setChangingFiles] = useState(false);
+  const changeLock = useRef(false);
   const [online, setOnline] = useState(navigator.onLine);
   const mounted = useRef(true);
   const inputRef = useRef(null);
   const scheduler = useRef(null);
   const callbacks = useRef(null);
-  const identities = useRef(new Map());
-  const notifications = useNotifications(scope);
+  const identities = useRef(
+    new Map(
+      entries
+        .filter((file) => file.remoteId)
+        .map((file) => [`${file.scope}|${file.remoteId}`, file.id]),
+    ),
+  );
+  const activityAvailable =
+    preferences.mode === 'api' &&
+    health?.capabilities?.persistent_activity === true &&
+    connectionScope({ mode: 'api', baseUrl: health.baseUrl }) === scope;
+  const notifications = useNotifications(scope, {
+    baseUrl: preferences.baseUrl,
+    available: activityAvailable,
+  });
   const notificationsRef = useRef(notifications);
   notificationsRef.current = notifications;
   const busy = entries.some(isBusy);
@@ -111,7 +140,7 @@ export function WorkspaceProvider({ children }) {
     const fileId = stableId(record);
     const event = {
       scope: record.scope,
-      fileId,
+      fileId: record.remoteId || fileId,
       message: record.name || 'Thông tin tệp đã được cập nhật.',
     };
     if (!prior) {
@@ -166,13 +195,30 @@ export function WorkspaceProvider({ children }) {
   });
   const remoteRef = useRef(remote);
   remoteRef.current = remote;
+  const archived = useUploadHistory({
+    scope,
+    baseUrl: preferences.baseUrl,
+    available: activityAvailable,
+    revision: historyRevision,
+  });
+  useEffect(() => {
+    if (!archived.items.length) return;
+    setEntries((current) =>
+      mergeServerFiles(
+        current,
+        archived.items.filter((record) =>
+          current.some((file) => file.scope === record.scope && file.remoteId === record.remoteId),
+        ),
+      ),
+    );
+  }, [archived.items]);
   const localFiles = entries.filter((file) => file.scope === scope);
   const serverFiles = remote.records
     .filter((file) => file.scope === scope)
     .map((file) => ({ ...file, id: stableId(file) }));
   const baseFiles = useMemo(
-    () => mergeServerFiles(localFiles, serverFiles),
-    [entries, remote.records, scope],
+    () => mergeServerFiles(mergeServerFiles(localFiles, serverFiles), archived.items),
+    [entries, remote.records, archived.items, scope],
   );
   const currentHealth =
     health && connectionScope({ mode: 'api', baseUrl: health.baseUrl }) === scope ? health : null;
@@ -190,7 +236,25 @@ export function WorkspaceProvider({ children }) {
       if (patch.scope === scopeRef.current) remoteRef.current.applyPreferences(patch);
     },
   });
-  const files = baseFiles.map(stars.decorate);
+  const allFiles = baseFiles.map(stars.decorate);
+  const files = allFiles.filter((file) => !file.lifecycleState || file.lifecycleState === 'active');
+  const trashFiles = allFiles.filter((file) =>
+    ['trashed', 'deleting'].includes(file.lifecycleState),
+  );
+  const lifecycleAvailable =
+    preferences.mode === 'demo' || currentHealth?.capabilities?.file_lifecycle === true;
+  const quotaAvailable =
+    preferences.mode === 'api' && currentHealth?.capabilities?.storage_quota === true;
+  const storageQuota = useStorageQuota({
+    scope,
+    baseUrl: preferences.baseUrl,
+    available: quotaAvailable,
+    files: allFiles,
+  });
+  const scanReportAvailable =
+    preferences.mode === 'api' && currentHealth?.capabilities?.scan_report === true;
+  const rescanAvailable =
+    preferences.mode === 'api' && currentHealth?.capabilities?.rescan === true;
   useEffect(() => {
     if (!downloadingId || !downloadRequest.current) return;
     const file = files.find((item) => item.id === downloadingId);
@@ -199,10 +263,41 @@ export function WorkspaceProvider({ children }) {
       notify('Trạng thái tệp đã đổi, đã dừng đọc nội dung');
     }
   }, [files, downloadingId, contentAvailable]);
-  const activityFiles = useMemo(() => {
-    const ids = new Set(localFiles.map((file) => file.id));
-    return files.filter((file) => ids.has(file.id));
-  }, [files]);
+  const activityFiles = allFiles;
+
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setHistoryStorageFailed(!writeRecords(HISTORY_KEY, historySnapshot(entries))),
+      150,
+    );
+    return () => clearTimeout(timer);
+  }, [entries]);
+  useEffect(() => {
+    const flush = () => writeRecords(HISTORY_KEY, historySnapshot(entriesRef.current));
+    const cleanDemo = () => {
+      const now = Date.now();
+      if (
+        entriesRef.current.some(
+          (file) =>
+            file.mode === 'demo' && file.lifecycleState === 'trashed' && file.trashExpiresAt <= now,
+        )
+      )
+        setEntries((current) =>
+          current.map((file) =>
+            file.mode === 'demo' && file.lifecycleState === 'trashed' && file.trashExpiresAt <= now
+              ? { ...file, lifecycleState: 'purged', lifecycleUpdatedAt: now }
+              : file,
+          ),
+        );
+    };
+    cleanDemo();
+    const timer = setInterval(cleanDemo, 60000);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('pagehide', flush);
+    };
+  }, []);
 
   useEffect(() => {
     setStorageFailed(!savePreferences(preferences));
@@ -212,6 +307,7 @@ export function WorkspaceProvider({ children }) {
     setPreviewId(null);
     downloadRequest.current?.abort();
     setRetryConfirmation(null);
+    setFileDialog(null);
   }, [scope]);
   useEffect(() => {
     mounted.current = true;
@@ -288,7 +384,7 @@ export function WorkspaceProvider({ children }) {
       update(item.id, patch);
       notificationsRef.current.addEvent({
         scope: item.scope,
-        fileId: item.id,
+        fileId: result.id || item.id,
         kind: item.mode === 'demo' ? 'demo-success' : 'upload-success',
         title: item.mode === 'demo' ? 'Đã hoàn tất trải nghiệm' : 'Tệp đã được lưu',
         message: item.name,
@@ -519,6 +615,128 @@ export function WorkspaceProvider({ children }) {
     setUndo(null);
     notify('Đã khôi phục các tệp vào lịch sử');
   }
+  function requestFileChange(action, ids) {
+    const source = action === 'restore' || action === 'purge' ? trashFiles : files;
+    const targets = source.filter((file) => ids.includes(file.id));
+    if (!targets.length || changeLock.current) return;
+    setFileDialog({ action, targets, scope });
+    setDialogValue(targets[0].name);
+    setDialogError(null);
+  }
+  function canManage(file) {
+    return (
+      lifecycleAvailable &&
+      !changingFiles &&
+      file.lifecycleState !== 'purged' &&
+      !isBusy(file) &&
+      (file.mode === 'demo' || Boolean(file.remoteId))
+    );
+  }
+  async function submitFileChange(event) {
+    event.preventDefault();
+    if (changeLock.current || !fileDialog || fileDialog.scope !== scopeRef.current) return;
+    changeLock.current = true;
+    setChangingFiles(true);
+    setDialogError(null);
+    const { action, targets, scope: targetScope } = fileDialog;
+    const errors = [];
+    const failedIds = new Set();
+    let succeeded = 0;
+    try {
+      for (const file of targets) {
+        try {
+          let patch;
+          if (file.mode === 'demo') {
+            const now = Date.now();
+            if (action === 'name') {
+              const name = dialogValue.trim();
+              if (
+                !name ||
+                name.length > 255 ||
+                /[\\/:*?"<>|\x00-\x1f]/.test(name) ||
+                name === '.' ||
+                name === '..' ||
+                name.endsWith('.')
+              )
+                throw new Error('Tên tệp không hợp lệ');
+              patch = { ...file, name, nameUpdatedAt: now };
+            } else if (action === 'trash')
+              patch = {
+                ...file,
+                lifecycleState: 'trashed',
+                trashedAt: now,
+                trashExpiresAt: now + 30 * 86400000,
+                lifecycleUpdatedAt: now,
+              };
+            else if (action === 'restore') {
+              if (file.trashExpiresAt <= now) throw new Error('Tệp đã hết thời hạn khôi phục');
+              patch = { ...file, lifecycleState: 'active', lifecycleUpdatedAt: now };
+            } else patch = { ...file, lifecycleState: 'purged', lifecycleUpdatedAt: now };
+          } else {
+            patch = await changeFile(
+              file.connection.baseUrl,
+              file.remoteId,
+              action,
+              action === 'name' ? { name: dialogValue } : undefined,
+            );
+            if (action === 'purge')
+              patch = { ...file, lifecycleState: 'purged', lifecycleUpdatedAt: Date.now() };
+          }
+          patch = { ...patch, id: file.id, scope: targetScope, connection: file.connection };
+          if (action === 'purge') patch.original = undefined;
+          setEntries((current) =>
+            current.some((item) => item.id === file.id && item.scope === targetScope)
+              ? current.map((item) =>
+                  item.id === file.id && item.scope === targetScope ? { ...item, ...patch } : item,
+                )
+              : [patch, ...current],
+          );
+          if (targetScope === scopeRef.current) {
+            if (action === 'purge') remoteRef.current.removeFile(file.remoteId);
+            else remoteRef.current.applyPreferences(patch);
+            inspect(null);
+          }
+          notificationsRef.current.addEvent({
+            scope: targetScope,
+            kind: `file-${action}`,
+            fileId: file.remoteId || file.id,
+            title: {
+              name: 'Đã đổi tên tệp',
+              trash: 'Đã chuyển vào Thùng rác',
+              restore: 'Đã khôi phục tệp',
+              purge: 'Đã xóa vĩnh viễn',
+            }[action],
+            message: action === 'name' ? patch.name : file.name,
+            tone: 'success',
+          });
+          succeeded++;
+        } catch (error) {
+          failedIds.add(file.id);
+          errors.push(`${file.name}: ${error.message}`);
+        }
+      }
+      if (mounted.current && targetScope === scopeRef.current) {
+        setHistoryRevision((value) => value + 1);
+        remoteRef.current.refreshFiles();
+        if (errors.length) {
+          setFileDialog((prior) =>
+            prior
+              ? { ...prior, targets: prior.targets.filter((file) => failedIds.has(file.id)) }
+              : null,
+          );
+          setDialogError(
+            `${succeeded ? `${succeeded} tệp thành công. ` : ''}${errors.join(' · ')}`,
+          );
+        } else {
+          setFileDialog(null);
+          notify(`Đã xử lý ${succeeded} tệp`);
+        }
+      }
+    } finally {
+      changeLock.current = false;
+      if (mounted.current) setChangingFiles(false);
+    }
+  }
   function saveConnection(value) {
     if (entriesRef.current.some(isBusy) || duplicateRef.current) {
       notify('Chờ hoặc hủy các tệp đang tải trước khi đổi kết nối');
@@ -535,7 +753,7 @@ export function WorkspaceProvider({ children }) {
   }
   function recheck(id) {
     const file = files.find((file) => file.id === id);
-    if (file) remote.recheckFile(file);
+    if (file) remote.recheckFile(file, { manual: true });
   }
   function preview(id) {
     inspect(null);
@@ -624,7 +842,15 @@ export function WorkspaceProvider({ children }) {
     <Context.Provider
       value={{
         files,
-        activityFiles: activityFiles.filter((file) => file.original),
+        allFiles,
+        trashFiles,
+        activityFiles,
+        historyError: archived.error,
+        lifecycleAvailable,
+        canManage,
+        requestFileChange,
+        changingFiles,
+        notificationStorageError: notifications.storageError,
         preferences,
         setPreferences,
         health,
@@ -639,10 +865,21 @@ export function WorkspaceProvider({ children }) {
         star,
         scope,
         canStar: (file) =>
-          file.mode === 'demo' ||
-          (favoritesAvailable && Boolean(file.remoteId) && !file.starPending),
+          file.lifecycleState !== 'purged' &&
+          (file.mode === 'demo' ||
+            (favoritesAvailable && Boolean(file.remoteId) && !file.starPending)),
         favoritesAvailable,
         contentAvailable,
+        quotaAvailable,
+        storageQuota,
+        scanReportAvailable,
+        rescanAvailable,
+        applyScanStatus: (file, patch) => {
+          const record = { ...patch, scope: file.scope };
+          setEntries((current) => mergeServerFiles(current, [record]));
+          remoteRef.current.applyPreferences(record);
+          remoteRef.current.recheckFile({ ...file, ...patch });
+        },
         previewId,
         preview,
         openFile,
@@ -661,10 +898,14 @@ export function WorkspaceProvider({ children }) {
         duplicates,
         resolveDuplicates,
         saveConnection,
-        storageFailed,
+        storageFailed: storageFailed || historyStorageFailed,
         online,
         sync: remote.sync,
-        refreshFiles: remote.refreshFiles,
+        statusChecks: remote.statusChecks,
+        refreshFiles: () => {
+          setHistoryRevision((value) => value + 1);
+          remote.refreshFiles();
+        },
         recheck,
         inspectedId,
         inspectedTab,
@@ -677,6 +918,74 @@ export function WorkspaceProvider({ children }) {
       }}
     >
       {children}
+      {fileDialog && (
+        <Modal
+          title={
+            {
+              name: 'Đổi tên tệp',
+              trash: 'Chuyển vào Thùng rác',
+              restore: 'Khôi phục tệp',
+              purge: 'Xóa vĩnh viễn',
+            }[fileDialog.action]
+          }
+          onClose={() => {
+            if (!changingFiles) setFileDialog(null);
+          }}
+        >
+          <form onSubmit={submitFileChange}>
+            {fileDialog.action === 'name' ? (
+              <label className="rename-field">
+                Tên tệp
+                <input
+                  autoFocus
+                  required
+                  maxLength={255}
+                  value={dialogValue}
+                  disabled={changingFiles}
+                  onChange={(event) => setDialogValue(event.target.value)}
+                />
+              </label>
+            ) : (
+              <p>
+                {fileDialog.targets.length} tệp được chọn.{' '}
+                {fileDialog.action === 'trash'
+                  ? 'Có thể khôi phục trong 30 ngày. Tệp vẫn tính vào dung lượng 1 GB.'
+                  : fileDialog.action === 'restore'
+                    ? 'Giữ nguyên kết quả quét và trạng thái cách ly.'
+                    : 'Xóa toàn bộ nội dung và các phiên bản đã lưu. Không thể hoàn tác.'}
+              </p>
+            )}
+            {dialogError && (
+              <p className="banner error" role="alert">
+                {dialogError}
+              </p>
+            )}
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="button secondary"
+                disabled={changingFiles}
+                onClick={() => setFileDialog(null)}
+              >
+                Hủy
+              </button>
+              <button
+                className={`button ${fileDialog.action === 'purge' ? 'danger' : 'primary'}`}
+                disabled={changingFiles}
+              >
+                {changingFiles
+                  ? 'Đang xử lý…'
+                  : {
+                      name: 'Lưu tên',
+                      trash: 'Chuyển vào Thùng rác',
+                      restore: 'Khôi phục',
+                      purge: 'Xóa vĩnh viễn',
+                    }[fileDialog.action]}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
       {retryConfirmation && (
         <Modal title="Tải lại có thể tạo bản sao" onClose={() => setRetryConfirmation(null)}>
           <p>

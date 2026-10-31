@@ -12,12 +12,13 @@ import {
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
-import { formatBytes } from '../utils/files.js';
+import { formatBytes, formatFileType } from '../utils/files.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
-import { scanExplanation, scanStates } from '../utils/processing.js';
+import { scanStates } from '../utils/processing.js';
+import FileScanReport from './FileScanReport.jsx';
 import '../file-workspace.css';
 
 const time = (value) =>
@@ -29,7 +30,9 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
   const w = useWorkspace();
   const inspectedId = id ?? w.inspectedId;
   const file =
-    w.files.find((item) => item.id === inspectedId || item.remoteId === inspectedId) ||
+    (w.allFiles || w.files).find(
+      (item) => item.id === inspectedId || item.remoteId === inspectedId,
+    ) ||
     (w.activityFiles || []).find(
       (item) => item.id === inspectedId || item.remoteId === inspectedId,
     );
@@ -38,6 +41,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
     downloadingId: w.downloadingId,
   });
   const [tab, setTab] = useState('information');
+  const check = file?.remoteId ? w.statusChecks?.[file.remoteId] : null;
   const titleRef = useRef(null);
   const closeRef = useRef(null);
   const close = () => (onClose ? onClose() : w.inspect?.(null));
@@ -123,9 +127,6 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
         </button>
       </span>,
     );
-  const hasScanResult = ['safe', 'flagged', 'quarantined', 'quarantine_delete_failed'].includes(
-    file.scanStatus,
-  );
   const uploadConfirmed = file.status === 'success' || file.uploadState === 'uploaded';
   const isolated = file.scanStatus === 'quarantined';
   const quarantineProblem = file.scanStatus === 'quarantine_delete_failed';
@@ -202,7 +203,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
         <div>
           <h3>{file.name}</h3>
           <p>
-            {formatBytes(file.size)} · {file.type || 'Không xác định định dạng'}
+            {formatBytes(file.size)} · {formatFileType(file)}
           </p>
         </div>
       </div>
@@ -251,12 +252,19 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
       <div className="drawer-content">
         {tab === 'information' ? (
           <section id="detail-info" role="tabpanel" aria-labelledby="detail-info-tab">
+            <button
+              className="button secondary scan-report-shortcut"
+              onClick={() => setTab('processing')}
+            >
+              <ShieldCheck size={16} />
+              Báo cáo quét
+            </button>
             <dl className="file-details">
               {copyRow('Tên tệp', file.name)}
               {row('Tải lên', <StatusBadge {...file} />)}
               {row('Quét / cách ly', <ScanBadge {...file} />)}
               {row('Kích thước', formatBytes(file.size))}
-              {row('Định dạng', file.type || 'Không xác định')}
+              {row('Định dạng', formatFileType(file))}
               {row('Thời gian thêm', time(file.createdAt))}
               {row(
                 'Nơi lưu trữ',
@@ -273,6 +281,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
             <details className="technical-details">
               <summary>Thông tin kỹ thuật</summary>
               <dl className="file-details">
+                {row('MIME type', file.type || 'Chưa có')}
                 {file.remoteId != null && copyRow('ID máy chủ', file.remoteId)}
                 {file.key && copyRow('Object key', file.key)}
                 {row(
@@ -287,6 +296,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
           </section>
         ) : (
           <section id="detail-processing" role="tabpanel" aria-labelledby="detail-processing-tab">
+            <FileScanReport file={file} refreshKey={check?.checkedAt} />
             <ol className="processing-timeline">
               <li className={uploadConfirmed ? 'complete' : 'pending'}>
                 <span className="timeline-marker">
@@ -334,7 +344,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                   )}
                 </span>
                 <div>
-                  <h3>Cách ly nếu cần</h3>
+                  <h3>Cách ly</h3>
                   <p className="timeline-label">
                     {file.mode === 'demo' || file.scanStatus === 'safe'
                       ? 'Không áp dụng'
@@ -350,26 +360,6 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                 </div>
               </li>
             </ol>
-            <dl className="file-details">
-              {row(
-                'Số phát hiện',
-                hasScanResult ? (file.findingsCount ?? 'Chưa có') : 'Chưa có kết quả',
-              )}
-              {row(
-                'Loại phát hiện',
-                hasScanResult
-                  ? file.findingTypes?.length
-                    ? file.findingTypes.join(', ')
-                    : 'Không ghi nhận'
-                  : 'Chưa có kết quả',
-              )}
-              {row('Giải thích', scanExplanation(file))}
-              {row('Cập nhật gần nhất', time(file.updatedAt))}
-            </dl>
-            <p className="info-box">
-              Chỉ hiển thị tóm tắt do máy chủ cung cấp, không hiển thị nội dung dữ liệu nhạy cảm.
-              Không phát hiện PII không đồng nghĩa đã kiểm tra mọi rủi ro của tệp.
-            </p>
           </section>
         )}
         {file.error && (
@@ -377,7 +367,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
             {file.error}
           </p>
         )}
-        {file.syncError && (
+        {file.syncError && check?.phase !== 'error' && (
           <p className="banner warning">
             Chưa cập nhật được kết quả:{' '}
             {typeof file.syncError === 'string' ? file.syncError : 'máy chủ chưa phản hồi'}
@@ -397,6 +387,22 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
         )}
       </div>
       <div className="drawer-footer">
+        {check?.phase === 'success' && (
+          <p className="status-refresh-feedback" role="status">
+            Đã kiểm tra lúc{' '}
+            {new Date(check.checkedAt).toLocaleTimeString('vi-VN', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+            {' · '}
+            {check.changed ? 'Đã cập nhật trạng thái.' : 'Trạng thái không đổi.'}
+          </p>
+        )}
+        {check?.phase === 'error' && (
+          <p className="banner warning status-refresh-error" role="alert">
+            {check.error}
+          </p>
+        )}
         {w.contentAvailable && canReadContent(file) && (
           <>
             {previewInfo(file).kind && (
@@ -425,10 +431,15 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
           <button
             className="button secondary"
             title="Chỉ lấy kết quả mới, không chạy lại quét"
+            disabled={check?.phase === 'checking' || file.lifecycleState === 'purged'}
+            aria-busy={check?.phase === 'checking'}
             onClick={() => w.recheck?.(file.id)}
           >
-            <RefreshCw size={16} />
-            Cập nhật trạng thái
+            <RefreshCw
+              size={16}
+              className={check?.phase === 'checking' ? 'status-refresh-spinner' : undefined}
+            />
+            {check?.phase === 'checking' ? 'Đang kiểm tra…' : 'Cập nhật trạng thái'}
           </button>
         )}
         {file.original && (file.reconciling || file.outcomeUnknown) && (

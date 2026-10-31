@@ -294,10 +294,10 @@ export default function FileBrowser({ activity = false, overview = false }) {
   const failure = !activity && sync.phase === 'error';
   const serverLibrary = !activity && w.preferences.mode === 'api' && sync.phase !== 'disabled';
   const skippedItems = serverLibrary ? sync.skippedItems || [] : [];
-  const title = overview ? 'Tệp mới nhất' : activity ? 'Lịch sử trong phiên' : 'Danh sách tệp';
+  const title = overview ? 'Tệp mới nhất' : activity ? 'Lịch sử tải lên' : 'Danh sách tệp';
   const sourceHint =
     activity || !serverLibrary
-      ? `${overview ? 'Tối đa 5 tệp gần nhất trong phiên' : 'Trong phiên hiện tại'} · ${source.length} tệp`
+      ? `${overview ? 'Tối đa 5 tệp gần nhất' : 'Lịch sử đã lưu'} · ${source.length} tệp`
       : failure && !sync.lastSyncedAt
         ? 'Chưa đọc được thư viện máy chủ'
         : partial
@@ -736,8 +736,8 @@ export default function FileBrowser({ activity = false, overview = false }) {
         )}
         {!activity && sync.phase === 'disabled' && (
           <p className="file-sync-message" role="status">
-            Metadata chưa được bật. Chỉ hiển thị tệp trong phiên; tải lại trang không khôi phục danh
-            sách.
+            Dịch vụ metadata trên máy chủ chưa được bật. Lịch sử được lưu trên trình duyệt này;
+            không tự tiếp tục tải tệp đang dở khi mở lại trang.
           </p>
         )}
         {partial && (
@@ -760,6 +760,11 @@ export default function FileBrowser({ activity = false, overview = false }) {
           </div>
         )}
         <LibraryWarnings items={skippedItems} onRefresh={w.refreshFiles} loading={partial} />
+        {activity && w.historyError && (
+          <p className="banner warning" role="status">
+            Chưa đọc đủ lịch sử: {w.historyError}
+          </p>
+        )}
         {selectedFiles.length > 0 && (
           <div className="selection-toolbar" aria-label="Thao tác với tệp đã chọn">
             <strong>
@@ -812,6 +817,27 @@ export default function FileBrowser({ activity = false, overview = false }) {
             <button className="text-button" onClick={() => setSelected(new Set())}>
               Bỏ chọn
             </button>
+            {!activity && w.lifecycleAvailable && (
+              <button
+                disabled={
+                  !selectedFiles.every(
+                    (file) =>
+                      w.canManage(file) &&
+                      !['scanning', 'flagged'].includes(file.scanStatus) &&
+                      !['unknown', 'uploading'].includes(file.uploadState),
+                  )
+                }
+                onClick={() =>
+                  w.requestFileChange(
+                    'trash',
+                    selectedFiles.map((file) => file.id),
+                  )
+                }
+              >
+                <Trash2 size={16} />
+                Chuyển vào Thùng rác
+              </button>
+            )}
           </div>
         )}
         <div
@@ -851,6 +877,9 @@ export default function FileBrowser({ activity = false, overview = false }) {
               onStar={(id) => w.star([id])}
               onRetry={(id) => w.retry([id])}
               onCancel={(id) => w.cancel([id])}
+              onRename={(id) => w.requestFileChange('name', [id])}
+              onTrash={(id) => w.requestFileChange('trash', [id])}
+              canManage={w.canManage}
               onChoose={() => w.inputRef.current.click()}
               sort={sort}
               onSort={(value) => change('sort', value)}
@@ -891,7 +920,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
                         ? 'Các tệp chưa bắt đầu quét, đang quét hoặc không phát hiện dữ liệu nhạy cảm sẽ xuất hiện tại đây. Khu thường không đồng nghĩa mọi tệp đã an toàn.'
                         : serverLibrary
                           ? 'Thư viện máy chủ chưa có tệp. Bạn có thể chọn hoặc kéo thả tệp để bắt đầu.'
-                          : 'Chọn hoặc kéo thả tệp để bắt đầu. Danh sách trong phiên không được khôi phục khi tải lại trang.'
+                          : 'Chọn hoặc kéo thả tệp để bắt đầu. Lịch sử được ghi nhớ khi mở lại trang.'
               }
               filtered={
                 filtered || area !== 'all' || Boolean(skippedItems.length && !source.length)
@@ -934,7 +963,9 @@ export default function FileBrowser({ activity = false, overview = false }) {
           <span>
             {activity || w.preferences.mode === 'demo'
               ? 'Bỏ khỏi danh sách không xóa tệp trên máy chủ'
-              : 'Dữ liệu từ FastAPI · DynamoDB'}
+              : sync.phase === 'disabled'
+                ? 'Lịch sử trên trình duyệt'
+                : 'Dữ liệu từ FastAPI · DynamoDB'}
           </span>
         </div>
       </section>

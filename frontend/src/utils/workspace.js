@@ -18,6 +18,7 @@ export const isBusy = (file) =>
   Boolean(file.original) && ['queued', 'uploading'].includes(file.status);
 export const canRetry = (file) =>
   Boolean(file.original) &&
+  (!file.lifecycleState || file.lifecycleState === 'active') &&
   ['error', 'cancelled'].includes(file.status) &&
   !file.validationError &&
   file.retryable !== false &&

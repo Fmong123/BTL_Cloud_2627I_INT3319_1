@@ -58,13 +58,13 @@ export default function Uploads() {
         </p>
       </section>
       <p className="activity-steps">
-        <span>Tải lên</span>→<span>Quét dữ liệu</span>→<span>Cách ly nếu cần</span>
+        <span>Tải lên</span>→<span>Quét dữ liệu</span>→<span>Cách ly</span>
       </p>
       <FileBrowser activity />
       {w.uploadBatches?.length > 0 && (
         <section className="upload-batches" aria-label="Các đợt tải lên">
           <h2>Các đợt tải lên</h2>
-          <p>Mỗi lần chọn hoặc thả tệp là một đợt trong phiên hiện tại.</p>
+          <p>Các đợt tải được ghi nhớ. Tệp đang tải dở cần chọn lại sau khi đóng trang.</p>
           <div className="batch-list">
             {w.uploadBatches.map((batch, index) => (
               <article className="batch-row" key={batch.id}>

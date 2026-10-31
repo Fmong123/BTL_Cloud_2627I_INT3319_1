@@ -20,6 +20,7 @@ MODES = {
 BACKEND_DEFAULTS = {
     "MAYSEC_STORAGE_MODE": "unconfigured", "MAYSEC_METADATA_MODE": "disabled",
     "MAYSEC_SCAN_PIPELINE_ENABLED": "false", "MAYSEC_LOCAL_STORAGE_DIR": "data",
+    "MAYSEC_RESCAN_STATE_MACHINE_ARN": "", "MAYSEC_QUARANTINE_BUCKET_NAME": "",
     "MAYSEC_MAX_FILE_SIZE_BYTES": str(100 * MB),
     "MAYSEC_CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "AWS_PROFILE": "", "S3_BUCKET_NAME": "", "AWS_REGION": "",
@@ -190,6 +191,8 @@ class Settings:
         put(backend, "MAYSEC_CORS_ORIGINS", ",".join(dict.fromkeys(origins)), "Launcher · đồng bộ CORS")
         if self.data["mode"] != "s3-db":
             put(backend, "MAYSEC_SCAN_PIPELINE_ENABLED", "false")
+        if backend["MAYSEC_SCAN_PIPELINE_ENABLED"].strip().lower() not in {"true", "1"}:
+            put(backend, "MAYSEC_RESCAN_STATE_MACHINE_ARN", "", "Quét lại tắt khi pipeline không bật")
         if metadata == "disabled":
             put(backend, "AWS_PROFILE", "", "Không dùng AWS trong chế độ này")
         return {"mode": self.data["mode"], "backend": backend, "frontend": frontend,

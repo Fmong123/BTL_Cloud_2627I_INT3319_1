@@ -308,6 +308,8 @@ def lambda_handler(event, context):
         raise PipelineConflict("source_version_required")
     ctx = event.get("ctx") or {}
     row = read_file(_table(FILES_TABLE), source)
+    from pipeline_common import verify_rescan_execution
+    verify_rescan_execution(row, event)
     if row["status"] not in {"not_started", "scanning"}:
         return audit_scan(row, source)
     if event.get("operation") == "record_failure":

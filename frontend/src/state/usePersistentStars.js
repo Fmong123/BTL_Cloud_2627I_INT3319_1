@@ -63,7 +63,13 @@ export function usePersistentStars({ files, scope, available, onApply, notify })
       return;
     }
     for (const file of inputs.current.files) {
-      if (!ids.includes(file.id) || !file.remoteId || file.mode !== 'api') continue;
+      if (
+        !ids.includes(file.id) ||
+        !file.remoteId ||
+        file.mode !== 'api' ||
+        file.lifecycleState === 'purged'
+      )
+        continue;
       const id = keyOf(file),
         previous = values.current.get(id);
       if (previous?.pending) continue;

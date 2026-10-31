@@ -240,14 +240,18 @@ async function requestJson(
   }
 }
 
-export async function listFiles(baseUrl, { cursor, limit = 100, signal, timeout, fetcher } = {}) {
+export async function listFiles(
+  baseUrl,
+  { cursor, limit = 100, area, path = '/files', signal, timeout, fetcher } = {},
+) {
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
     throw new RangeError('Giới hạn danh sách phải từ 1 đến 100');
   if (cursor != null && (typeof cursor !== 'string' || !cursor.length || cursor.length > 2048))
     throw new Error('Cursor danh sách chưa hợp lệ');
   const query = new URLSearchParams({ limit: String(limit) });
+  if (area) query.set('area', area);
   if (cursor != null) query.set('cursor', cursor);
-  const data = await requestJson(baseUrl, `/files?${query}`, { signal, timeout, fetcher });
+  const data = await requestJson(baseUrl, `${path}?${query}`, { signal, timeout, fetcher });
   if (
     !data ||
     typeof data !== 'object' ||
@@ -276,6 +280,72 @@ export async function listFiles(baseUrl, { cursor, limit = 100, signal, timeout,
   return { items, skippedItems, nextCursor: data.next_cursor ?? null };
 }
 
+export async function changeFile(baseUrl, id, action, body, options = {}) {
+  const method = action === 'purge' ? 'DELETE' : action === 'name' ? 'PATCH' : 'POST';
+  const data = await requestJson(
+    baseUrl,
+    `/files/${encodeURIComponent(id)}${action === 'purge' ? '' : `/${action}`}`,
+    { ...options, method, body, timeout: action === 'purge' ? 60000 : 10000 },
+  );
+  if (action === 'purge') {
+    if (data?.id !== id || data.deleted !== true) throw new ApiError('Chưa xác nhận xóa tệp');
+    return data;
+  }
+  const result = normalizeServerFile(data);
+  if (result.remoteId !== id) throw new ApiError('ID tệp thay đổi không khớp');
+  return result;
+}
+
+export async function listNotifications(baseUrl, options = {}) {
+  const records = [],
+    seen = new Set();
+  let cursor;
+  do {
+    const query = new URLSearchParams({ limit: '100' });
+    if (cursor) query.set('cursor', cursor);
+    const data = await requestJson(baseUrl, `/notifications?${query}`, options);
+    if (!Array.isArray(data?.items)) throw new ApiError('Thông báo chưa đúng định dạng');
+    records.push(...data.items);
+    cursor = data.next_cursor;
+    if (
+      cursor != null &&
+      (typeof cursor !== 'string' || !cursor.length || cursor.length > 2048 || seen.has(cursor))
+    )
+      throw new ApiError('Cursor thông báo chưa hợp lệ');
+    if (cursor) seen.add(cursor);
+  } while (options.includeHistory && cursor && records.length < 2000);
+  return records
+    .slice(0, 2000)
+    .map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      message: item.message,
+      tone: item.tone,
+      fileId: item.file_id,
+      createdAt: Date.parse(item.created_at),
+      read: item.read === true,
+    }))
+    .filter((item) => typeof item.id === 'string' && Number.isFinite(item.createdAt));
+}
+
+export function persistNotification(baseUrl, event, options = {}) {
+  return requestJson(baseUrl, '/notifications', {
+    ...options,
+    method: 'POST',
+    body: {
+      id: event.id,
+      kind: event.kind,
+      title: event.title.slice(0, 200),
+      message: (event.message || '').slice(0, 1000),
+      tone: event.tone || 'info',
+      file_id: event.fileId || null,
+      read: event.read === true,
+      created_at: new Date(event.createdAt).toISOString(),
+    },
+  });
+}
+
 export async function getFileStatus(baseUrl, id, options = {}) {
   if (typeof id !== 'string' || !id.trim()) throw new Error('ID tệp chưa hợp lệ');
   const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/status`, options);
@@ -286,6 +356,82 @@ export async function getFileStatus(baseUrl, id, options = {}) {
   } catch (error) {
     throw new ApiError(error.message, { code: 'invalid_response' });
   }
+}
+
+export async function getStorageUsage(baseUrl, options = {}) {
+  const data = await requestJson(baseUrl, '/storage/usage', options);
+  if (
+    !data ||
+    ['limit_bytes', 'used_bytes', 'reserved_bytes', 'available_bytes'].some(
+      (key) => !Number.isSafeInteger(data[key]) || data[key] < 0,
+    ) ||
+    data.limit_bytes !== 1_000_000_000 ||
+    data.available_bytes !== Math.max(0, data.limit_bytes - data.used_bytes - data.reserved_bytes)
+  )
+    throw new ApiError('Dung lượng trả về chưa hợp lệ', { code: 'invalid_response' });
+  return {
+    limit: data.limit_bytes,
+    used: data.used_bytes,
+    reserved: data.reserved_bytes,
+    available: data.available_bytes,
+  };
+}
+
+function parseScanReport(data, id) {
+  const status = normalizeStatus(data);
+  if (
+    status.remoteId !== id ||
+    !Array.isArray(data.finding_counts) ||
+    data.finding_counts.some(
+      (entry) =>
+        !entry ||
+        !/^[A-Z][A-Z0-9_]{0,63}$/.test(entry.type) ||
+        !Number.isSafeInteger(entry.count) ||
+        entry.count < 0,
+    ) ||
+    typeof data.counts_complete !== 'boolean' ||
+    (data.extraction_complete != null && typeof data.extraction_complete !== 'boolean') ||
+    (data.scan_reason != null && typeof data.scan_reason !== 'string') ||
+    (data.rescan_dispatch != null &&
+      !['pending', 'started', 'unknown', 'failed'].includes(data.rescan_dispatch))
+  )
+    throw new ApiError('Báo cáo quét trả về chưa hợp lệ', { code: 'invalid_response' });
+  if (
+    new Set(data.finding_counts.map((entry) => entry.type)).size !== data.finding_counts.length ||
+    (data.counts_complete &&
+      data.finding_counts.reduce((sum, entry) => sum + entry.count, 0) !== status.findingsCount) ||
+    (data.rescan_request_id != null &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        data.rescan_request_id,
+      )) ||
+    (data.rescan_requested_at != null && !Number.isFinite(Date.parse(data.rescan_requested_at)))
+  )
+    throw new ApiError('Báo cáo quét trả về chưa hợp lệ', { code: 'invalid_response' });
+  return {
+    ...status,
+    findingCounts: data.finding_counts,
+    countsComplete: data.counts_complete,
+    extractionComplete: data.extraction_complete ?? null,
+    scanReason: data.scan_reason ?? null,
+    rescanRequestedAt: data.rescan_requested_at ?? null,
+    rescanRequestId: data.rescan_request_id ?? null,
+    rescanDispatch: data.rescan_dispatch ?? null,
+  };
+}
+
+export async function getScanReport(baseUrl, id, options = {}) {
+  const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/scan-report`, options);
+  return parseScanReport(data, id);
+}
+
+export async function rescanFile(baseUrl, id, requestId, options = {}) {
+  const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/rescan`, {
+    ...options,
+    method: 'POST',
+    body: { request_id: requestId },
+    timeout: 30000,
+  });
+  return parseScanReport(data, id);
 }
 
 export async function updateFilePreferences(baseUrl, id, starred, options = {}) {
