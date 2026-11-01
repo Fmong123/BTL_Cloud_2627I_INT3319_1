@@ -366,6 +366,7 @@ def get_file_status(
         updated_at=view.updated_at, status_reason=view.status_reason,
         findings_count=view.findings_count, finding_types=view.finding_types,
         scanned_at=view.scanned_at, quarantined_at=view.quarantined_at,
+        rescan_requested_at=view.rescan_requested_at,
         **{k: getattr(view, k) for k in ("lifecycle_state", "lifecycle_updated_at", "trashed_at",
             "trash_expires_at", "display_name", "name_updated_at")},
     )
@@ -405,7 +406,7 @@ def scan_report(item, view):
         counts_complete=complete,
         extraction_complete=item.get("extraction_complete") if type(item.get("extraction_complete")) is bool else None,
         scan_reason=reason,
-        rescan_requested_at=item.get("rescan_requested_at"), rescan_request_id=item.get("scan_request_id"),
+        rescan_request_id=item.get("scan_request_id"),
         rescan_dispatch=item.get("rescan_dispatch"))
 
 

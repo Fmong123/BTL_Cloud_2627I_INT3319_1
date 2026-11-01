@@ -41,6 +41,37 @@
 .primary-file-toolbar select {
   flex: 1 1 150px;
 }
+.activity-stat-filters > button {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--text);
+}
+.activity-stat-filters > button > span {
+  color: var(--muted);
+  font-size: 14px;
+}
+.activity-stat-filters > button > strong {
+  font-size: 28px;
+  font-weight: 650;
+}
+.activity-stat-filters > button:hover,
+.activity-stat-filters > button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.activity-deleted-toggle {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}
+.activity-card-result {
+  margin-top: 12px;
+}
 .extra-file-filters {
   padding: 0 25px 14px;
   font-size: 12px;

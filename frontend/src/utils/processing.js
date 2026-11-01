@@ -127,6 +127,7 @@ function summary(record) {
     statusReason,
     scannedAt: timestamp(record.scanned_at, 'thời gian quét', true),
     quarantinedAt: timestamp(record.quarantined_at, 'thời gian cách ly', true),
+    rescanRequestedAt: timestamp(record.rescan_requested_at, 'thời gian quét lại', true),
   };
 }
 
@@ -180,7 +181,8 @@ export function normalizeServerFile(record) {
     throw new Error('Đánh dấu chưa hợp lệ');
   if (
     !Number.isSafeInteger(record.size_bytes) ||
-    record.size_bytes <= 0 ||
+    record.size_bytes < 0 ||
+    (record.size_bytes === 0 && state.lifecycleState !== 'purged') ||
     !['local', 's3'].includes(record.storage)
   ) {
     throw new Error('Metadata dung lượng hoặc nơi lưu chưa hợp lệ');

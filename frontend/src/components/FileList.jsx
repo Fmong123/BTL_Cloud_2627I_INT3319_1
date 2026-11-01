@@ -6,6 +6,7 @@ import ScanBadge from './ScanBadge.jsx';
 import { formatBytes } from '../utils/files.js';
 import FileActions from './FileActions.jsx';
 import { previewInfo } from '../utils/content.js';
+import { activityAction, activityTime } from '../utils/activity.js';
 
 function SelectAll({ files, selected, onSelectAll }) {
   const ref = useRef(null);
@@ -27,6 +28,7 @@ function SelectAll({ files, selected, onSelectAll }) {
 }
 export default function FileList({
   files,
+  activity = false,
   view = 'list',
   selected,
   onSelect,
@@ -70,11 +72,12 @@ export default function FileList({
   }, [view, hasFiles, compactPanel]);
   useEffect(() => () => dragCleanup.current?.(), []);
   const showSecondary = !compactPanel || dimensions.viewport > 1650;
-  const dateVisible = showDate && showSecondary;
+  const dateVisible = activity || (showDate && showSecondary);
   const metadata = [
     ...(showSize ? [{ key: 'size', min: 116, preferred: 128 }] : []),
+    ...(activity ? [{ key: 'operation', min: 150, preferred: 180 }] : []),
     ...(dateVisible ? [{ key: 'date', min: 140, preferred: 164 }] : []),
-    ...(showSecondary ? [{ key: 'upload', min: 140, preferred: 160 }] : []),
+    ...(!activity && showSecondary ? [{ key: 'upload', min: 140, preferred: 160 }] : []),
     { key: 'scan', min: 184, preferred: 208 },
   ];
   const fixedWidth = (selected ? 44 : 0) + 132;
@@ -157,6 +160,34 @@ export default function FileList({
       </div>
     </div>
   );
+  const resultBadge = (file) =>
+    activity && file.lifecycleState === 'purged' ? (
+      <span className="status-badge muted">Đã xóa</span>
+    ) : activity &&
+      ['queued', 'uploading', 'error', 'cancelled', 'unknown', 'processing'].includes(
+        file.status,
+      ) &&
+      file.uploadState !== 'uploaded' ? (
+      <StatusBadge {...file} />
+    ) : (
+      <ScanBadge
+        {...file}
+        onInspect={actions.onInspectScan ? () => actions.onInspectScan(file.id) : undefined}
+      />
+    );
+  const dateCell = (file) => {
+    const at = activity ? activityTime(file) : file.createdAt;
+    return (
+      <td className="nowrap metadata-column file-date-column">
+        <time className="cell-date" dateTime={new Date(at).toISOString()}>
+          {new Date(at).toLocaleDateString('vi-VN')}
+        </time>
+        <span className="cell-time">
+          {new Date(at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </td>
+    );
+  };
   const sortHeader = (label, ascending, descending, resizable = false) => {
     const current = sort === ascending || sort === descending;
     return (
@@ -164,7 +195,7 @@ export default function FileList({
         className={
           resizable
             ? 'name-column-heading'
-            : label === 'Thời gian thêm'
+            : label === 'Thời gian thêm' || label === 'Thời điểm xử lý'
               ? 'metadata-column file-date-column'
               : 'metadata-column'
         }
@@ -266,12 +297,27 @@ export default function FileList({
               <p className="file-meta">
                 {[
                   showSize ? formatBytes(file.size) : null,
-                  showDate ? new Date(file.createdAt).toLocaleDateString('vi-VN') : null,
+                  activity ? activityAction(file) : null,
+                  showDate
+                    ? new Date(activity ? activityTime(file) : file.createdAt).toLocaleString(
+                        'vi-VN',
+                        {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          ...(activity ? { hour: '2-digit', minute: '2-digit' } : {}),
+                        },
+                      )
+                    : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
               </p>
-              {statuses(file)}
+              {activity ? (
+                <div className="activity-card-result">{resultBadge(file)}</div>
+              ) : (
+                statuses(file)
+              )}
               {progress(file)}
               {file.error && <p className="file-error">{file.error}</p>}
               {file.syncError && <p className="file-error">Chưa cập nhật được kết quả</p>}
@@ -290,11 +336,15 @@ export default function FileList({
           {selected && <col style={{ width: 44 }} />}
           <col style={{ width: actualNameWidth }} />
           {showSize && <col style={{ width: columnWidths.size }} />}
-          {dateVisible && <col className="file-date-column" style={{ width: columnWidths.date }} />}
-          {showSecondary && (
+          {activity && <col style={{ width: columnWidths.operation }} />}
+          {!activity && dateVisible && (
+            <col className="file-date-column" style={{ width: columnWidths.date }} />
+          )}
+          {!activity && showSecondary && (
             <col className="file-upload-column" style={{ width: columnWidths.upload }} />
           )}
           <col style={{ width: columnWidths.scan }} />
+          {activity && <col className="file-date-column" style={{ width: columnWidths.date }} />}
           <col style={{ width: 132 }} />
         </colgroup>
         <thead>
@@ -306,9 +356,15 @@ export default function FileList({
             )}
             {sortHeader('Tên tệp', 'name', 'name-desc', true)}
             {showSize && sortHeader('Kích thước', 'size', 'size-desc')}
-            {dateVisible && sortHeader('Thời gian thêm', 'oldest', 'newest')}
-            {showSecondary && <th className="metadata-column file-upload-column">Tải lên</th>}
-            <th className="metadata-column file-scan-column">Quét / cách ly</th>
+            {activity && <th className="metadata-column">Hoạt động gần nhất</th>}
+            {!activity && dateVisible && sortHeader('Thời gian thêm', 'oldest', 'newest')}
+            {!activity && showSecondary && (
+              <th className="metadata-column file-upload-column">Tải lên</th>
+            )}
+            <th className="metadata-column file-scan-column">
+              {activity ? 'Kết quả' : 'Quét / cách ly'}
+            </th>
+            {activity && sortHeader('Thời điểm xử lý', 'oldest', 'newest')}
             <th>
               <span className="visually-hidden">Thao tác</span>
             </th>
@@ -345,32 +401,15 @@ export default function FileList({
                 </div>
               </td>
               {showSize && <td className="nowrap metadata-column">{formatBytes(file.size)}</td>}
-              {dateVisible && (
-                <td className="nowrap metadata-column file-date-column">
-                  <time className="cell-date" dateTime={new Date(file.createdAt).toISOString()}>
-                    {new Date(file.createdAt).toLocaleDateString('vi-VN')}
-                  </time>
-                  <span className="cell-time">
-                    {new Date(file.createdAt).toLocaleTimeString('vi-VN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </td>
-              )}
-              {showSecondary && (
+              {activity && <td className="metadata-column">{activityAction(file)}</td>}
+              {!activity && dateVisible && dateCell(file)}
+              {!activity && showSecondary && (
                 <td className="metadata-column file-upload-column">
                   <StatusBadge {...file} />
                 </td>
               )}
-              <td className="metadata-column file-scan-column">
-                <ScanBadge
-                  {...file}
-                  onInspect={
-                    actions.onInspectScan ? () => actions.onInspectScan(file.id) : undefined
-                  }
-                />
-              </td>
+              <td className="metadata-column file-scan-column">{resultBadge(file)}</td>
+              {activity && dateCell(file)}
               <td>
                 <FileActions file={file} {...actions} />
               </td>

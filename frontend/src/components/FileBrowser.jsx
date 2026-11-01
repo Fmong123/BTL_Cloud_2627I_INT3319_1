@@ -25,6 +25,8 @@ import FileList from './FileList.jsx';
 import LibraryWarnings from './LibraryWarnings.jsx';
 import FileDetail from './FileDetail.jsx';
 import FileSelectionDetail from './FileSelectionDetail.jsx';
+import ActivitySummary from './ActivitySummary.jsx';
+import { activityDates, activityGroups, filterActivityFiles } from '../utils/activity.js';
 import '../file-workspace.css';
 
 export const sortLabels = {
@@ -92,12 +94,22 @@ export default function FileBrowser({ activity = false, overview = false }) {
   const section = Object.hasOwn(sections, params.get('section')) ? params.get('section') : 'all';
   const area = !activity && Object.hasOwn(areas, params.get('area')) ? params.get('area') : 'all';
   const scan = Object.hasOwn(scanStates, params.get('scan')) ? params.get('scan') : 'all';
-  const date = Object.hasOwn(dates, params.get('date')) ? params.get('date') : 'all';
+  const dateOptions = activity ? activityDates : dates;
+  const date = Object.hasOwn(dateOptions, params.get('date'))
+    ? params.get('date')
+    : activity
+      ? '7d'
+      : 'all';
+  const activityGroup =
+    activity && Object.hasOwn(activityGroups, params.get('activityGroup'))
+      ? params.get('activityGroup')
+      : 'all';
+  const includeDeleted = activity && params.get('includeDeleted') === 'true' ? 'true' : 'false';
   const dateFrom = params.get('dateFrom') || '';
   const dateTo = params.get('dateTo') || '';
   const sort = sorts.includes(params.get('sort'))
     ? params.get('sort')
-    : overview
+    : overview || activity
       ? 'newest'
       : w.preferences.sort;
   const scope =
@@ -114,11 +126,32 @@ export default function FileBrowser({ activity = false, overview = false }) {
     date,
     dateFrom,
     dateTo,
+    activityGroup,
+    includeDeleted,
   });
   const visible = useMemo(
-    () => filterFiles(source, currentFilters, now),
-    [source, q, status, category, section, sort, area, scan, date, dateFrom, dateTo, now],
+    () => (activity ? filterActivityFiles : filterFiles)(source, currentFilters, now),
+    [
+      source,
+      activity,
+      q,
+      status,
+      category,
+      section,
+      sort,
+      area,
+      scan,
+      date,
+      dateFrom,
+      dateTo,
+      activityGroup,
+      includeDeleted,
+      now,
+    ],
   );
+  const periodFiles = activity
+    ? filterActivityFiles(source, { date, dateFrom, dateTo, includeDeleted }, now)
+    : [];
   const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const requestedPage = Number(params.get('page'));
   const page =
@@ -138,6 +171,8 @@ export default function FileBrowser({ activity = false, overview = false }) {
     sort,
     scope,
     page,
+    activityGroup,
+    includeDeleted,
   ]);
   if (selection.key !== filterKey) {
     setSelection({ key: filterKey, ids: new Set() });
@@ -180,7 +215,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (value && value !== 'all') next.set(key, value);
+        if (value && (value !== 'all' || (activity && key === 'date'))) next.set(key, value);
         else next.delete(key);
         if (key === 'date' && value !== 'custom') {
           next.delete('dateFrom');
@@ -191,7 +226,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
       },
       { replace: key === 'q' },
     );
-    if (key === 'sort') w.setPreferences((p) => ({ ...p, sort: value }));
+    if (key === 'sort' && !activity) w.setPreferences((p) => ({ ...p, sort: value }));
   }
   function choose(id, range = false) {
     const start = pageFiles.findIndex((file) => file.id === anchorRef.current);
@@ -233,7 +268,8 @@ export default function FileBrowser({ activity = false, overview = false }) {
     setParams(
       Object.fromEntries(Object.entries(values).filter(([, value]) => value && value !== 'all')),
     );
-    if (sorts.includes(values.sort)) w.setPreferences((p) => ({ ...p, sort: values.sort }));
+    if (!activity && sorts.includes(values.sort))
+      w.setPreferences((p) => ({ ...p, sort: values.sort }));
     savedRef.current.open = false;
     savedRef.current.querySelector('summary').focus();
   }
@@ -285,18 +321,19 @@ export default function FileBrowser({ activity = false, overview = false }) {
     status !== 'all' ||
     section !== 'all' ||
     scan !== 'all' ||
-    date !== 'all',
+    date !== 'all' ||
+    activityGroup !== 'all' ||
+    includeDeleted === 'true',
   );
   const partial =
-    !activity &&
-    w.preferences.mode === 'api' &&
-    ['idle', 'loading', 'partial'].includes(sync.phase);
-  const failure = !activity && sync.phase === 'error';
-  const serverLibrary = !activity && w.preferences.mode === 'api' && sync.phase !== 'disabled';
+    w.preferences.mode === 'api' && ['idle', 'loading', 'partial'].includes(sync.phase);
+  const failure = sync.phase === 'error';
+  const serverLibrary = w.preferences.mode === 'api' && sync.phase !== 'disabled';
   const skippedItems = serverLibrary ? sync.skippedItems || [] : [];
   const title = overview ? 'Tệp mới nhất' : activity ? 'Lịch sử tải lên' : 'Danh sách tệp';
-  const sourceHint =
-    activity || !serverLibrary
+  const sourceHint = activity
+    ? `${dateOptions[date]} · Theo lần xử lý gần nhất${includeDeleted === 'true' ? ' · Gồm tệp đã xóa' : ''}`
+    : !serverLibrary
       ? `${overview ? 'Tối đa 5 tệp gần nhất' : 'Lịch sử đã lưu'} · ${source.length} tệp`
       : failure && !sync.lastSyncedAt
         ? 'Chưa đọc được thư viện máy chủ'
@@ -315,682 +352,744 @@ export default function FileBrowser({ activity = false, overview = false }) {
     </button>
   );
   return (
-    <div
-      className={`file-browser-layout drive-workspace ${panelOpen ? 'has-panel' : ''}`}
-      onDragOver={(event) => {
-        if (!Array.from(event.dataTransfer.types).includes('Files')) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = 'copy';
-        setDragging(true);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false);
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        setDragging(false);
-        w.addFiles(Array.from(event.dataTransfer.files));
-      }}
-    >
-      <section
-        className="files-section file-workspace"
-        ref={workspaceRef}
-        onKeyDown={workspaceKeys}
-        aria-label={activity ? 'Danh sách hoạt động' : 'Thư viện tệp'}
+    <>
+      {activity && (
+        <ActivitySummary
+          files={periodFiles}
+          period={dateOptions[date]}
+          group={activityGroup}
+          onGroup={(value) => change('activityGroup', value)}
+          workspace={w}
+        />
+      )}
+      <div
+        className={`file-browser-layout drive-workspace ${panelOpen ? 'has-panel' : ''}`}
+        onDragOver={(event) => {
+          if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          w.addFiles(Array.from(event.dataTransfer.files));
+        }}
       >
-        {!activity && (
-          <div
-            className="file-area-tabs"
-            role="tablist"
-            aria-label="Khu vực tệp"
-            onKeyDown={(event) => {
-              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-              const values = Object.keys(areas),
-                current = values.indexOf(area);
-              const next =
-                event.key === 'Home'
-                  ? 0
-                  : event.key === 'End'
-                    ? values.length - 1
-                    : (current + (event.key === 'ArrowRight' ? 1 : -1) + values.length) %
-                      values.length;
-              event.preventDefault();
-              change('area', values[next]);
-              document.getElementById(`area-${values[next]}`)?.focus();
-            }}
-          >
-            {Object.entries(areas).map(([value, label]) => (
-              <button
-                key={value}
-                id={`area-${value}`}
-                role="tab"
-                aria-selected={area === value}
-                tabIndex={area === value ? 0 : -1}
-                aria-controls="file-results"
-                onClick={() => change('area', value)}
-              >
-                {label}
-                <span>
-                  {value === 'all'
-                    ? source.length
-                    : value === 'attention'
-                      ? attentionCount
-                      : source.length - attentionCount}
+        <section
+          className="files-section file-workspace"
+          ref={workspaceRef}
+          onKeyDown={workspaceKeys}
+          aria-label={activity ? 'Danh sách hoạt động' : 'Thư viện tệp'}
+        >
+          {!activity && (
+            <div
+              className="file-area-tabs"
+              role="tablist"
+              aria-label="Khu vực tệp"
+              onKeyDown={(event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                const values = Object.keys(areas),
+                  current = values.indexOf(area);
+                const next =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? values.length - 1
+                      : (current + (event.key === 'ArrowRight' ? 1 : -1) + values.length) %
+                        values.length;
+                event.preventDefault();
+                change('area', values[next]);
+                document.getElementById(`area-${values[next]}`)?.focus();
+              }}
+            >
+              {Object.entries(areas).map(([value, label]) => (
+                <button
+                  key={value}
+                  id={`area-${value}`}
+                  role="tab"
+                  aria-selected={area === value}
+                  tabIndex={area === value ? 0 : -1}
+                  aria-controls="file-results"
+                  onClick={() => change('area', value)}
+                >
+                  {label}
+                  <span>
+                    {value === 'all'
+                      ? source.length
+                      : value === 'attention'
+                        ? attentionCount
+                        : source.length - attentionCount}
+                    {partial ? '+' : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="files-heading">
+            <div>
+              <h2>
+                {title}
+                <span className="count-badge">
+                  {visible.length}
                   {partial ? '+' : ''}
                 </span>
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="files-heading">
-          <div>
-            <h2>
-              {title}
-              <span className="count-badge">
-                {visible.length}
-                {partial ? '+' : ''}
-              </span>
-            </h2>
-            <p>{sourceHint}</p>
-          </div>
-          <div className="file-heading-actions">
-            {overview && (
-              <Link className="button secondary" to="/files">
-                Xem tất cả <ArrowRight size={16} />
-              </Link>
-            )}
-            <div className="library-upload-entry">
-              <button
-                className="button primary library-upload-button"
-                onClick={() => w.inputRef.current.click()}
-                aria-describedby={dropHintId}
-                title={`Tối đa ${formatBytes(w.limit)} / tệp · có thể kéo thả vào danh sách`}
-              >
-                <CloudUpload size={18} />
-                Tải tệp lên
-              </button>
-              <span id={dropHintId} className="library-drop-hint">
-                Kéo thả tệp vào danh sách
-              </span>
+              </h2>
+              <p>{sourceHint}</p>
             </div>
-            <details className="file-control-popover saved-filter-control" ref={savedRef}>
-              <summary title="Bộ lọc đã lưu">
-                <Bookmark size={17} />
-                Bộ lọc đã lưu
-              </summary>
-              <div className="file-control-panel">
-                <strong>Bộ lọc cho kết nối này</strong>
-                {!saved.length && <p>Chưa lưu bộ lọc nào.</p>}
-                <ul>
-                  {saved.map((item) => (
-                    <li key={item.id}>
-                      <button onClick={() => loadFilter(item)}>{item.name}</button>
-                      <button
-                        className="icon-button"
-                        aria-label={`Xóa bộ lọc ${item.name}`}
-                        onClick={() => {
-                          w.setPreferences((p) => ({
-                            ...p,
-                            savedFilters: {
-                              ...p.savedFilters,
-                              [scope]: (p.savedFilters?.[scope] || []).filter(
-                                (value) => value.id !== item.id,
-                              ),
-                            },
-                          }));
-                          savedRef.current
-                            ?.querySelector('summary')
-                            ?.focus({ preventScroll: true });
-                          setSavedMessage(`Đã xóa “${item.name}”`);
-                        }}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <form onSubmit={saveFilter}>
-                  <label htmlFor={`saved-filter-name-${activity ? 'activity' : 'library'}`}>
-                    Lưu bộ lọc hiện tại
-                  </label>
-                  <input
-                    id={`saved-filter-name-${activity ? 'activity' : 'library'}`}
-                    value={filterName}
-                    maxLength={60}
-                    placeholder="Tên bộ lọc"
-                    onChange={(event) => {
-                      setFilterName(event.target.value);
-                      setSavedMessage('');
-                    }}
-                  />
-                  <button
-                    className="button secondary"
-                    disabled={!filterName.trim() || saved.length >= 10}
-                  >
-                    Lưu bộ lọc
-                  </button>
-                </form>
-                <p role="status">
-                  {savedMessage || `${saved.length}/10 bộ lọc · chỉ lưu trên trình duyệt này`}
-                </p>
-              </div>
-            </details>
-            <details className="file-control-popover" ref={columnsRef}>
-              <summary title="Tùy chỉnh hiển thị">
-                <Columns3 size={17} />
-                <span className="visually-hidden">Tùy chỉnh hiển thị</span>
-              </summary>
-              <div className="file-control-panel">
-                <label>
-                  Mật độ
-                  <select
-                    aria-label="Mật độ hiển thị"
-                    value={w.preferences.density || 'comfortable'}
-                    onChange={(event) =>
-                      w.setPreferences((p) => ({ ...p, density: event.target.value }))
-                    }
-                  >
-                    <option value="comfortable">Thoải mái</option>
-                    <option value="compact">Gọn</option>
-                  </select>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={w.preferences.showSize !== false}
-                    onChange={(event) =>
-                      w.setPreferences((p) => ({ ...p, showSize: event.target.checked }))
-                    }
-                  />
-                  Cột kích thước
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={w.preferences.showDate !== false}
-                    onChange={(event) =>
-                      w.setPreferences((p) => ({ ...p, showDate: event.target.checked }))
-                    }
-                  />
-                  Cột thời gian
-                </label>
+            <div className="file-heading-actions">
+              {overview && (
+                <Link className="button secondary" to="/files">
+                  Xem tất cả <ArrowRight size={16} />
+                </Link>
+              )}
+              <div className="library-upload-entry">
                 <button
-                  className="text-button"
-                  onClick={() =>
-                    w.setPreferences((p) => ({
-                      ...p,
-                      nameColumnWidth: 320,
-                      nameColumnResized: false,
-                      showSize: true,
-                      showDate: true,
-                      density: 'comfortable',
-                    }))
-                  }
+                  className="button primary library-upload-button"
+                  onClick={() => w.inputRef.current.click()}
+                  aria-describedby={dropHintId}
+                  title={`Tối đa ${formatBytes(w.limit)} / tệp · có thể kéo thả vào danh sách`}
                 >
-                  Đặt lại hiển thị
+                  <CloudUpload size={18} />
+                  Tải tệp lên
+                </button>
+                <span id={dropHintId} className="library-drop-hint">
+                  Kéo thả tệp vào danh sách
+                </span>
+              </div>
+              <details className="file-control-popover saved-filter-control" ref={savedRef}>
+                <summary title="Bộ lọc đã lưu">
+                  <Bookmark size={17} />
+                  Bộ lọc đã lưu
+                </summary>
+                <div className="file-control-panel">
+                  <strong>Bộ lọc cho kết nối này</strong>
+                  {!saved.length && <p>Chưa lưu bộ lọc nào.</p>}
+                  <ul>
+                    {saved.map((item) => (
+                      <li key={item.id}>
+                        <button onClick={() => loadFilter(item)}>{item.name}</button>
+                        <button
+                          className="icon-button"
+                          aria-label={`Xóa bộ lọc ${item.name}`}
+                          onClick={() => {
+                            w.setPreferences((p) => ({
+                              ...p,
+                              savedFilters: {
+                                ...p.savedFilters,
+                                [scope]: (p.savedFilters?.[scope] || []).filter(
+                                  (value) => value.id !== item.id,
+                                ),
+                              },
+                            }));
+                            savedRef.current
+                              ?.querySelector('summary')
+                              ?.focus({ preventScroll: true });
+                            setSavedMessage(`Đã xóa “${item.name}”`);
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <form onSubmit={saveFilter}>
+                    <label htmlFor={`saved-filter-name-${activity ? 'activity' : 'library'}`}>
+                      Lưu bộ lọc hiện tại
+                    </label>
+                    <input
+                      id={`saved-filter-name-${activity ? 'activity' : 'library'}`}
+                      value={filterName}
+                      maxLength={60}
+                      placeholder="Tên bộ lọc"
+                      onChange={(event) => {
+                        setFilterName(event.target.value);
+                        setSavedMessage('');
+                      }}
+                    />
+                    <button
+                      className="button secondary"
+                      disabled={!filterName.trim() || saved.length >= 10}
+                    >
+                      Lưu bộ lọc
+                    </button>
+                  </form>
+                  <p role="status">
+                    {savedMessage || `${saved.length}/10 bộ lọc · chỉ lưu trên trình duyệt này`}
+                  </p>
+                </div>
+              </details>
+              <details className="file-control-popover" ref={columnsRef}>
+                <summary title="Tùy chỉnh hiển thị">
+                  <Columns3 size={17} />
+                  <span className="visually-hidden">Tùy chỉnh hiển thị</span>
+                </summary>
+                <div className="file-control-panel">
+                  <label>
+                    Mật độ
+                    <select
+                      aria-label="Mật độ hiển thị"
+                      value={w.preferences.density || 'comfortable'}
+                      onChange={(event) =>
+                        w.setPreferences((p) => ({ ...p, density: event.target.value }))
+                      }
+                    >
+                      <option value="comfortable">Thoải mái</option>
+                      <option value="compact">Gọn</option>
+                    </select>
+                  </label>
+                  {!activity && (
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={w.preferences.showSize !== false}
+                        onChange={(event) =>
+                          w.setPreferences((p) => ({ ...p, showSize: event.target.checked }))
+                        }
+                      />
+                      Cột kích thước
+                    </label>
+                  )}
+                  {!activity && (
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={w.preferences.showDate !== false}
+                        onChange={(event) =>
+                          w.setPreferences((p) => ({ ...p, showDate: event.target.checked }))
+                        }
+                      />
+                      Cột thời gian
+                    </label>
+                  )}
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      w.setPreferences((p) => ({
+                        ...p,
+                        nameColumnWidth: 320,
+                        nameColumnResized: false,
+                        showSize: true,
+                        showDate: true,
+                        density: 'comfortable',
+                      }))
+                    }
+                  >
+                    Đặt lại hiển thị
+                  </button>
+                </div>
+              </details>
+              {w.preferences.mode === 'api' && (
+                <button
+                  className="icon-button"
+                  aria-label="Làm mới danh sách"
+                  title="Làm mới danh sách"
+                  disabled={partial}
+                  onClick={() => w.refreshFiles?.()}
+                >
+                  <RefreshCw size={17} className={partial ? 'spin' : ''} />
+                </button>
+              )}
+              <div className="view-switch" role="group" aria-label="Kiểu hiển thị">
+                <button
+                  aria-label="Dạng danh sách"
+                  aria-pressed={w.preferences.view === 'list'}
+                  onClick={() => w.setPreferences((p) => ({ ...p, view: 'list' }))}
+                >
+                  <List size={18} />
+                </button>
+                <button
+                  aria-label="Dạng lưới"
+                  aria-pressed={w.preferences.view === 'grid'}
+                  onClick={() => w.setPreferences((p) => ({ ...p, view: 'grid' }))}
+                >
+                  <LayoutGrid size={18} />
                 </button>
               </div>
-            </details>
-            {!activity && w.preferences.mode === 'api' && (
-              <button
-                className="icon-button"
-                aria-label="Làm mới danh sách"
-                title="Làm mới danh sách"
-                disabled={partial}
-                onClick={() => w.refreshFiles?.()}
-              >
-                <RefreshCw size={17} className={partial ? 'spin' : ''} />
-              </button>
-            )}
-            <div className="view-switch" role="group" aria-label="Kiểu hiển thị">
-              <button
-                aria-label="Dạng danh sách"
-                aria-pressed={w.preferences.view === 'list'}
-                onClick={() => w.setPreferences((p) => ({ ...p, view: 'list' }))}
-              >
-                <List size={18} />
-              </button>
-              <button
-                aria-label="Dạng lưới"
-                aria-pressed={w.preferences.view === 'grid'}
-                onClick={() => w.setPreferences((p) => ({ ...p, view: 'grid' }))}
-              >
-                <LayoutGrid size={18} />
-              </button>
             </div>
           </div>
-        </div>
-        <div className="file-toolbar primary-file-toolbar">
-          <label className="search-field">
-            <Search size={18} />
-            <input
-              ref={searchRef}
-              aria-label={activity ? 'Tìm kiếm hoạt động' : 'Tìm kiếm tệp'}
-              placeholder={
-                overview ? 'Tìm trong 5 tệp gần nhất…' : 'Tìm tên tệp, có hoặc không dấu…'
-              }
-              value={q}
-              onChange={(event) => change('q', event.target.value)}
-            />
-            {q && (
-              <button
-                aria-label="Xóa tìm kiếm"
-                className="icon-button"
-                onClick={() => change('q', '')}
-              >
-                <X size={16} />
-              </button>
-            )}
-          </label>
-          <select
-            aria-label="Loại tệp"
-            value={category}
-            onChange={(event) => change('category', event.target.value)}
-          >
-            {Object.entries(categories).map(([v, text]) => (
-              <option key={v} value={v}>
-                {text}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Kết quả quét và cách ly"
-            value={scan}
-            onChange={(event) => change('scan', event.target.value)}
-          >
-            <option value="all">Mọi kết quả xử lý</option>
-            {Object.entries(scanStates).map(([v, state]) => (
-              <option key={v} value={v}>
-                {state.label}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Sắp xếp tệp"
-            value={sort}
-            onChange={(event) => change('sort', event.target.value)}
-          >
-            {Object.entries(sortLabels).map(([v, text]) => (
-              <option key={v} value={v}>
-                {text}
-              </option>
-            ))}
-          </select>
-        </div>
-        <details
-          className="extra-file-filters"
-          open={section !== 'all' || status !== 'all' || date !== 'all' || undefined}
-        >
-          <summary>
-            <SlidersHorizontal size={14} />
-            Bộ lọc thêm
-          </summary>
-          <div>
-            {!activity && (
-              <label>
-                Nhóm tệp
-                <select
-                  aria-label="Nhóm tệp"
-                  value={section}
-                  onChange={(event) => change('section', event.target.value)}
+          <div className="file-toolbar primary-file-toolbar">
+            <label className="search-field">
+              <Search size={18} />
+              <input
+                ref={searchRef}
+                aria-label={activity ? 'Tìm kiếm hoạt động' : 'Tìm kiếm tệp'}
+                placeholder={
+                  overview ? 'Tìm trong 5 tệp gần nhất…' : 'Tìm tên tệp, có hoặc không dấu…'
+                }
+                value={q}
+                onChange={(event) => change('q', event.target.value)}
+              />
+              {q && (
+                <button
+                  aria-label="Xóa tìm kiếm"
+                  className="icon-button"
+                  onClick={() => change('q', '')}
                 >
-                  {Object.entries(sections).map(([v, text]) => (
-                    <option
-                      key={v}
-                      value={v}
-                      disabled={v === 'starred' && w.favoritesAvailable === false}
-                    >
-                      {text}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <label>
-              Tải lên
-              <select
-                aria-label="Trạng thái tệp"
-                value={status}
-                onChange={(event) => change('status', event.target.value)}
-              >
-                {Object.entries(statuses).map(([v, text]) => (
-                  <option key={v} value={v}>
-                    {text}
-                  </option>
-                ))}
-              </select>
+                  <X size={16} />
+                </button>
+              )}
             </label>
-            <label>
-              Ngày thêm
+            <select
+              aria-label="Loại tệp"
+              value={category}
+              onChange={(event) => change('category', event.target.value)}
+            >
+              {Object.entries(categories).map(([v, text]) => (
+                <option key={v} value={v}>
+                  {text}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Kết quả quét và cách ly"
+              value={scan}
+              onChange={(event) => change('scan', event.target.value)}
+            >
+              <option value="all">Mọi kết quả xử lý</option>
+              {Object.entries(scanStates).map(([v, state]) => (
+                <option key={v} value={v}>
+                  {state.label}
+                </option>
+              ))}
+            </select>
+            {activity && (
               <select
-                aria-label="Ngày thêm tệp"
+                aria-label="Thời gian xử lý"
                 value={date}
                 onChange={(event) => change('date', event.target.value)}
               >
-                {Object.entries(dates).map(([value, label]) => (
+                {Object.entries(activityDates).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
                 ))}
               </select>
-            </label>
-            {date === 'custom' && (
-              <>
-                <label>
-                  Từ
-                  <input
-                    type="date"
-                    aria-label="Từ ngày"
-                    value={dateFrom}
-                    max={dateTo || undefined}
-                    onChange={(event) => change('dateFrom', event.target.value)}
-                  />
-                </label>
-                <label>
-                  Đến
-                  <input
-                    type="date"
-                    aria-label="Đến ngày"
-                    value={dateTo}
-                    min={dateFrom || undefined}
-                    onChange={(event) => change('dateTo', event.target.value)}
-                  />
-                </label>
-                {dateFrom && dateTo && dateFrom > dateTo && (
-                  <p role="alert" className="file-date-error">
-                    Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.
-                  </p>
-                )}
-              </>
             )}
+            <select
+              aria-label="Sắp xếp tệp"
+              value={sort}
+              onChange={(event) => change('sort', event.target.value)}
+            >
+              {Object.entries(sortLabels).map(([v, text]) => (
+                <option key={v} value={v}>
+                  {activity && v === 'newest'
+                    ? 'Xử lý mới nhất'
+                    : activity && v === 'oldest'
+                      ? 'Xử lý cũ nhất'
+                      : text}
+                </option>
+              ))}
+            </select>
           </div>
-        </details>
-        {filtered && (
-          <div className="active-filters">
-            <span>
-              {visible.length}
-              {partial ? '+' : ''} kết quả
-            </span>
-            {q && chip('q', `Tên: ${q}`)}
-            {section !== 'all' && chip('section', sections[section])}
-            {category !== 'all' && chip('category', categories[category])}
-            {status !== 'all' && chip('status', statuses[status])}
-            {scan !== 'all' && chip('scan', scanStates[scan].label)}
-            {date !== 'all' &&
-              chip(
-                'date',
-                date === 'custom' ? `Ngày: ${dateFrom || '…'} → ${dateTo || '…'}` : dates[date],
+          <details
+            className="extra-file-filters"
+            open={
+              section !== 'all' ||
+              status !== 'all' ||
+              (!activity && date !== 'all') ||
+              date === 'custom' ||
+              undefined
+            }
+          >
+            <summary>
+              <SlidersHorizontal size={14} />
+              Bộ lọc thêm
+            </summary>
+            <div>
+              {!activity && (
+                <label>
+                  Nhóm tệp
+                  <select
+                    aria-label="Nhóm tệp"
+                    value={section}
+                    onChange={(event) => change('section', event.target.value)}
+                  >
+                    {Object.entries(sections).map(([v, text]) => (
+                      <option
+                        key={v}
+                        value={v}
+                        disabled={v === 'starred' && w.favoritesAvailable === false}
+                      >
+                        {text}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               )}
-            <button
-              className="text-button"
-              onClick={() =>
-                setParams({
-                  ...(area !== 'all' ? { area } : {}),
-                  ...(sort !== w.preferences.sort ? { sort } : {}),
-                })
-              }
-            >
-              Xóa bộ lọc
-            </button>
-          </div>
-        )}
-        {!activity && sync.phase === 'disabled' && (
-          <p className="file-sync-message" role="status">
-            Dịch vụ metadata trên máy chủ chưa được bật. Lịch sử được lưu trên trình duyệt này;
-            không tự tiếp tục tải tệp đang dở khi mở lại trang.
-          </p>
-        )}
-        {partial && (
-          <p className="file-sync-message" role="status">
-            <RefreshCw size={14} className="spin" />
-            Đang đọc danh sách từ máy chủ. Bộ lọc và số liệu hiện áp dụng cho phần đã tải.
-          </p>
-        )}
-        {failure && (
-          <div className="file-sync-message error" role="alert">
-            <span>
-              {sync.error || 'Chưa đồng bộ được danh sách.'}
-              {source.length
-                ? ' Dữ liệu đã có vẫn được giữ.'
-                : ' Chưa thể xác định thư viện có trống hay không.'}
-            </span>
-            <button className="text-button" onClick={() => w.refreshFiles?.()}>
-              Thử đồng bộ lại
-            </button>
-          </div>
-        )}
-        <LibraryWarnings items={skippedItems} onRefresh={w.refreshFiles} loading={partial} />
-        {activity && w.historyError && (
-          <p className="banner warning" role="status">
-            Chưa đọc đủ lịch sử: {w.historyError}
-          </p>
-        )}
-        {selectedFiles.length > 0 && (
-          <div className="selection-toolbar" aria-label="Thao tác với tệp đã chọn">
-            <strong>
-              {selectedFiles.length} đã chọn trên trang ·{' '}
-              {formatBytes(selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0))}
-            </strong>
-            <button
-              disabled={
-                !selectedFiles.some(
-                  (file) =>
-                    !file.starPending && (w.canStar ? w.canStar(file) : file.mode === 'demo'),
-                )
-              }
-              title={
-                w.favoritesAvailable === false ? 'Máy chủ chưa hỗ trợ đánh dấu tệp' : undefined
-              }
-              onClick={() =>
-                w.star(
-                  selectedFiles
-                    .filter(
-                      (file) =>
-                        !file.starPending && (w.canStar ? w.canStar(file) : file.mode === 'demo'),
-                    )
-                    .map((f) => f.id),
-                  !selectedFiles.every((f) => f.starred),
-                )
-              }
-            >
-              <Star size={16} />
-              {selectedFiles.every((f) => f.starred) ? 'Bỏ đánh dấu' : 'Đánh dấu'}
-            </button>
-            {selectedFiles.some(isBusy) && (
-              <button onClick={() => perform('cancel')}>
-                <X size={16} />
-                Hủy tải
-              </button>
-            )}
-            {selectedFiles.some(canRetry) && (
-              <button onClick={() => perform('retry')}>
-                <RotateCcw size={16} />
-                Thử tải lại
-              </button>
-            )}
-            {(activity || w.preferences.mode === 'demo') && (
-              <button disabled={!selectedFiles.some(removable)} onClick={() => perform('remove')}>
-                <Trash2 size={16} />
-                Bỏ khỏi danh sách
-              </button>
-            )}
-            <button className="text-button" onClick={() => setSelected(new Set())}>
-              Bỏ chọn
-            </button>
-            {!activity && w.lifecycleAvailable && (
-              <button
-                disabled={
-                  !selectedFiles.every(
-                    (file) =>
-                      w.canManage(file) &&
-                      !['scanning', 'flagged'].includes(file.scanStatus) &&
-                      !['unknown', 'uploading'].includes(file.uploadState),
-                  )
-                }
-                onClick={() =>
-                  w.requestFileChange(
-                    'trash',
-                    selectedFiles.map((file) => file.id),
-                  )
-                }
-              >
-                <Trash2 size={16} />
-                Chuyển vào Thùng rác
-              </button>
-            )}
-          </div>
-        )}
-        <div
-          id="file-results"
-          role={!activity ? 'tabpanel' : undefined}
-          tabIndex={0}
-          aria-label={activity ? 'Tệp hoạt động — Ctrl+A chọn trang hiện tại' : undefined}
-          aria-labelledby={!activity ? `area-${area}` : undefined}
-        >
-          {pageFiles.length || (!partial && !failure) ? (
-            <FileList
-              files={pageFiles}
-              view={w.preferences.view}
-              selected={selected}
-              onSelect={choose}
-              onSelectAll={() =>
-                setSelected(
-                  selectedFiles.length === pageFiles.length
-                    ? new Set()
-                    : new Set(pageFiles.map((file) => file.id)),
-                )
-              }
-              onInspect={(id) => {
-                setDetailTab('information');
-                w.inspect?.(id);
-              }}
-              onInspectScan={(id) => {
-                setDetailTab('processing');
-                w.inspect(id, 'processing');
-              }}
-              onOpen={(id) => (w.openFile || w.inspect)?.(id)}
-              onPreview={w.preview}
-              onDownload={w.download}
-              downloadingId={w.downloadingId}
-              canStar={w.canStar}
-              contentAvailable={w.contentAvailable}
-              onStar={(id) => w.star([id])}
-              onRetry={(id) => w.retry([id])}
-              onCancel={(id) => w.cancel([id])}
-              onRename={(id) => w.requestFileChange('name', [id])}
-              onTrash={(id) => w.requestFileChange('trash', [id])}
-              canManage={w.canManage}
-              onChoose={() => w.inputRef.current.click()}
-              sort={sort}
-              onSort={(value) => change('sort', value)}
-              density={w.preferences.density}
-              nameColumnWidth={w.preferences.nameColumnWidth}
-              nameColumnResized={w.preferences.nameColumnResized}
-              compactPanel={panelOpen}
-              showSize={w.preferences.showSize}
-              showDate={w.preferences.showDate}
-              onNameResize={(value) =>
-                w.setPreferences((p) => ({
-                  ...p,
-                  nameColumnWidth: Math.min(4000, Math.max(240, value)),
-                  nameColumnResized: true,
-                }))
-              }
-              emptyTitle={
-                skippedItems.length && !source.length
-                  ? 'Chưa có tệp hợp lệ để hiển thị'
-                  : filtered
-                    ? 'Không có tệp phù hợp'
-                    : area === 'attention'
-                      ? 'Không có tệp cần xử lý'
-                      : area === 'normal'
-                        ? 'Chưa có tệp trong khu thường'
-                        : activity
-                          ? 'Chưa có hoạt động tải lên'
-                          : 'Không gian đang chờ tệp đầu tiên'
-              }
-              emptyMessage={
-                skippedItems.length && !source.length
-                  ? 'Các bản ghi đã đọc có metadata lỗi và đã được bỏ qua. Xem chi tiết lỗi ở trên; thư viện không được xác nhận là trống.'
-                  : filtered
-                    ? 'Thử từ khóa khác hoặc xóa bộ lọc để xem thêm tệp.'
-                    : area === 'attention'
-                      ? 'Tệp bị phát hiện dữ liệu nhạy cảm, lỗi quét hoặc cách ly sẽ xuất hiện ở đây.'
-                      : area === 'normal'
-                        ? 'Các tệp chưa bắt đầu quét, đang quét hoặc không phát hiện dữ liệu nhạy cảm sẽ xuất hiện tại đây. Khu thường không đồng nghĩa mọi tệp đã an toàn.'
-                        : serverLibrary
-                          ? 'Thư viện máy chủ chưa có tệp. Bạn có thể chọn hoặc kéo thả tệp để bắt đầu.'
-                          : 'Chọn hoặc kéo thả tệp để bắt đầu. Lịch sử được ghi nhớ khi mở lại trang.'
-              }
-              filtered={
-                filtered || area !== 'all' || Boolean(skippedItems.length && !source.length)
-              }
-            />
-          ) : (
-            <div className="file-loading-space" aria-hidden="true" />
-          )}
-        </div>
-        <div className="files-footer">
-          <span>
-            {visible.length
-              ? `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, visible.length)} / ${visible.length}${partial ? '+' : ''} tệp`
-              : '0 tệp đang hiển thị'}
-            {partial ? ' · chưa đọc hết' : ''}
-          </span>
-          {pages > 1 && (
-            <div className="file-pagination" aria-label="Phân trang tệp">
-              <button
-                className="icon-button"
-                aria-label="Trang trước"
-                disabled={page === 1}
-                onClick={() => change('page', String(page - 1))}
-              >
-                <ChevronLeft size={17} />
-              </button>
+              <label>
+                Tải lên
+                <select
+                  aria-label="Trạng thái tệp"
+                  value={status}
+                  onChange={(event) => change('status', event.target.value)}
+                >
+                  {Object.entries(statuses).map(([v, text]) => (
+                    <option key={v} value={v}>
+                      {text}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!activity && (
+                <label>
+                  Ngày thêm
+                  <select
+                    aria-label="Ngày thêm tệp"
+                    value={date}
+                    onChange={(event) => change('date', event.target.value)}
+                  >
+                    {Object.entries(dates).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {activity && (
+                <label className="activity-deleted-toggle">
+                  <input
+                    type="checkbox"
+                    checked={includeDeleted === 'true'}
+                    onChange={(event) =>
+                      change('includeDeleted', event.target.checked ? 'true' : '')
+                    }
+                  />
+                  Gồm tệp đã xóa vĩnh viễn
+                </label>
+              )}
+              {date === 'custom' && (
+                <>
+                  <label>
+                    Từ
+                    <input
+                      type="date"
+                      aria-label="Từ ngày"
+                      value={dateFrom}
+                      max={dateTo || undefined}
+                      onChange={(event) => change('dateFrom', event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Đến
+                    <input
+                      type="date"
+                      aria-label="Đến ngày"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      onChange={(event) => change('dateTo', event.target.value)}
+                    />
+                  </label>
+                  {dateFrom && dateTo && dateFrom > dateTo && (
+                    <p role="alert" className="file-date-error">
+                      Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </details>
+          {filtered && (
+            <div className="active-filters">
               <span>
-                Trang {page} / {pages}
+                {visible.length}
+                {partial ? '+' : ''} kết quả
               </span>
+              {q && chip('q', `Tên: ${q}`)}
+              {section !== 'all' && chip('section', sections[section])}
+              {category !== 'all' && chip('category', categories[category])}
+              {status !== 'all' && chip('status', statuses[status])}
+              {scan !== 'all' && chip('scan', scanStates[scan].label)}
+              {date !== 'all' &&
+                chip(
+                  'date',
+                  date === 'custom'
+                    ? `Ngày: ${dateFrom || '…'} → ${dateTo || '…'}`
+                    : dateOptions[date],
+                )}
+              {activityGroup !== 'all' && chip('activityGroup', activityGroups[activityGroup])}
+              {includeDeleted === 'true' && (
+                <button className="filter-chip" onClick={() => change('includeDeleted', '')}>
+                  Gồm tệp đã xóa
+                  <X size={12} />
+                </button>
+              )}
               <button
-                className="icon-button"
-                aria-label="Trang sau"
-                disabled={page === pages}
-                onClick={() => change('page', String(page + 1))}
+                className="text-button"
+                onClick={() =>
+                  setParams({
+                    ...(area !== 'all' ? { area } : {}),
+                    ...(sort !== w.preferences.sort ? { sort } : {}),
+                  })
+                }
               >
-                <ChevronRight size={17} />
+                Xóa bộ lọc
               </button>
             </div>
           )}
-          <span>
-            {activity || w.preferences.mode === 'demo'
-              ? 'Bỏ khỏi danh sách không xóa tệp trên máy chủ'
-              : sync.phase === 'disabled'
-                ? 'Lịch sử trên trình duyệt'
-                : 'Dữ liệu từ FastAPI · DynamoDB'}
-          </span>
-        </div>
-      </section>
-      {panelOpen &&
-        (detailId ? (
-          <FileDetail
-            inline
-            id={detailId}
-            initialTab={w.inspectedId ? w.inspectedTab : detailTab}
-            onClose={closeDetail}
-          />
-        ) : (
-          <FileSelectionDetail
-            files={selectedFiles}
-            onClose={closeDetail}
-            onClear={() => setSelected(new Set())}
-          />
-        ))}
-      {dragging && (
-        <div className="drive-drop-overlay">
-          <CloudUpload size={38} />
-          <strong>Thả tệp để tải lên</strong>
-          <span>Tối đa {formatBytes(w.limit)} / tệp · 5 tệp tải song song</span>
-        </div>
-      )}
-    </div>
+          {!activity && sync.phase === 'disabled' && (
+            <p className="file-sync-message" role="status">
+              Dịch vụ metadata trên máy chủ chưa được bật. Lịch sử được lưu trên trình duyệt này;
+              không tự tiếp tục tải tệp đang dở khi mở lại trang.
+            </p>
+          )}
+          {partial && (
+            <p className="file-sync-message" role="status">
+              <RefreshCw size={14} className="spin" />
+              Đang đọc danh sách từ máy chủ. Bộ lọc và số liệu hiện áp dụng cho phần đã tải.
+            </p>
+          )}
+          {failure && (
+            <div className="file-sync-message error" role="alert">
+              <span>
+                {sync.error || 'Chưa đồng bộ được danh sách.'}
+                {source.length
+                  ? ' Dữ liệu đã có vẫn được giữ.'
+                  : ' Chưa thể xác định thư viện có trống hay không.'}
+              </span>
+              <button className="text-button" onClick={() => w.refreshFiles?.()}>
+                Thử đồng bộ lại
+              </button>
+            </div>
+          )}
+          <LibraryWarnings items={skippedItems} onRefresh={w.refreshFiles} loading={partial} />
+          {activity && w.historyError && (
+            <p className="banner warning" role="status">
+              Chưa đọc đủ lịch sử: {w.historyError}
+            </p>
+          )}
+          {selectedFiles.length > 0 && (
+            <div className="selection-toolbar" aria-label="Thao tác với tệp đã chọn">
+              <strong>
+                {selectedFiles.length} đã chọn trên trang ·{' '}
+                {formatBytes(selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0))}
+              </strong>
+              <button
+                disabled={
+                  !selectedFiles.some(
+                    (file) =>
+                      !file.starPending && (w.canStar ? w.canStar(file) : file.mode === 'demo'),
+                  )
+                }
+                title={
+                  w.favoritesAvailable === false ? 'Máy chủ chưa hỗ trợ đánh dấu tệp' : undefined
+                }
+                onClick={() =>
+                  w.star(
+                    selectedFiles
+                      .filter(
+                        (file) =>
+                          !file.starPending && (w.canStar ? w.canStar(file) : file.mode === 'demo'),
+                      )
+                      .map((f) => f.id),
+                    !selectedFiles.every((f) => f.starred),
+                  )
+                }
+              >
+                <Star size={16} />
+                {selectedFiles.every((f) => f.starred) ? 'Bỏ đánh dấu' : 'Đánh dấu'}
+              </button>
+              {selectedFiles.some(isBusy) && (
+                <button onClick={() => perform('cancel')}>
+                  <X size={16} />
+                  Hủy tải
+                </button>
+              )}
+              {selectedFiles.some(canRetry) && (
+                <button onClick={() => perform('retry')}>
+                  <RotateCcw size={16} />
+                  Thử tải lại
+                </button>
+              )}
+              {(activity || w.preferences.mode === 'demo') && (
+                <button disabled={!selectedFiles.some(removable)} onClick={() => perform('remove')}>
+                  <Trash2 size={16} />
+                  Bỏ khỏi danh sách
+                </button>
+              )}
+              <button className="text-button" onClick={() => setSelected(new Set())}>
+                Bỏ chọn
+              </button>
+              {!activity && w.lifecycleAvailable && (
+                <button
+                  disabled={
+                    !selectedFiles.every(
+                      (file) =>
+                        w.canManage(file) &&
+                        !['scanning', 'flagged'].includes(file.scanStatus) &&
+                        !['unknown', 'uploading'].includes(file.uploadState),
+                    )
+                  }
+                  onClick={() =>
+                    w.requestFileChange(
+                      'trash',
+                      selectedFiles.map((file) => file.id),
+                    )
+                  }
+                >
+                  <Trash2 size={16} />
+                  Chuyển vào Thùng rác
+                </button>
+              )}
+            </div>
+          )}
+          <div
+            id="file-results"
+            role={!activity ? 'tabpanel' : undefined}
+            tabIndex={0}
+            aria-label={activity ? 'Tệp hoạt động — Ctrl+A chọn trang hiện tại' : undefined}
+            aria-labelledby={!activity ? `area-${area}` : undefined}
+          >
+            {pageFiles.length || (!partial && !failure) ? (
+              <FileList
+                files={pageFiles}
+                activity={activity}
+                view={w.preferences.view}
+                selected={selected}
+                onSelect={choose}
+                onSelectAll={() =>
+                  setSelected(
+                    selectedFiles.length === pageFiles.length
+                      ? new Set()
+                      : new Set(pageFiles.map((file) => file.id)),
+                  )
+                }
+                onInspect={(id) => {
+                  setDetailTab('information');
+                  w.inspect?.(id);
+                }}
+                onInspectScan={(id) => {
+                  setDetailTab('processing');
+                  w.inspect(id, 'processing');
+                }}
+                onOpen={(id) => (w.openFile || w.inspect)?.(id)}
+                onPreview={w.preview}
+                onDownload={w.download}
+                downloadingId={w.downloadingId}
+                canStar={w.canStar}
+                contentAvailable={w.contentAvailable}
+                onStar={(id) => w.star([id])}
+                onRetry={(id) => w.retry([id])}
+                onCancel={(id) => w.cancel([id])}
+                onRename={(id) => w.requestFileChange('name', [id])}
+                onTrash={(id) => w.requestFileChange('trash', [id])}
+                canManage={w.canManage}
+                onChoose={() => w.inputRef.current.click()}
+                sort={sort}
+                onSort={(value) => change('sort', value)}
+                density={w.preferences.density}
+                nameColumnWidth={w.preferences.nameColumnWidth}
+                nameColumnResized={w.preferences.nameColumnResized}
+                compactPanel={panelOpen}
+                showSize={activity ? false : w.preferences.showSize}
+                showDate={activity ? true : w.preferences.showDate}
+                onNameResize={(value) =>
+                  w.setPreferences((p) => ({
+                    ...p,
+                    nameColumnWidth: Math.min(4000, Math.max(240, value)),
+                    nameColumnResized: true,
+                  }))
+                }
+                emptyTitle={
+                  skippedItems.length && !source.length
+                    ? 'Chưa có tệp hợp lệ để hiển thị'
+                    : filtered
+                      ? 'Không có tệp phù hợp'
+                      : area === 'attention'
+                        ? 'Không có tệp cần xử lý'
+                        : area === 'normal'
+                          ? 'Chưa có tệp trong khu thường'
+                          : activity
+                            ? 'Chưa có hoạt động tải lên'
+                            : 'Không gian đang chờ tệp đầu tiên'
+                }
+                emptyMessage={
+                  skippedItems.length && !source.length
+                    ? 'Các bản ghi đã đọc có metadata lỗi và đã được bỏ qua. Xem chi tiết lỗi ở trên; thư viện không được xác nhận là trống.'
+                    : filtered
+                      ? 'Thử từ khóa khác hoặc xóa bộ lọc để xem thêm tệp.'
+                      : area === 'attention'
+                        ? 'Tệp bị phát hiện dữ liệu nhạy cảm, lỗi quét hoặc cách ly sẽ xuất hiện ở đây.'
+                        : area === 'normal'
+                          ? 'Các tệp chưa bắt đầu quét, đang quét hoặc không phát hiện dữ liệu nhạy cảm sẽ xuất hiện tại đây. Khu thường không đồng nghĩa mọi tệp đã an toàn.'
+                          : serverLibrary
+                            ? 'Thư viện máy chủ chưa có tệp. Bạn có thể chọn hoặc kéo thả tệp để bắt đầu.'
+                            : 'Chọn hoặc kéo thả tệp để bắt đầu. Lịch sử được ghi nhớ khi mở lại trang.'
+                }
+                filtered={
+                  filtered || area !== 'all' || Boolean(skippedItems.length && !source.length)
+                }
+              />
+            ) : (
+              <div className="file-loading-space" aria-hidden="true" />
+            )}
+          </div>
+          <div className="files-footer">
+            <span>
+              {visible.length
+                ? `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, visible.length)} / ${visible.length}${partial ? '+' : ''} tệp`
+                : '0 tệp đang hiển thị'}
+              {partial ? ' · chưa đọc hết' : ''}
+            </span>
+            {pages > 1 && (
+              <div className="file-pagination" aria-label="Phân trang tệp">
+                <button
+                  className="icon-button"
+                  aria-label="Trang trước"
+                  disabled={page === 1}
+                  onClick={() => change('page', String(page - 1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span>
+                  Trang {page} / {pages}
+                </span>
+                <button
+                  className="icon-button"
+                  aria-label="Trang sau"
+                  disabled={page === pages}
+                  onClick={() => change('page', String(page + 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            )}
+            <span>
+              {activity || w.preferences.mode === 'demo'
+                ? 'Bỏ khỏi danh sách không xóa tệp trên máy chủ'
+                : sync.phase === 'disabled'
+                  ? 'Lịch sử trên trình duyệt'
+                  : 'Dữ liệu từ FastAPI · DynamoDB'}
+            </span>
+          </div>
+        </section>
+        {panelOpen &&
+          (detailId ? (
+            <FileDetail
+              inline
+              id={detailId}
+              initialTab={w.inspectedId ? w.inspectedTab : detailTab}
+              onClose={closeDetail}
+            />
+          ) : (
+            <FileSelectionDetail
+              files={selectedFiles}
+              onClose={closeDetail}
+              onClear={() => setSelected(new Set())}
+            />
+          ))}
+        {dragging && (
+          <div className="drive-drop-overlay">
+            <CloudUpload size={38} />
+            <strong>Thả tệp để tải lên</strong>
+            <span>Tối đa {formatBytes(w.limit)} / tệp · 5 tệp tải song song</span>
+          </div>
+        )}
+      </div>
+    </>
   );
 }

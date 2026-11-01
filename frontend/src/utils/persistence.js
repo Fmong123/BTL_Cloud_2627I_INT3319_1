@@ -30,6 +30,7 @@ const historyFields = [
   'statusReason',
   'scannedAt',
   'quarantinedAt',
+  'rescanRequestedAt',
   'lifecycleState',
   'lifecycleUpdatedAt',
   'trashedAt',

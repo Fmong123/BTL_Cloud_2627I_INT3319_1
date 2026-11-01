@@ -413,7 +413,7 @@ function parseScanReport(data, id) {
     countsComplete: data.counts_complete,
     extractionComplete: data.extraction_complete ?? null,
     scanReason: data.scan_reason ?? null,
-    rescanRequestedAt: data.rescan_requested_at ?? null,
+    rescanRequestedAt: status.rescanRequestedAt,
     rescanRequestId: data.rescan_request_id ?? null,
     rescanDispatch: data.rescan_dispatch ?? null,
   };

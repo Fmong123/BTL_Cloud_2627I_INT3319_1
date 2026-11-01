@@ -38,6 +38,8 @@ const filterFields = [
   'dateFrom',
   'dateTo',
   'sort',
+  'activityGroup',
+  'includeDeleted',
 ];
 export function savedFilterValues(value) {
   return Object.fromEntries(

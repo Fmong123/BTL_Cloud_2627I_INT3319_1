@@ -15,6 +15,7 @@ HISTORY_FIELDS = (
     "updated_at", "findings_count", "finding_types", "status_reason", "scanned_at",
     "quarantined_at", "starred", "starred_updated_at", "trashed_at", "trash_expires_at",
     "lifecycle_state", "lifecycle_updated_at",
+    "rescan_requested_at",
 )
 
 

@@ -34,8 +34,9 @@ class ScanSummary(BaseModel):
     status_reason: str | None = None
     scanned_at: str | None = None
     quarantined_at: str | None = None
+    rescan_requested_at: str | None = None
 
-    @field_validator("scanned_at", "quarantined_at")
+    @field_validator("scanned_at", "quarantined_at", "rescan_requested_at")
     @classmethod
     def normalize_result_timestamp(cls, value: str | None) -> str | None:
         return utc_timestamp(value) if value is not None else None
