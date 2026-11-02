@@ -35,6 +35,7 @@ Launcher mặc định chọn **Local không AWS** ở lần đầu, kể cả k
 Thứ tự xử lý: **mặc định → file ENV → biến terminal → giá trị đã lưu của launcher → chế độ và các giá trị đồng bộ**.
 
 - Backend: đọc `backend/.env`.
+- Menu **3 → 10** chỉnh chế độ auth, User Pool và App client Cognito. S3 bắt buộc cognito; Local dùng dev khi chưa có cấu hình auth riêng. Không nhập token/mật khẩu ở menu cấu hình.
 - Frontend: đọc `.env`, `.env.local`, `.env.development`, `.env.development.local` trong `frontend/`, theo thứ tự này. `.env.example` là tài liệu mẫu, không được tự nạp.
 - Chế độ quyết định `VITE_UPLOAD_MODE`, storage và metadata. Launcher đồng bộ URL API, CORS của port frontend và giới hạn byte/MB. Không cần tạo `frontend/.env.local` để chạy bằng launcher.
 - Nếu cả hai bên có giới hạn khác nhau, backend được ưu tiên; nếu backend không cấu hình riêng thì dùng frontend. Giá trị dung lượng bạn lưu trên launcher ưu tiên cả hai. Giữ quy ước hiện tại của app: 1 MB trong UI = 1.000.000 byte; tối đa 100 MB/tệp.

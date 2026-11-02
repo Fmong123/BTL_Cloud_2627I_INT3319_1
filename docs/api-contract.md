@@ -1,12 +1,13 @@
 # Hợp đồng HTTP MâySec
 
-Cập nhật 31/10/2026. Schema chính xác của API đang chạy nằm tại /openapi.json và Swagger /docs. Owner hiện lấy từ dependency dev-user; chưa có xác thực nhiều tài khoản.
+Cập nhật 02/11/2026. Schema chính xác của API đang chạy nằm tại /openapi.json và Swagger /docs. Owner lấy từ `sub` của access token Cognito; mọi API dữ liệu bên dưới yêu cầu `Authorization: Bearer <access_token>`, ngoại trừ `/health` công khai. Local có thể dùng chế độ dev. Xem [cấu hình và thử Cognito](cognito-backend.md).
 
 ## Endpoint
 
 | Method | Đường dẫn | Hành vi |
 | --- | --- | --- |
 | GET | /health | Cấu hình và capabilities; không kiểm quyền AWS end-to-end |
+| GET | /me | ID và vai trò user/admin từ danh tính đã xác thực |
 | POST | /upload | Multipart trường file, một tệp/request; 201 khi lưu và bookkeeping xác nhận |
 | GET | /storage/usage | limit_bytes, used_bytes, reserved_bytes, available_bytes |
 | GET | /files | limit 1–100, cursor; area=active (mặc định), trash hoặc all |
@@ -31,6 +32,7 @@ Danh sách trả items/next_cursor. Thứ tự backend theo file_id; frontend đ
 - Không cộng partition quota/history/notifications vào dung lượng nội dung. Bản cách ly tính một lần; quota logic không phải tổng byte vật lý của mọi version S3.
 - S3 bắt buộc metadata DynamoDB để kiểm quota; Local có kiểm quota đĩa kể cả metadata disabled.
 - Key: uploads/{owner_id}/{file_id}/{safe_filename}. Trả id, key, storage, original_name, size_bytes, content_type và scan_status; metadata bật có thêm trạng thái/revision.
+- owner_id là sub của Cognito, không phải username, nhóm hay AWS CLI profile. Danh sách/quota/nội dung/thao tác chỉ trong phạm vi owner; admin cũng không được đọc tệp người khác qua API người dùng. Các prefix S3 xuất hiện sau khi tài khoản upload; dữ liệu dev-user cũ không tự chuyển.
 - Lỗi sau khi đã có ID có thể kèm X-File-Id/X-File-Key để đối soát. Timeout/hủy không chứng minh server chưa ghi; upload mới chưa có idempotency.
 
 ## Trạng thái và báo cáo
@@ -64,6 +66,8 @@ Notifications lưu id, kind, title, message, tone, file_id tùy chọn, created_
 | HTTP | Trường hợp điển hình |
 | --- | --- |
 | 400 / 422 | ID/cursor/tên không hợp lệ hoặc payload sai schema |
+| 401 | Thiếu, sai hoặc hết hạn access token; kèm WWW-Authenticate: Bearer |
+| 403 | Tài khoản không thuộc nhóm user/admin được phép |
 | 404 | Không có tệp/nội dung của owner hiện tại |
 | 409 | Trạng thái không cho phép, hết hạn restore hoặc tranh chấp |
 | 413 | Vượt giới hạn byte hoặc quota |

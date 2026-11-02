@@ -15,7 +15,7 @@ from fastapi.responses import Response, StreamingResponse
 from ..config import MB, Settings
 from ..db import DynamoDBConflict, DynamoDBError, file_key, utc_timestamp
 from ..dependencies import (
-    get_audit_log, get_dev_owner_id, get_file_metadata, get_settings, get_storage, get_rescanner,
+    get_audit_log, get_current_owner_id, get_file_metadata, get_settings, get_storage, get_rescanner,
 )
 from ..schemas.file import (
     ErrorResponse, FileListItem, FileListResponse, FileStatusResponse, UploadResponse,
@@ -30,7 +30,10 @@ from ..services.storage import (
     Storage, LocalStorage, StorageFailure, StorageNotFound, StorageTooLarge, StorageUnavailable,
 )
 
-router = APIRouter()
+router = APIRouter(responses={
+    401: {"model": ErrorResponse, "description": "Missing, invalid or expired access token"},
+    403: {"model": ErrorResponse, "description": "Account has no permitted role"},
+})
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1024 * 1024
 
@@ -190,7 +193,7 @@ def upload_file(
     storage: Storage = Depends(get_storage),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
     audit: AuditLogRepository | None = Depends(get_audit_log),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
 ) -> UploadResponse:
     # FastAPI executes sync routes in its thread pool. File I/O and future
     # synchronous boto3 calls therefore do not block the async event loop.
@@ -299,7 +302,7 @@ def get_storage_usage(
     settings: Settings = Depends(get_settings),
     storage: Storage = Depends(get_storage),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
 ):
     try:
         if settings.metadata_mode == "dynamodb":
@@ -322,7 +325,7 @@ def list_files(
     cursor: str | None = Query(None, max_length=2048),
     settings: Settings = Depends(get_settings),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
     area: Literal["active", "trash", "all"] = Query("active"),
 ) -> FileListResponse:
     require_metadata(settings, metadata)
@@ -345,7 +348,7 @@ def get_file_status(
     file_id: str,
     settings: Settings = Depends(get_settings),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
 ) -> FileStatusResponse:
     require_metadata(settings, metadata)
     try:
@@ -414,7 +417,7 @@ def scan_report(item, view):
 def get_scan_report(
     file_id: str, settings: Settings = Depends(get_settings),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
 ):
     require_metadata(settings, metadata)
     item, view = owned_file(metadata, owner_id, file_id)
@@ -427,7 +430,7 @@ def rescan_file(
     settings: Settings = Depends(get_settings), storage: Storage = Depends(get_storage),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
     audit: AuditLogRepository | None = Depends(get_audit_log),
-    owner_id: str = Depends(get_dev_owner_id), rescanner=Depends(get_rescanner),
+    owner_id: str = Depends(get_current_owner_id), rescanner=Depends(get_rescanner),
 ):
     require_metadata(settings, metadata, audit, writing=True)
     if not settings.scan_pipeline_enabled or rescanner is None:
@@ -453,7 +456,7 @@ def set_file_preferences(
     file_id: str, preferences: FilePreferencesRequest,
     settings: Settings = Depends(get_settings),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
 ) -> FilePreferencesResponse:
     require_metadata(settings, metadata)
     owned_file(metadata, owner_id, file_id)
@@ -524,7 +527,7 @@ def get_file_content(
     settings: Settings = Depends(get_settings),
     storage: Storage = Depends(get_storage),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
-    owner_id: str = Depends(get_dev_owner_id),
+    owner_id: str = Depends(get_current_owner_id),
     accept: str = Header(""),
 ) -> Response:
     require_metadata(settings, metadata)

@@ -5,12 +5,15 @@ from .files import (
     require_metadata, owned_file, public_file, decode_cursor, encode_cursor, metadata_failure,
 )
 from ..db import DynamoDBError, file_key
-from ..dependencies import get_settings, get_storage, get_file_metadata, get_dev_owner_id
-from ..schemas.file import FileListResponse, FileListItem, RenameRequest, NotificationRequest
+from ..dependencies import get_settings, get_storage, get_file_metadata, get_current_owner_id
+from ..schemas.file import ErrorResponse, FileListResponse, FileListItem, RenameRequest, NotificationRequest
 from ..services.lifecycle import FileLifecycle, LifecycleConflict, history_page, notification_page, save_notification
 from ..services.storage import StorageFailure, StorageUnavailable
 
-router = APIRouter()
+router = APIRouter(responses={
+    401: {"model": ErrorResponse, "description": "Missing, invalid or expired access token"},
+    403: {"model": ErrorResponse, "description": "Account has no permitted role"},
+})
 
 
 def run_change(action, file_id, payload, settings, storage, metadata, owner):
@@ -42,25 +45,25 @@ def run_change(action, file_id, payload, settings, storage, metadata, owner):
 @router.patch("/files/{file_id}/name", response_model=FileListItem)
 def rename_file(file_id: str, payload: RenameRequest,
     settings=Depends(get_settings), storage=Depends(get_storage),
-    metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     return run_change("name", file_id, payload, settings, storage, metadata, owner)
 
 
 @router.post("/files/{file_id}/trash", response_model=FileListItem)
 def trash_file(file_id: str, settings=Depends(get_settings), storage=Depends(get_storage),
-    metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     return run_change("trash", file_id, None, settings, storage, metadata, owner)
 
 
 @router.post("/files/{file_id}/restore", response_model=FileListItem)
 def restore_file(file_id: str, settings=Depends(get_settings), storage=Depends(get_storage),
-    metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     return run_change("restore", file_id, None, settings, storage, metadata, owner)
 
 
 @router.delete("/files/{file_id}")
 def purge_file(file_id: str, settings=Depends(get_settings), storage=Depends(get_storage),
-    metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     # Repeating an acknowledged deletion is harmless; an archive is proof that
     # the bytes and the live metadata were both removed.
     require_metadata(settings, metadata)
@@ -80,7 +83,7 @@ def purge_file(file_id: str, settings=Depends(get_settings), storage=Depends(get
 
 @router.get("/upload-history", response_model=FileListResponse)
 def upload_history(limit: int = Query(100, ge=1, le=100), cursor: str | None = Query(None, max_length=2048),
-    settings=Depends(get_settings), metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    settings=Depends(get_settings), metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     require_metadata(settings, metadata)
     partition = f"!history!{owner}"
     start = decode_cursor(cursor, partition)
@@ -93,7 +96,7 @@ def upload_history(limit: int = Query(100, ge=1, le=100), cursor: str | None = Q
 
 @router.get("/notifications")
 def notifications(limit: int = Query(100, ge=1, le=100), cursor: str | None = Query(None, max_length=2048),
-    settings=Depends(get_settings), metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    settings=Depends(get_settings), metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     require_metadata(settings, metadata)
     start = decode_cursor(cursor, f"!notifications!{owner}")
     try:
@@ -107,7 +110,7 @@ def notifications(limit: int = Query(100, ge=1, le=100), cursor: str | None = Qu
 
 @router.post("/notifications")
 def persist_notification(payload: NotificationRequest, settings=Depends(get_settings),
-    metadata=Depends(get_file_metadata), owner=Depends(get_dev_owner_id)):
+    metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     require_metadata(settings, metadata)
     try:
         return save_notification(metadata, owner, payload.model_dump())

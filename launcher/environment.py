@@ -63,7 +63,7 @@ class Environment:
             checks.append(("pnpm", False, "Cần pnpm để dùng pnpm-lock.yaml của project."))
         checks.append(("Backend .venv", self.python.is_file(), str(self.python.relative_to(self.root))))
         if self.python.is_file():
-            code, message = self.backend_python("import fastapi, uvicorn, multipart, boto3, dotenv; print('Import thư viện chạy: OK')")
+            code, message = self.backend_python("import fastapi, uvicorn, multipart, boto3, dotenv, jwt; print('Import thư viện chạy: OK')")
             checks.append(("Thư viện backend", code == 0, message.splitlines()[-1] if message else "Không có kết quả"))
             if thorough:
                 code, message = capture([self.python, "-m", "pip", "check"], cwd=self.root / "backend", timeout=30)

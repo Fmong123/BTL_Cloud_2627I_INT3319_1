@@ -39,8 +39,18 @@ class Settings:
     dynamodb_files_table: str = "securedrive-files"
     dynamodb_audit_table: str = "securedrive-audit-log"
     dynamodb_users_table: str = "securedrive-users"
+    auth_mode: str = "cognito"
+    dev_role: str = "user"
+    cognito_user_pool_id: str = ""
+    cognito_app_client_id: str = ""
 
     def __post_init__(self) -> None:
+        if self.auth_mode not in {"cognito", "dev"}:
+            raise ValueError("MAYSEC_AUTH_MODE must be cognito or dev")
+        if self.dev_role not in {"user", "admin"}:
+            raise ValueError("MAYSEC_DEV_ROLE must be user or admin")
+        if self.auth_mode == "dev" and self.storage_mode == "s3":
+            raise ValueError("MAYSEC_AUTH_MODE=dev is not allowed with S3 storage")
         if self.rescan_state_machine_arn and (
             not self.scan_pipeline_enabled or not re.fullmatch(
                 r"arn:aws:states:ap-southeast-2:\d{12}:stateMachine:[A-Za-z0-9_-]+", self.rescan_state_machine_arn
@@ -118,4 +128,8 @@ class Settings:
             dynamodb_users_table=os.getenv(
                 "DYNAMODB_USERS_TABLE", "securedrive-users"
             ).strip(),
+            auth_mode=os.getenv("MAYSEC_AUTH_MODE", "cognito").strip().lower(),
+            dev_role=os.getenv("MAYSEC_DEV_ROLE", "user").strip().lower(),
+            cognito_user_pool_id=os.getenv("COGNITO_USER_POOL_ID", "").strip(),
+            cognito_app_client_id=os.getenv("COGNITO_APP_CLIENT_ID", "").strip(),
         )

@@ -1,6 +1,6 @@
 # Backend MâySec
 
-FastAPI nhận upload, quản lý metadata/quota, phục vụ nội dung đủ điều kiện và quản lý vòng đời tệp. Owner hiện là `dev-user`.
+FastAPI nhận upload, quản lý metadata/quota, phục vụ nội dung đủ điều kiện và quản lý vòng đời tệp. Owner lấy từ `sub` của access token Cognito; các API dữ liệu đều yêu cầu xác thực.
 
 Hướng dẫn cài/chạy: [api-guide.md](../docs/api-guide.md). Endpoint và giới hạn: [api-contract.md](../docs/api-contract.md). AWS: [handoff](../docs/AWS-HANDOFF-QUICKSTART-2026-10-31.md).
 
@@ -15,6 +15,7 @@ Tạo `.env` từ [.env.example](.env.example) nếu chưa có. Không ghi đè 
 
 ```dotenv
 MAYSEC_STORAGE_MODE=local
+MAYSEC_AUTH_MODE=dev
 MAYSEC_METADATA_MODE=disabled
 MAYSEC_SCAN_PIPELINE_ENABLED=false
 MAYSEC_RESCAN_STATE_MACHINE_ARN=
@@ -34,6 +35,14 @@ Mở `/health`, `/docs` hoặc `/openapi.json`. GET / không có trang giao di�
 S3 cần bucket/region thật và metadata DynamoDB. Pipeline chỉ bật với S3 + DynamoDB. Upload đầu chạy qua S3/EventBridge; API Quét lại mới gọi workflow STANDARD qua ARN cấu hình. MAYSEC_QUARANTINE_BUCKET_NAME phải trùng bucket của Lambda cách ly để xóa vĩnh viễn.
 
 MaySec.cmd cũng nhận hai biến ARN quét lại/bucket cách ly; khi chọn Local/Demo hoặc tắt pipeline, ARN hiệu lực được để trống. Launcher không sửa .env gốc.
+
+## Xác thực Cognito và thư mục từng tài khoản
+
+S3 bắt buộc `MAYSEC_AUTH_MODE=cognito`; đặt `COGNITO_USER_POOL_ID` và `COGNITO_APP_CLIENT_ID` theo `.env.example`. Client gửi `Authorization: Bearer <access_token>` cho `/me` và mọi API tệp/quota/lịch sử/thông báo. Key upload là `uploads/<sub>/<file_id>/<tên-tệp>`; owner không nhận từ query/body/header tùy chỉnh của client.
+
+Thiếu/sai/hết hạn token trả 401; tài khoản không có nhóm user/admin trả 403; thiếu cấu hình hoặc không tải được JWKS trả 503. Admin dùng API người dùng vẫn chỉ truy cập tệp của chính mình. `/health` công khai. `/admin/*` chưa thuộc đợt tích hợp này.
+
+Chế độ `dev` chỉ dùng với storage Local/unconfigured và trả owner `dev-user`. Frontend hiện chưa gửi token; dùng dev ở Local hoặc gọi API Cognito theo [hướng dẫn backend](../docs/cognito-backend.md). Policy IAM cũ giới hạn `dev-user` phải được điều chỉnh cho owner thật trước khi thử S3. Dữ liệu cũ không tự chuyển owner.
 
 ## Kiểm thử hiện hành
 

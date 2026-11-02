@@ -1,6 +1,6 @@
 # Cài đặt và chạy MâySec
 
-Hướng dẫn hiện hành ngày 31/10/2026. Hợp đồng HTTP: [api-contract.md](api-contract.md). Cài AWS: [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md).
+Hướng dẫn hiện hành ngày 02/11/2026. Hợp đồng HTTP: [api-contract.md](api-contract.md). Xác thực: [Cognito backend](cognito-backend.md). Cài AWS: [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md).
 
 ## 1. Chọn chế độ
 
@@ -12,6 +12,8 @@ Hướng dẫn hiện hành ngày 31/10/2026. Hợp đồng HTTP: [api-contract.
 | S3 + DB | storage=s3, metadata=dynamodb | Upload S3, danh sách và quota server; bật pipeline sau khi AWS sẵn sàng |
 
 Giữ MAYSEC_RESCAN_STATE_MACHINE_ARN trống khi pipeline tắt. Local/DB vẫn cần credentials DynamoDB; Local không DB không cần AWS.
+
+Chạy Local không đăng nhập: đặt `MAYSEC_AUTH_MODE=dev`. Chạy S3: bắt buộc `MAYSEC_AUTH_MODE=cognito`, cấu hình User Pool/App client và gửi Bearer access token. Frontend hiện chưa tích hợp đăng nhập Cognito.
 
 ## 2. Cài backend
 
@@ -41,7 +43,11 @@ Sửa .env theo chế độ; các biến chính:
 | DYNAMODB_REGION | ap-southeast-2 |
 | DYNAMODB_FILES_TABLE | securedrive-files |
 | DYNAMODB_AUDIT_TABLE | securedrive-audit-log |
-| DYNAMODB_USERS_TABLE | securedrive-users; chưa ghép auth |
+| DYNAMODB_USERS_TABLE | securedrive-users; xác thực hiện lấy nhóm trực tiếp từ JWT |
+| MAYSEC_AUTH_MODE | cognito mặc định; dev chỉ cho Local/unconfigured |
+| MAYSEC_DEV_ROLE | user hoặc admin, chỉ có tác dụng trong chế độ dev |
+| COGNITO_USER_POOL_ID | User Pool cấp access token |
+| COGNITO_APP_CLIENT_ID | App client được phép gọi backend |
 | MAYSEC_RESCAN_STATE_MACHINE_ARN | ARN STANDARD không alias/version ở Sydney; trống để tắt |
 
 Các thông số multipart SDK dùng đơn vị kỹ thuật MiB như .env.example; nhãn dung lượng sản phẩm dùng KB/MB/GB thập phân.
@@ -93,6 +99,8 @@ Backend: cài requirements-dev.txt rồi chạy .venv/Scripts/python.exe -m pyte
 | Hiện tượng | Kiểm tra |
 | --- | --- |
 | Upload 503 | Storage, metadata, profile/role; S3 bắt buộc quota DB |
+| API 401 / 403 | Gửi access token còn hạn; tài khoản phải thuộc nhóm user/admin |
+| Auth 503 | User Pool/App client, kết nối JWKS, biến môi trường hiệu lực |
 | Upload 413 | 100 MB/tệp hoặc quota 1 GB không còn đủ, kể cả phần giữ chỗ |
 | Quét lại bị tắt | Pipeline, ARN STANDARD, quyền DescribeStateMachine/StartExecution, restart |
 | Xóa chưa hoàn tất | Bucket cách ly, ListBucketVersions và quyền xóa version ở hai bucket |
@@ -101,4 +109,4 @@ Backend: cài requirements-dev.txt rồi chạy .venv/Scripts/python.exe -m pyte
 
 Những lượt upload/notification chưa rõ kết quả cần đối soát vận hành; hiện chưa có API quản trị tự giải phóng quota hoặc gửi lại notification unknown. Giữ dữ liệu để xác minh thay vì coi là thất bại chắc chắn.
 
-Bản này dùng dev-user, chưa xác thực nhiều tài khoản. Source chưa tự triển khai/cấp quyền AWS; nghiệm thu cloud theo handoff.
+Backend tách tài khoản bằng sub của Cognito. Policy IAM giới hạn dev-user cần được cập nhật cho owner thật trước khi thử S3. Source chưa tự triển khai/cấp quyền AWS; nghiệm thu cloud theo handoff.

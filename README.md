@@ -1,6 +1,6 @@
 # MâySec — kho lưu trữ và kiểm tra dữ liệu nhạy cảm
 
-React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý quét/cách ly. Bản hiện tại dùng owner phát triển `dev-user`; chưa có đăng nhập nhiều tài khoản.
+React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý quét/cách ly. Backend xác thực access token Cognito, tách dữ liệu theo `sub` của tài khoản. Frontend hiện chưa tích hợp đăng nhập/gửi token; dùng API có Bearer token để kiểm tra backend Cognito.
 
 ## Chức năng hiện có
 
@@ -29,6 +29,7 @@ Tạo `backend/.env` từ `.env.example` nếu chưa có; giữ file cấu hình
 
 ```dotenv
 MAYSEC_STORAGE_MODE=local
+MAYSEC_AUTH_MODE=dev
 MAYSEC_METADATA_MODE=disabled
 MAYSEC_SCAN_PIPELINE_ENABLED=false
 MAYSEC_RESCAN_STATE_MACHINE_ARN=
@@ -48,7 +49,7 @@ pnpm.cmd install --frozen-lockfile
 pnpm.cmd run dev --port 5173 --strictPort
 ```
 
-Frontend mặc định demo; chọn Lưu trữ thật và URL `http://127.0.0.1:8000` để dùng API. Local không metadata vẫn upload thật nhưng không có thư viện/quét trên server. S3 cần metadata DynamoDB để kiểm quota.
+Frontend mặc định demo; chọn Lưu trữ thật và URL `http://127.0.0.1:8000` để dùng API Local với auth=dev. Local không metadata vẫn upload thật nhưng không có thư viện/quét trên server. S3 cần metadata DynamoDB và access token Cognito. Xem [hướng dẫn Cognito backend](docs/cognito-backend.md) để gọi API và chuẩn bị IAM.
 
 ## Tài liệu cần đọc
 

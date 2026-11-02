@@ -133,6 +133,7 @@ class Launcher:
             print(" [7] Bật / tắt cờ pipeline quét")
             print(" [8] Bỏ các giá trị launcher ghi đè, đọc lại ENV (giữ chế độ)")
             print(" [9] Chỉnh ARN workflow quét lại")
+            print(" [10] Chỉnh xác thực Cognito / Local dev")
             print(" [0] Quay lại")
             choice = ask("Chọn: ")
             if choice == "0":
@@ -173,6 +174,12 @@ class Launcher:
                 elif choice == "9":
                     print("Quét lại chỉ có hiệu lực khi dùng S3 + DynamoDB và pipeline đã bật.")
                     self.edit_fields([("MAYSEC_RESCAN_STATE_MACHINE_ARN", "ARN workflow STANDARD (Sydney)")])
+                elif choice == "10":
+                    print("S3 bắt buộc dùng cognito. Local có thể dùng dev; không nhập token hoặc mật khẩu ở đây.")
+                    self.edit_fields([("MAYSEC_AUTH_MODE", "Chế độ xác thực: cognito hoặc dev"),
+                                      ("COGNITO_USER_POOL_ID", "Cognito User Pool ID"),
+                                      ("COGNITO_APP_CLIENT_ID", "Cognito App client ID"),
+                                      ("MAYSEC_DEV_ROLE", "Vai trò Local dev: user hoặc admin")])
                 else:
                     raise ValueError("Lựa chọn không hợp lệ.")
             attempt(action)

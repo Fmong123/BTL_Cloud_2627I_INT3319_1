@@ -24,6 +24,8 @@ BACKEND_DEFAULTS = {
     "MAYSEC_MAX_FILE_SIZE_BYTES": str(100 * MB),
     "MAYSEC_CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "AWS_PROFILE": "", "S3_BUCKET_NAME": "", "AWS_REGION": "",
+    "MAYSEC_AUTH_MODE": "cognito", "MAYSEC_DEV_ROLE": "user",
+    "COGNITO_USER_POOL_ID": "", "COGNITO_APP_CLIENT_ID": "",
     "DYNAMODB_REGION": "ap-southeast-2", "DYNAMODB_FILES_TABLE": "securedrive-files",
     "DYNAMODB_AUDIT_TABLE": "securedrive-audit-log", "DYNAMODB_USERS_TABLE": "securedrive-users",
     "MAYSEC_S3_MULTIPART_THRESHOLD_BYTES": "16777216",
@@ -191,6 +193,8 @@ class Settings:
         put(backend, "MAYSEC_CORS_ORIGINS", ",".join(dict.fromkeys(origins)), "Launcher · đồng bộ CORS")
         if self.data["mode"] != "s3-db":
             put(backend, "MAYSEC_SCAN_PIPELINE_ENABLED", "false")
+            if sources["MAYSEC_AUTH_MODE"] == "Mặc định":
+                put(backend, "MAYSEC_AUTH_MODE", "dev", "Local mặc định dùng danh tính phát triển")
         if backend["MAYSEC_SCAN_PIPELINE_ENABLED"].strip().lower() not in {"true", "1"}:
             put(backend, "MAYSEC_RESCAN_STATE_MACHINE_ARN", "", "Quét lại tắt khi pipeline không bật")
         if metadata == "disabled":
@@ -202,7 +206,7 @@ class Settings:
         # A frontend process never inherits the backend's AWS credentials or settings.
         env = clean_aws_env(parent)
         for key in list(env):
-            if key.startswith(("VITE_", "MAYSEC_", "DYNAMODB_", "S3_")):
+            if key.startswith(("VITE_", "MAYSEC_", "DYNAMODB_", "S3_", "COGNITO_")):
                 env.pop(key)
         env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
         env.update(resolved[service])

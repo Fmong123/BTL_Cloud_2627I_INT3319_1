@@ -11,9 +11,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .body_limit import UploadBodyLimitMiddleware
 from .config import Settings
 from .db import DynamoDBError, build_dynamodb_client
+from .routers.auth import router as auth_router
 from .routers.files import router
 from .routers.lifecycle import router as lifecycle_router
 from .services.audit_log import AuditLogRepository
+from .services.cognito_auth import build_verifier
 from .services.file_metadata import FileMetadataRepository
 from .services.s3_service import upload_to_s3
 from .services.storage import LocalStorage, Storage, UnconfiguredStorage
@@ -77,6 +79,7 @@ def create_app(
     s3_uploader: "S3Uploader | None" = None,
     dynamodb_client=None,
     rescanner=None,
+    auth_verifier=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     selected_storage = storage if storage is not None else build_storage(
@@ -84,6 +87,8 @@ def create_app(
     )
     if settings.scan_pipeline_enabled and selected_storage.mode != "s3":
         raise ValueError("Scan pipeline requires the S3 storage adapter")
+    if settings.auth_mode == "dev" and selected_storage.mode == "s3":
+        raise ValueError("MAYSEC_AUTH_MODE=dev is not allowed with S3 storage")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -136,19 +141,20 @@ def create_app(
         "DynamoDB metadata optionally enables upload audit, file listing and status. "
         "An explicitly enabled S3 pipeline runs through existing S3/EventBridge triggers; "
         "Explicit rescan requests start a configured STANDARD Step Functions workflow. "
-        "Development owner is dev-user; authentication is not integrated."
+        "Cognito access tokens identify each file owner. Dev identity is local-only."
     ))
     app.state.settings = settings
     app.state.storage = selected_storage
     app.state.file_metadata = None
     app.state.audit_log = None
     app.state.rescanner = rescanner
+    app.state.auth_verifier = auth_verifier if auth_verifier is not None else build_verifier(settings)
     app.add_middleware(UploadBodyLimitMiddleware, max_file_size_bytes=settings.max_file_size_bytes)
     # CORS wraps the limiter too, so its 413 response is readable in the UI.
     app.add_middleware(
         CORSMiddleware, allow_origins=list(settings.cors_origins),
         allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
         expose_headers=["X-File-Id", "X-File-Key", "Content-Type", "Content-Length", "Content-Disposition"],
     )
 
@@ -189,7 +195,8 @@ def create_app(
             "metadata_configured": (
                 app.state.file_metadata is not None and app.state.audit_log is not None
             ),
-            "owner_mode": "development",
+            "owner_mode": "cognito" if settings.auth_mode == "cognito" else "development",
+            "auth_mode": settings.auth_mode,
             "capabilities": {
                 "persistent_favorites": metadata_ready,
                 "file_content": bool(metadata_ready and content_ready),
@@ -203,6 +210,7 @@ def create_app(
 
     app.include_router(router, tags=["Files"])
     app.include_router(lifecycle_router, tags=["File management"])
+    app.include_router(auth_router, tags=["Auth"])
     return app
 
 app = create_app(s3_uploader=upload_to_s3)
