@@ -3,8 +3,10 @@ from botocore.exceptions import PartialCredentialsError
 from fastapi.testclient import TestClient
 import pytest
 
+from app.auth import get_current_user
 from app.config import MIB, Settings
 from app.main import create_app
+from app.services.cognito_auth import AuthUser
 from app.services.s3_storage import S3Storage
 from app.services.storage import LocalStorage
 
@@ -20,13 +22,19 @@ def forbid_client(*args, **kwargs):
     raise AssertionError("This path must not create an AWS client")
 
 
+def make_app(*args, **kwargs):
+    app = create_app(*args, **kwargs)
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
+    return app
+
+
 @pytest.mark.parametrize("mode", ["unconfigured", "local", "s3"])
 def test_startup_without_uploader_never_creates_aws_client(mode, tmp_path, monkeypatch):
     monkeypatch.setattr(boto3, "client", forbid_client)
     settings = s3_settings() if mode == "s3" else Settings(
         storage_mode=mode, local_storage_dir=tmp_path,
     )
-    with TestClient(create_app(settings)) as client:
+    with TestClient(make_app(settings)) as client:
         health = client.get("/health").json()
         assert health["storage"] == mode
         assert health["storage_configured"] is (mode == "local")
@@ -63,7 +71,7 @@ def test_factory_connects_uploader_client_transfer_settings_and_closes_client(mo
         s3_multipart_threshold_bytes=20 * MIB,
         s3_multipart_chunksize_bytes=10 * MIB, s3_max_concurrency=3,
     )
-    app = create_app(settings, s3_uploader=uploader)
+    app = make_app(settings, s3_uploader=uploader)
     assert isinstance(app.state.storage, S3Storage)
     with TestClient(app) as client:
         assert client.get("/health").json()["storage_configured"] is True
@@ -90,7 +98,7 @@ def test_factory_connects_uploader_client_transfer_settings_and_closes_client(mo
 def test_injected_storage_takes_priority_and_is_not_closed(monkeypatch, tmp_path):
     monkeypatch.setattr(boto3, "client", forbid_client)
     storage = LocalStorage(tmp_path)
-    app = create_app(s3_settings(), storage=storage)
+    app = make_app(s3_settings(), storage=storage)
     with TestClient(app) as client:
         assert app.state.storage is storage
         assert client.get("/health").json()["storage"] == "local"
@@ -108,7 +116,7 @@ def test_injected_s3_client_is_not_closed(monkeypatch):
         bucket="test-bucket", client=ExternalClient(),
         transfer_config=object(), uploader=lambda *args, **kwargs: kwargs["key"],
     )
-    with TestClient(create_app(s3_settings(), storage=storage)) as client:
+    with TestClient(make_app(s3_settings(), storage=storage)) as client:
         assert client.get("/health").json()["storage_configured"] is True
 
 
@@ -117,7 +125,7 @@ def test_sdk_initialization_failure_keeps_upload_unavailable_and_private(monkeyp
         raise PartialCredentialsError(provider="private-provider", cred_var="private-value")
 
     monkeypatch.setattr(boto3, "client", fail_client)
-    with TestClient(create_app(s3_settings(), s3_uploader=lambda *args, **kwargs: None)) as client:
+    with TestClient(make_app(s3_settings(), s3_uploader=lambda *args, **kwargs: None)) as client:
         assert client.get("/health").json()["storage_configured"] is False
         response = client.post("/upload", files={"file": ("x.txt", b"hello")})
         assert response.status_code == 503

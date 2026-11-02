@@ -4,10 +4,12 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth import get_current_user
 from app.body_limit import MULTIPART_ALLOWANCE
 from app.config import Settings
 from app.dependencies import get_storage
 from app.main import create_app
+from app.services.cognito_auth import AuthUser
 from app.services.storage import (
     LocalStorage, StoredObject, StorageFailure, StorageUnavailable,
 )
@@ -26,7 +28,9 @@ class RecordingStorage:
 
 
 def make_client(storage=None, *, limit=32, directory=Path("unused")):
-    return TestClient(create_app(Settings(max_file_size_bytes=limit, local_storage_dir=directory), storage))
+    app = create_app(Settings(max_file_size_bytes=limit, local_storage_dir=directory), storage)
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
+    return TestClient(app)
 
 
 def test_app_starts_without_aws_and_upload_is_not_fake_success():
@@ -60,7 +64,7 @@ def test_exact_limit_contents_rewind_close_and_response_contract():
     assert response.status_code == 201
     data = response.json()
     UUID(data["id"])
-    assert data["key"] == f"uploads/dev-user/{data['id']}/notes.txt"
+    assert data["key"] == f"uploads/test-user/{data['id']}/notes.txt"
     assert data["storage"] == "s3"  # Fake adapter contract test, not an AWS integration test.
     assert data["size_bytes"] == 32
     assert data["original_name"] == "notes.txt"
@@ -140,6 +144,7 @@ def test_storage_dependency_is_replaceable_without_rewriting_route():
     storage = RecordingStorage()
     app = create_app(Settings())
     app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
     with TestClient(app) as client:
         assert client.post("/upload", files={"file": ("x.txt", b"injected")}).status_code == 201
     assert storage.calls[0][0] == b"injected"

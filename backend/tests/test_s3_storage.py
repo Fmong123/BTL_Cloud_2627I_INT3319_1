@@ -11,8 +11,10 @@ from botocore.exceptions import (
 )
 from fastapi.testclient import TestClient
 
+from app.auth import get_current_user
 from app.config import Settings
 from app.main import create_app
+from app.services.cognito_auth import AuthUser
 from app.services.s3_storage import S3Storage
 from app.services.storage import StorageFailure, StorageUnavailable, StoredObject
 
@@ -94,12 +96,14 @@ def test_route_validates_rewinds_and_closes_file_after_s3_confirmation():
         assert file_obj.read() == b"hello"
         return kwargs["key"]
 
-    with TestClient(create_app(Settings(), storage=make_storage(uploader))) as client:
+    app = create_app(Settings(), storage=make_storage(uploader))
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
+    with TestClient(app) as client:
         response = client.post("/upload", files={"file": ("hello.txt", b"hello", "text/plain")})
     assert response.status_code == 201
     data = response.json()
     assert data["storage"] == "s3"
-    assert data["key"] == f"uploads/dev-user/{data['id']}/hello.txt"
+    assert data["key"] == f"uploads/test-user/{data['id']}/hello.txt"
     assert data["size_bytes"] == 5
     assert data["scan_status"] == "not_started"
     assert streams[0].closed
@@ -117,7 +121,9 @@ def test_route_keeps_error_details_private_and_closes_handle(error, status):
         streams.append(file_obj)
         raise error
 
-    with TestClient(create_app(Settings(), storage=make_storage(uploader))) as client:
+    app = create_app(Settings(), storage=make_storage(uploader))
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
+    with TestClient(app) as client:
         response = client.post("/upload", files={"file": ("hello.txt", b"hello")})
     assert response.status_code == status
     assert "secret-provider-detail" not in response.text
@@ -127,7 +133,9 @@ def test_route_keeps_error_details_private_and_closes_handle(error, status):
 
 def test_route_rejects_missing_service_and_unconfirmed_result():
     for uploader, status in [(None, 503), (lambda *args, **kwargs: None, 502)]:
-        with TestClient(create_app(Settings(), storage=make_storage(uploader))) as client:
+        app = create_app(Settings(), storage=make_storage(uploader))
+        app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
+        with TestClient(app) as client:
             response = client.post("/upload", files={"file": ("hello.txt", b"hello")})
         assert response.status_code == status
         assert "storage" not in response.json()

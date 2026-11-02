@@ -12,7 +12,9 @@ from botocore.stub import Stubber
 from fastapi.testclient import TestClient
 import pytest
 
+from app.auth import get_current_user
 from app.config import MIB
+from app.services.cognito_auth import AuthUser
 from app.services.s3_service import upload_to_s3
 
 
@@ -79,10 +81,12 @@ def load_s3_entrypoint(monkeypatch, client):
     monkeypatch.setenv("MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES", str(8 * MIB))
     monkeypatch.setenv("MAYSEC_S3_MAX_CONCURRENCY", "2")
     monkeypatch.setattr(boto3, "client", lambda *args, **kwargs: client)
-    return load_module(
+    app = load_module(
         "app._entrypoint_upload_test",
         Path(__file__).resolve().parents[1] / "app/main.py",
     ).app
+    app.dependency_overrides[get_current_user] = lambda: AuthUser(owner_id="test-user", role="user")
+    return app
 
 
 def test_normal_entrypoint_uses_real_uploader_and_validates_file(monkeypatch):
