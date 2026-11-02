@@ -1,0 +1,51 @@
+"""Dependency FastAPI cho xác thực và phân quyền (user/admin).
+
+Mặc định từ chối (fail closed): thiếu hoặc sai token -> 401, sai vai trò -> 403,
+Cognito chưa cấu hình -> 503. Kiểm quyền luôn ở server, frontend chỉ ẩn/hiện giao diện.
+"""
+
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from .services.cognito_auth import ROLE_ADMIN, ROLE_USER, AuthError, AuthUser
+
+# auto_error=False để tự trả 401 (HTTPBearer mặc định trả 403 khi thiếu header).
+_bearer = HTTPBearer(auto_error=False)
+_UNAUTHORIZED_HEADERS = {"WWW-Authenticate": "Bearer"}
+
+
+def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> AuthUser:
+    # Hàm sync nên FastAPI chạy trong thread pool; lần đầu tải JWKS không chặn event loop.
+    settings = request.app.state.settings
+    if settings.auth_mode == "dev":
+        return AuthUser(owner_id="dev-user", role=settings.dev_role, username="dev")
+
+    verifier = request.app.state.auth_verifier
+    if verifier is None:
+        raise HTTPException(503, "Dịch vụ xác thực chưa được cấu hình")
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(401, "Cần đăng nhập để sử dụng chức năng này", headers=_UNAUTHORIZED_HEADERS)
+    try:
+        return verifier.verify(credentials.credentials)
+    except AuthError as exc:
+        headers = _UNAUTHORIZED_HEADERS if exc.status_code == 401 else None
+        raise HTTPException(exc.status_code, exc.message, headers=headers) from None
+
+
+def require_role(*roles: str):
+    """Dùng: `user: AuthUser = Depends(require_role("admin"))`."""
+    allowed = frozenset(roles)
+
+    def checker(user: AuthUser = Depends(get_current_user)) -> AuthUser:
+        if user.role not in allowed:
+            raise HTTPException(403, "Bạn không có quyền thực hiện thao tác này")
+        return user
+
+    return checker
+
+
+require_admin = require_role(ROLE_ADMIN)
+require_any_role = require_role(ROLE_ADMIN, ROLE_USER)
