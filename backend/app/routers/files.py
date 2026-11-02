@@ -5,9 +5,11 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
+from ..auth import get_current_user
 from ..config import Settings
 from ..dependencies import get_settings, get_storage
 from ..schemas.file import ErrorResponse, UploadResponse
+from ..services.cognito_auth import AuthUser
 from ..services.storage import Storage, StorageFailure, StorageUnavailable
 
 router = APIRouter()
@@ -36,6 +38,7 @@ def upload_file(
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),
     storage: Storage = Depends(get_storage),
+    user: AuthUser = Depends(get_current_user),
 ) -> UploadResponse:
     # FastAPI executes sync routes in its thread pool. File I/O and future
     # synchronous boto3 calls therefore do not block the async event loop.
@@ -51,7 +54,7 @@ def upload_file(
             raise HTTPException(400, "Tệp trống — hãy chọn một tệp có nội dung")
         file.file.seek(0)
         file_id = str(uuid4())
-        key = f"uploads/dev-user/{file_id}/{safe_filename(file.filename)}"
+        key = f"uploads/{user.owner_id}/{file_id}/{safe_filename(file.filename)}"
         content_type = file.content_type or "application/octet-stream"
         try:
             result = storage.upload(file.file, key=key, content_type=content_type)

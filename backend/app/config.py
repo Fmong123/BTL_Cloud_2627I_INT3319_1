@@ -21,6 +21,10 @@ class Settings:
     s3_multipart_threshold_bytes: int = 16 * MIB
     s3_multipart_chunksize_bytes: int = 8 * MIB
     s3_max_concurrency: int = 2
+    auth_mode: str = "cognito"
+    dev_role: str = "user"
+    cognito_user_pool_id: str = ""
+    cognito_app_client_id: str = ""
 
     def __post_init__(self) -> None:
         if self.storage_mode not in {"unconfigured", "local", "s3"}:
@@ -38,6 +42,12 @@ class Settings:
                 raise ValueError("S3_BUCKET_NAME is required when storage mode is s3")
             if not self.aws_region.strip():
                 raise ValueError("AWS_REGION is required when storage mode is s3")
+        if self.auth_mode not in {"cognito", "dev"}:
+            raise ValueError("MAYSEC_AUTH_MODE must be cognito or dev")
+        if self.dev_role not in {"user", "admin"}:
+            raise ValueError("MAYSEC_DEV_ROLE must be user or admin")
+        if self.auth_mode == "dev" and self.storage_mode == "s3":
+            raise ValueError("MAYSEC_AUTH_MODE=dev is not allowed with S3 storage")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -60,4 +70,8 @@ class Settings:
                 "MAYSEC_S3_MULTIPART_CHUNKSIZE_BYTES", str(8 * MIB)
             )),
             s3_max_concurrency=int(os.getenv("MAYSEC_S3_MAX_CONCURRENCY", "2")),
+            auth_mode=os.getenv("MAYSEC_AUTH_MODE", "cognito").strip().lower(),
+            dev_role=os.getenv("MAYSEC_DEV_ROLE", "user").strip().lower(),
+            cognito_user_pool_id=os.getenv("COGNITO_USER_POOL_ID", "").strip(),
+            cognito_app_client_id=os.getenv("COGNITO_APP_CLIENT_ID", "").strip(),
         )

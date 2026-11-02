@@ -10,7 +10,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .body_limit import UploadBodyLimitMiddleware
 from .config import Settings
+from .routers.auth import router as auth_router
 from .routers.files import router
+from .services.cognito_auth import build_verifier
 from .services.s3_service import upload_to_s3
 from .services.storage import LocalStorage, Storage, UnconfiguredStorage
 
@@ -70,6 +72,7 @@ def create_app(
     storage: Storage | None = None,
     *,
     s3_uploader: "S3Uploader | None" = None,
+    auth_verifier=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     selected_storage = storage if storage is not None else build_storage(
@@ -89,17 +92,18 @@ def create_app(
 
     app = FastAPI(title="MaySec API", version="0.1.0", lifespan=lifespan, description=(
         "MaySec file upload API. Local storage is an explicit development demo; "
-        "S3 requires a configured uploader. Authentication, scanning and file listing "
-        "are not integrated."
+        "S3 requires a configured uploader. Scanning and file listing "
+        "are not integrated; Cognito authentication is integrated."
     ))
     app.state.settings = settings
     app.state.storage = selected_storage
+    app.state.auth_verifier = auth_verifier if auth_verifier is not None else build_verifier(settings)
     app.add_middleware(UploadBodyLimitMiddleware, max_file_size_bytes=settings.max_file_size_bytes)
     # CORS wraps the limiter too, so its 413 response is readable in the UI.
     app.add_middleware(
         CORSMiddleware, allow_origins=list(settings.cors_origins),
         allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     @app.exception_handler(RequestValidationError)
@@ -122,6 +126,7 @@ def create_app(
         }
 
     app.include_router(router, tags=["Files"])
+    app.include_router(auth_router, tags=["Auth"])
     return app
 
 app = create_app(s3_uploader=upload_to_s3)
