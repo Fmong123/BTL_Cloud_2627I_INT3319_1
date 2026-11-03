@@ -69,8 +69,8 @@ export function historySnapshot(entries) {
     ),
   );
 }
-export function readHistory(storage) {
-  return readRecords(HISTORY_KEY, storage)
+export function readHistory(storage, key = HISTORY_KEY) {
+  return readRecords(key, storage)
     .filter(
       (file) =>
         typeof file.name === 'string' &&
@@ -94,8 +94,8 @@ export function readHistory(storage) {
     }));
 }
 
-export function readNotificationRecords(storage) {
-  return readRecords(NOTIFICATIONS_KEY, storage).filter(
+export function readNotificationRecords(storage, key = NOTIFICATIONS_KEY) {
+  return readRecords(key, storage).filter(
     (event) =>
       typeof event.title === 'string' &&
       event.title.length <= 200 &&

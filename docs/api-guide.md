@@ -13,7 +13,7 @@ Hướng dẫn hiện hành ngày 02/11/2026. Hợp đồng HTTP: [api-contract.
 
 Giữ MAYSEC_RESCAN_STATE_MACHINE_ARN trống khi pipeline tắt. Local/DB vẫn cần credentials DynamoDB; Local không DB không cần AWS.
 
-Chạy Local không đăng nhập: đặt `MAYSEC_AUTH_MODE=dev`. Chạy S3: bắt buộc `MAYSEC_AUTH_MODE=cognito`, cấu hình User Pool/App client và gửi Bearer access token. Frontend hiện chưa tích hợp đăng nhập Cognito.
+Chạy Local không đăng nhập: đặt `MAYSEC_AUTH_MODE=dev`. Chạy S3: bắt buộc `MAYSEC_AUTH_MODE=cognito`. Frontend đã có bộ chọn tài khoản demo và gửi Bearer token cho toàn bộ API; xem `docs/cognito-demo.md` để bật, cấp quyền directory/users và dùng đăng nhập Cognito thông thường.
 
 ## 2. Cài backend
 
@@ -43,11 +43,13 @@ Sửa .env theo chế độ; các biến chính:
 | DYNAMODB_REGION | ap-southeast-2 |
 | DYNAMODB_FILES_TABLE | securedrive-files |
 | DYNAMODB_AUDIT_TABLE | securedrive-audit-log |
-| DYNAMODB_USERS_TABLE | securedrive-users; xác thực hiện lấy nhóm trực tiếp từ JWT |
+| DYNAMODB_USERS_TABLE | securedrive-users; đồng bộ hồ sơ theo sub, không lưu credentials |
 | MAYSEC_AUTH_MODE | cognito mặc định; dev chỉ cho Local/unconfigured |
 | MAYSEC_DEV_ROLE | user hoặc admin, chỉ có tác dụng trong chế độ dev |
 | COGNITO_USER_POOL_ID | User Pool cấp access token |
 | COGNITO_APP_CLIENT_ID | App client được phép gọi backend |
+| MAYSEC_DEMO_LOGIN_ENABLED | false mặc định; bật để chọn tài khoản Cognito vào ngay cho buổi demo |
+| MAYSEC_DEMO_SIGNING_KEY | Secret chỉ ở backend, ít nhất 32 ký tự; bỏ trống dùng key tạm, một worker |
 | MAYSEC_RESCAN_STATE_MACHINE_ARN | ARN STANDARD không alias/version ở Sydney; trống để tắt |
 
 Các thông số multipart SDK dùng đơn vị kỹ thuật MiB như .env.example; nhãn dung lượng sản phẩm dùng KB/MB/GB thập phân.

@@ -12,11 +12,13 @@ from .body_limit import UploadBodyLimitMiddleware
 from .config import Settings
 from .db import DynamoDBError, build_dynamodb_client
 from .routers.auth import router as auth_router
+from .routers.admin import router as admin_router
 from .routers.files import router
 from .routers.lifecycle import router as lifecycle_router
 from .services.audit_log import AuditLogRepository
 from .services.cognito_auth import build_verifier
 from .services.file_metadata import FileMetadataRepository
+from .services.user_profiles import UserProfiles
 from .services.s3_service import upload_to_s3
 from .services.storage import LocalStorage, Storage, UnconfiguredStorage
 from .services.quota import FREE_STORAGE_BYTES
@@ -80,6 +82,7 @@ def create_app(
     dynamodb_client=None,
     rescanner=None,
     auth_verifier=None,
+    demo_accounts=None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     selected_storage = storage if storage is not None else build_storage(
@@ -94,7 +97,22 @@ def create_app(
     async def lifespan(app: FastAPI):
         metadata_client = dynamodb_client
         owns_metadata_client = False
+        demo_client = None
         try:
+            if settings.demo_login_enabled and app.state.cognito_directory is None:
+                import boto3
+                from botocore.config import Config
+                from botocore.exceptions import BotoCoreError
+                from .services.demo_accounts import DemoAccounts
+                try:
+                    demo_client = boto3.client("cognito-idp", region_name=settings.cognito_user_pool_id.split("_")[0],
+                                               config=Config(connect_timeout=3, read_timeout=5, retries={"total_max_attempts": 2}))
+                    app.state.cognito_directory = DemoAccounts(demo_client, settings.cognito_user_pool_id,
+                                                               signing_key=settings.demo_signing_key)
+                    if settings.demo_login_enabled:
+                        app.state.demo_accounts = app.state.cognito_directory
+                except BotoCoreError:
+                    logger.warning("Cognito demo client unavailable")
             if settings.rescan_state_machine_arn and app.state.rescanner is None:
                 import boto3
                 from botocore.config import Config
@@ -119,8 +137,15 @@ def create_app(
                     )
                 except DynamoDBError as exc:
                     logger.warning("DynamoDB initialization failed (%s); metadata requests will return 503", exc.code)
+                if metadata_client is not None:
+                    app.state.user_profiles = UserProfiles(metadata_client, settings.dynamodb_users_table)
             yield
         finally:
+            if demo_client is not None:
+                demo_client.close()
+                app.state.demo_accounts = None
+                app.state.cognito_directory = None
+            app.state.user_profiles = None
             if rescanner is None and app.state.rescanner is not None:
                 app.state.rescanner.client.close()
                 app.state.rescanner = None
@@ -149,6 +174,9 @@ def create_app(
     app.state.audit_log = None
     app.state.rescanner = rescanner
     app.state.auth_verifier = auth_verifier if auth_verifier is not None else build_verifier(settings)
+    app.state.demo_accounts = demo_accounts
+    app.state.cognito_directory = demo_accounts
+    app.state.user_profiles = None
     app.add_middleware(UploadBodyLimitMiddleware, max_file_size_bytes=settings.max_file_size_bytes)
     # CORS wraps the limiter too, so its 413 response is readable in the UI.
     app.add_middleware(
@@ -211,6 +239,7 @@ def create_app(
     app.include_router(router, tags=["Files"])
     app.include_router(lifecycle_router, tags=["File management"])
     app.include_router(auth_router, tags=["Auth"])
+    app.include_router(admin_router, tags=["Administration"])
     return app
 
 app = create_app(s3_uploader=upload_to_s3)

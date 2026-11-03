@@ -19,6 +19,7 @@ import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
 import { scanStates } from '../utils/processing.js';
 import FileScanReport from './FileScanReport.jsx';
+import FileHistory from './FileHistory.jsx';
 import '../file-workspace.css';
 
 const time = (value) =>
@@ -297,6 +298,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
         ) : (
           <section id="detail-processing" role="tabpanel" aria-labelledby="detail-processing-tab">
             <FileScanReport file={file} refreshKey={check?.checkedAt} />
+            <FileHistory key={file.remoteId || file.id} file={file} />
             <ol className="processing-timeline">
               <li className={uploadConfirmed ? 'complete' : 'pending'}>
                 <span className="timeline-marker">

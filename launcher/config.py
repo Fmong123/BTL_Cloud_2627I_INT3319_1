@@ -26,6 +26,7 @@ BACKEND_DEFAULTS = {
     "AWS_PROFILE": "", "S3_BUCKET_NAME": "", "AWS_REGION": "",
     "MAYSEC_AUTH_MODE": "cognito", "MAYSEC_DEV_ROLE": "user",
     "COGNITO_USER_POOL_ID": "", "COGNITO_APP_CLIENT_ID": "",
+    "MAYSEC_DEMO_LOGIN_ENABLED": "false",
     "DYNAMODB_REGION": "ap-southeast-2", "DYNAMODB_FILES_TABLE": "securedrive-files",
     "DYNAMODB_AUDIT_TABLE": "securedrive-audit-log", "DYNAMODB_USERS_TABLE": "securedrive-users",
     "MAYSEC_S3_MULTIPART_THRESHOLD_BYTES": "16777216",
@@ -34,6 +35,8 @@ BACKEND_DEFAULTS = {
 FRONTEND_DEFAULTS = {
     "VITE_UPLOAD_MODE": "demo", "VITE_API_BASE_URL": "http://127.0.0.1:8000",
     "VITE_MAX_FILE_SIZE_MB": "100",
+    "VITE_COGNITO_DOMAIN": "", "VITE_COGNITO_APP_CLIENT_ID": "75a0p1bv9bihkmgrkrrbb6nk7p",
+    "VITE_COGNITO_REDIRECT_URI": "", "VITE_COGNITO_LOGOUT_URI": "",
 }
 EDITABLE = set(BACKEND_DEFAULTS) - {
     "MAYSEC_STORAGE_MODE", "MAYSEC_METADATA_MODE", "MAYSEC_MAX_FILE_SIZE_BYTES",
@@ -194,10 +197,12 @@ class Settings:
         if self.data["mode"] != "s3-db":
             put(backend, "MAYSEC_SCAN_PIPELINE_ENABLED", "false")
             if sources["MAYSEC_AUTH_MODE"] == "Mặc định":
-                put(backend, "MAYSEC_AUTH_MODE", "dev", "Local mặc định dùng danh tính phát triển")
+                demo = backend["MAYSEC_DEMO_LOGIN_ENABLED"].strip().lower() in {"true", "1"}
+                put(backend, "MAYSEC_AUTH_MODE", "cognito" if demo else "dev",
+                    "Demo Cognito" if demo else "Local mặc định dùng danh tính phát triển")
         if backend["MAYSEC_SCAN_PIPELINE_ENABLED"].strip().lower() not in {"true", "1"}:
             put(backend, "MAYSEC_RESCAN_STATE_MACHINE_ARN", "", "Quét lại tắt khi pipeline không bật")
-        if metadata == "disabled":
+        if metadata == "disabled" and backend["MAYSEC_DEMO_LOGIN_ENABLED"].strip().lower() not in {"true", "1"}:
             put(backend, "AWS_PROFILE", "", "Không dùng AWS trong chế độ này")
         return {"mode": self.data["mode"], "backend": backend, "frontend": frontend,
                 "web_port": self.data["web_port"], "api_port": self.data["api_port"], "sources": sources}
@@ -216,4 +221,10 @@ class Settings:
                     env.pop(key)
         elif not resolved["backend"]["AWS_PROFILE"]:
             env.pop("AWS_PROFILE", None)
+        if service == "backend":
+            # Keep signing keys out of resolved tables, saved overrides and frontend.
+            inherited = os.environ if parent is None else parent
+            key = inherited.get("MAYSEC_DEMO_SIGNING_KEY") or read_env(self.root / "backend/.env").get("MAYSEC_DEMO_SIGNING_KEY")
+            if key:
+                env["MAYSEC_DEMO_SIGNING_KEY"] = key
         return env

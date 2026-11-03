@@ -177,6 +177,7 @@ class Launcher:
                 elif choice == "10":
                     print("S3 bắt buộc dùng cognito. Local có thể dùng dev; không nhập token hoặc mật khẩu ở đây.")
                     self.edit_fields([("MAYSEC_AUTH_MODE", "Chế độ xác thực: cognito hoặc dev"),
+                                      ("MAYSEC_DEMO_LOGIN_ENABLED", "Chọn tài khoản vào ngay cho demo: true hoặc false"),
                                       ("COGNITO_USER_POOL_ID", "Cognito User Pool ID"),
                                       ("COGNITO_APP_CLIENT_ID", "Cognito App client ID"),
                                       ("MAYSEC_DEV_ROLE", "Vai trò Local dev: user hoặc admin")])

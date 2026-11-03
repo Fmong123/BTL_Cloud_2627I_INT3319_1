@@ -34,6 +34,8 @@ router = APIRouter(responses={
     401: {"model": ErrorResponse, "description": "Missing, invalid or expired access token"},
     403: {"model": ErrorResponse, "description": "Account has no permitted role"},
 })
+
+
 logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1024 * 1024
 
@@ -591,3 +593,38 @@ def get_file_content(
         **headers,
         "Content-Disposition": f"{disposition}; filename=\"{safe_filename(filename)}\"; filename*=UTF-8''{quote(filename, safe='')}",
     })
+
+
+@router.get("/files/{file_id}/history")
+def file_history(
+    file_id: str, response: Response, limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = Query(None, max_length=2048),
+    settings: Settings = Depends(get_settings),
+    metadata: FileMetadataRepository | None = Depends(get_file_metadata),
+    audit: AuditLogRepository | None = Depends(get_audit_log),
+    owner_id: str = Depends(get_current_owner_id),
+):
+    response.headers["Cache-Control"] = "no-store"
+    require_metadata(settings, metadata, audit, writing=True)
+    owned_file(metadata, owner_id, file_id)
+    start = None
+    if cursor:
+        try:
+            start = json.loads(base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True))
+            if not isinstance(start, dict) or set(start) != {"file_id", "event_key"}:
+                raise ValueError()
+            if start["file_id"] != file_id or not isinstance(start["event_key"], str) or not start["event_key"]:
+                raise ValueError()
+        except (ValueError, TypeError, binascii.Error, UnicodeDecodeError):
+            raise HTTPException(400, "Cursor lịch sử không hợp lệ") from None
+    try:
+        page = audit.list_history(file_id, limit=limit, start_key=start)
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    # A global file_id partition must never return events from another owner.
+    if any(item.get("owner_id") != owner_id for item in page.items):
+        raise HTTPException(503, "Lịch sử tệp có dữ liệu không khớp chủ sở hữu")
+    allowed = ("event_key", "occurred_at", "action", "actor", "from_status", "to_status")
+    next_cursor = base64.urlsafe_b64encode(json.dumps(page.next_key).encode()).decode().rstrip("=") if page.next_key else None
+    return {"id": file_id, "items": [{k: item[k] for k in allowed if k in item} for item in page.items],
+            "next_cursor": next_cursor}

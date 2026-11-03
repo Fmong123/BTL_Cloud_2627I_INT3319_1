@@ -1,0 +1,134 @@
+.admin-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 26px;
+  background: var(--hero);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  margin-bottom: 24px;
+}
+.admin-summary > div {
+  flex: 1;
+}
+.admin-summary h2 {
+  margin: 5px 0;
+  font-size: 24px;
+}
+.admin-summary p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 630px;
+}
+.admin-summary-icon {
+  display: grid;
+  place-items: center;
+  height: 60px;
+  width: 60px;
+  background: var(--surface);
+  color: var(--accent);
+  border-radius: 18px;
+  flex-shrink: 0;
+}
+.admin-file-list {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  margin-bottom: 18px;
+}
+.admin-file-list table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.admin-file-list th,
+.admin-file-list td {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-file-list th {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.admin-file-list td:first-child {
+  min-width: 210px;
+}
+.admin-file-list td strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.admin-file-list td small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 5px;
+}
+.admin-file-list tr:last-child td {
+  border-bottom: none;
+}
+.admin-status {
+  display: inline-flex;
+  padding: 5px 9px;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .admin-summary {
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+  }
+  .admin-summary > button {
+    grid-column: 1 / -1;
+  }
+  .admin-summary-icon {
+    height: 44px;
+    width: 44px;
+  }
+  .admin-summary h2 {
+    font-size: 21px;
+  }
+  .admin-file-list table,
+  .admin-file-list tbody {
+    display: block;
+    width: 100%;
+  }
+  .admin-file-list thead {
+    display: none;
+  }
+  .admin-file-list tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 16px;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .admin-file-list tr:last-child {
+    border-bottom: none;
+  }
+  .admin-file-list td {
+    display: block;
+    min-width: 0;
+    border: none;
+    padding: 0;
+  }
+  .admin-file-list td:first-child {
+    min-width: 0;
+    grid-column: 1 / -1;
+  }
+  .admin-file-list td:last-child {
+    grid-column: 1 / -1;
+  }
+  .admin-file-list td:last-child button {
+    width: 100%;
+    justify-content: center;
+  }
+}

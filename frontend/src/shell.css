@@ -805,6 +805,51 @@ html:has(.file-preview-modal[open]) {
   color: var(--muted);
   margin: 8px 0 14px;
 }
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 12px;
+}
+.user-trigger:hover {
+  background: var(--hover);
+}
+@media (max-width: 640px) {
+  .topbar .breadcrumb {
+    display: none;
+  }
+  .page-heading {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .page-heading h1 {
+    font-size: 25px;
+  }
+  .page-footer {
+    gap: 14px;
+  }
+}
+.user-trigger > span {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.user-menu-panel > button {
+  display: block;
+  margin-top: 12px;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .user-trigger {
+    padding: 7px;
+  }
+  .user-trigger > span {
+    display: none;
+  }
+}
 .user-menu-panel a {
   color: var(--accent);
   font-size: 14px;

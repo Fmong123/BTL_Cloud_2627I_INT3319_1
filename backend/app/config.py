@@ -43,8 +43,14 @@ class Settings:
     dev_role: str = "user"
     cognito_user_pool_id: str = ""
     cognito_app_client_id: str = ""
+    demo_login_enabled: bool = False
+    demo_signing_key: str = ""
 
     def __post_init__(self) -> None:
+        if self.demo_login_enabled and (self.auth_mode != "cognito" or not self.cognito_user_pool_id):
+            raise ValueError("Demo account selection requires Cognito mode and a User Pool ID")
+        if self.demo_signing_key and len(self.demo_signing_key) < 32:
+            raise ValueError("MAYSEC_DEMO_SIGNING_KEY must contain at least 32 characters")
         if self.auth_mode not in {"cognito", "dev"}:
             raise ValueError("MAYSEC_AUTH_MODE must be cognito or dev")
         if self.dev_role not in {"user", "admin"}:
@@ -132,4 +138,6 @@ class Settings:
             dev_role=os.getenv("MAYSEC_DEV_ROLE", "user").strip().lower(),
             cognito_user_pool_id=os.getenv("COGNITO_USER_POOL_ID", "").strip(),
             cognito_app_client_id=os.getenv("COGNITO_APP_CLIENT_ID", "").strip(),
+            demo_login_enabled=env_bool("MAYSEC_DEMO_LOGIN_ENABLED"),
+            demo_signing_key=os.getenv("MAYSEC_DEMO_SIGNING_KEY", "").strip(),
         )

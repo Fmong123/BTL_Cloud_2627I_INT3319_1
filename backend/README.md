@@ -40,9 +40,9 @@ MaySec.cmd cũng nhận hai biến ARN quét lại/bucket cách ly; khi chọn L
 
 S3 bắt buộc `MAYSEC_AUTH_MODE=cognito`; đặt `COGNITO_USER_POOL_ID` và `COGNITO_APP_CLIENT_ID` theo `.env.example`. Client gửi `Authorization: Bearer <access_token>` cho `/me` và mọi API tệp/quota/lịch sử/thông báo. Key upload là `uploads/<sub>/<file_id>/<tên-tệp>`; owner không nhận từ query/body/header tùy chỉnh của client.
 
-Thiếu/sai/hết hạn token trả 401; tài khoản không có nhóm user/admin trả 403; thiếu cấu hình hoặc không tải được JWKS trả 503. Admin dùng API người dùng vẫn chỉ truy cập tệp của chính mình. `/health` công khai. `/admin/*` chưa thuộc đợt tích hợp này.
+Thiếu/sai/hết hạn token trả 401; tài khoản không có nhóm user/admin trả 403; thiếu cấu hình hoặc không tải được JWKS trả 503. Admin dùng API người dùng vẫn chỉ truy cập tệp của chính mình. `/health` công khai. `/admin/quarantine` và API đọc nội dung cách ly dành cho admin, có scope User Pool và audit bắt buộc.
 
-Chế độ `dev` chỉ dùng với storage Local/unconfigured và trả owner `dev-user`. Frontend hiện chưa gửi token; dùng dev ở Local hoặc gọi API Cognito theo [hướng dẫn backend](../docs/cognito-backend.md). Policy IAM cũ giới hạn `dev-user` phải được điều chỉnh cho owner thật trước khi thử S3. Dữ liệu cũ không tự chuyển owner.
+Chế độ `dev` chỉ dùng với storage Local/unconfigured và trả owner `dev-user`. Frontend đã gửi token; bộ chọn tài khoản demo vào ngay chỉ bật qua `MAYSEC_DEMO_LOGIN_ENABLED=true`, xem [hướng dẫn demo](../docs/cognito-demo.md). Policy IAM cũ giới hạn `dev-user` phải được điều chỉnh cho owner thật. Thêm quyền đọc Cognito, UpdateItem bảng users, Query audit và đọc/decrypt quarantine theo policy mẫu mới. Dữ liệu cũ không tự chuyển owner.
 
 ## Kiểm thử hiện hành
 

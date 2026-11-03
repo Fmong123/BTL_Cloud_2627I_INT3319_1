@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .services.cognito_auth import ROLE_ADMIN, ROLE_USER, AuthError, AuthUser
+from .services.demo_accounts import is_demo_token
 
 # auto_error=False để tự trả 401 (HTTPBearer mặc định trả 403 khi thiếu header).
 _bearer = HTTPBearer(auto_error=False)
@@ -24,11 +25,20 @@ def get_current_user(
         return AuthUser(owner_id="dev-user", role=settings.dev_role, username="dev")
 
     verifier = request.app.state.auth_verifier
-    if verifier is None:
+    if verifier is None and not settings.demo_login_enabled:
         raise HTTPException(503, "Dịch vụ xác thực chưa được cấu hình")
     if credentials is None or not credentials.credentials:
         raise HTTPException(401, "Cần đăng nhập để sử dụng chức năng này", headers=_UNAUTHORIZED_HEADERS)
     try:
+        if is_demo_token(credentials.credentials):
+            if not settings.demo_login_enabled:
+                raise AuthError(401, "Chế độ demo đã tắt")
+            directory = request.app.state.demo_accounts
+            if directory is None:
+                raise AuthError(503, "Chưa kết nối được Cognito cho demo")
+            return directory.verify(credentials.credentials)
+        if verifier is None:
+            raise AuthError(503, "Dịch vụ xác thực chưa được cấu hình")
         return verifier.verify(credentials.credentials)
     except AuthError as exc:
         headers = _UNAUTHORIZED_HEADERS if exc.status_code == 401 else None

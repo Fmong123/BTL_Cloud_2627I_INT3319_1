@@ -26,6 +26,8 @@ import { HISTORY_KEY, historySnapshot, readHistory, writeRecords } from '../util
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
 import { saveFile } from '../utils/saveFile.js';
 import Modal from '../components/Modal.jsx';
+import { useAuth } from '../auth/Auth.jsx';
+import { apiConfiguration } from '../api/config.js';
 
 const Context = createContext(null);
 const configuredSize = Number(import.meta.env.VITE_MAX_FILE_SIZE_MB || 100);
@@ -39,9 +41,9 @@ export const defaultPreferences = {
   view: 'list',
   sort: 'newest',
   mode: import.meta.env.VITE_UPLOAD_MODE === 'api' ? 'api' : 'demo',
-  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseUrl: apiConfiguration().baseUrl,
 };
-function connectionScope(connection) {
+function baseConnectionScope(connection) {
   if (connection.mode === 'demo') return 'demo';
   try {
     return `api:${validateApiBaseUrl(connection.baseUrl)}`;
@@ -51,9 +53,19 @@ function connectionScope(connection) {
 }
 
 export function WorkspaceProvider({ children }) {
-  const [entries, renderEntries] = useState(readHistory);
+  const { session } = useAuth();
+  const userStorageSuffix = `${encodeURIComponent(session.baseUrl)}:${session.user.id}`;
+  const historyStorageKey = `${HISTORY_KEY}:${userStorageSuffix}`;
+  function connectionScope(connection) {
+    return `${baseConnectionScope(connection)}:owner:${session.user.id}`;
+  }
+  const [entries, renderEntries] = useState(() => readHistory(undefined, historyStorageKey));
   const entriesRef = useRef(entries);
-  const [preferences, setPreferences] = useState(() => readPreferences(defaultPreferences));
+  const [preferences, setPreferences] = useState(() => ({
+    ...readPreferences(defaultPreferences),
+    mode: session.localOnly ? 'demo' : 'api',
+    baseUrl: session.baseUrl,
+  }));
   const scope = connectionScope(preferences);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
@@ -96,6 +108,7 @@ export function WorkspaceProvider({ children }) {
   const notifications = useNotifications(scope, {
     baseUrl: preferences.baseUrl,
     available: activityAvailable,
+    storageSuffix: userStorageSuffix,
   });
   const notificationsRef = useRef(notifications);
   notificationsRef.current = notifications;
@@ -267,13 +280,13 @@ export function WorkspaceProvider({ children }) {
 
   useEffect(() => {
     const timer = setTimeout(
-      () => setHistoryStorageFailed(!writeRecords(HISTORY_KEY, historySnapshot(entries))),
+      () => setHistoryStorageFailed(!writeRecords(historyStorageKey, historySnapshot(entries))),
       150,
     );
     return () => clearTimeout(timer);
   }, [entries]);
   useEffect(() => {
-    const flush = () => writeRecords(HISTORY_KEY, historySnapshot(entriesRef.current));
+    const flush = () => writeRecords(historyStorageKey, historySnapshot(entriesRef.current));
     const cleanDemo = () => {
       const now = Date.now();
       if (
@@ -746,6 +759,14 @@ export function WorkspaceProvider({ children }) {
       ...value,
       baseUrl: value.mode === 'api' ? validateApiBaseUrl(value.baseUrl) : value.baseUrl,
     };
+    if (session.localOnly && next.mode === 'api') {
+      notify('Đăng nhập bằng tài khoản để dùng lưu trữ thật');
+      return false;
+    }
+    if (next.mode === 'api' && next.baseUrl !== session.baseUrl) {
+      notify('Chọn Đổi tài khoản để kết nối với máy chủ khác');
+      return false;
+    }
     if (connectionScope(next) !== scope) setHealth(null);
     setPreferences((current) => ({ ...current, ...next }));
     notify('Đã lưu kết nối');

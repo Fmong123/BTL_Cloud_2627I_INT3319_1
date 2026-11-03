@@ -25,6 +25,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
+import { useAuth } from '../auth/Auth.jsx';
 import { isBusy } from '../utils/workspace.js';
 import { needsTracking } from '../utils/processing.js';
 import Modal from './Modal.jsx';
@@ -56,6 +57,7 @@ const shortcuts = [
 
 export default function Layout() {
   const w = useWorkspace();
+  const auth = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -69,7 +71,14 @@ export default function Layout() {
   const themeTrigger = useRef(null);
   const pageHeading = useRef(null);
   const [expanded, setExpanded] = useState(false);
-  const collapsed = Boolean(w.preferences.sidebarCollapsed);
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 640px)').matches);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 640px)');
+    const update = () => setCompact(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const collapsed = compact || Boolean(w.preferences.sidebarCollapsed);
   const params = new URLSearchParams(location.search);
   const shortcut =
     location.pathname === '/files'
@@ -82,6 +91,7 @@ export default function Layout() {
   const title =
     shortcuts.find(([key]) => key === shortcut)?.[2] ||
     navigation.find(([path]) => path === location.pathname)?.[1] ||
+    (location.pathname === '/admin/quarantine' ? 'Quản trị cách ly' : null) ||
     'Không tìm thấy trang';
   const activity = w.activityFiles || w.files;
   const active = activity.filter(isBusy);
@@ -225,6 +235,7 @@ export default function Layout() {
         </Link>
         <button
           className="sidebar-toggle icon-button"
+          disabled={compact}
           aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
           title={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
           aria-expanded={!collapsed}
@@ -236,6 +247,8 @@ export default function Layout() {
           <div className="sidebar-scroll-area">
             <div className="nav-group">
               {navigation.slice(0, 3).map(([path, label, Icon]) => navItem(path, label, Icon))}
+              {auth.session.user.role === 'admin' &&
+                navItem('/admin/quarantine', 'Quản trị cách ly', ShieldCheck)}
             </div>
             <div
               className="nav-group sidebar-shortcuts"
@@ -332,12 +345,17 @@ export default function Layout() {
               )}
             </div>
             <details className="user-menu" ref={userMenuRef}>
-              <summary className="icon-button" aria-label="Người dùng" title="Người dùng">
+              <summary
+                className="user-trigger"
+                aria-label="Người dùng"
+                title={auth.session.user.name}
+              >
                 <CircleUserRound size={24} />
+                <span>{auth.session.user.name}</span>
               </summary>
               <div className="user-menu-panel">
-                <strong>Người dùng</strong>
-                <p>Chưa đăng nhập</p>
+                <strong>{auth.session.user.name}</strong>
+                <p>{auth.session.user.role === 'admin' ? 'Quản trị viên' : 'Không gian cá nhân'}</p>
                 <Link
                   to="/settings"
                   onClick={(event) => {
@@ -346,6 +364,12 @@ export default function Layout() {
                 >
                   Cài đặt
                 </Link>
+                <button className="text-button" onClick={auth.logout}>
+                  Đổi tài khoản
+                </button>
+                <button className="text-button" onClick={auth.logout}>
+                  Đăng xuất
+                </button>
               </div>
             </details>
           </div>
@@ -353,7 +377,7 @@ export default function Layout() {
         <main id="main-content" tabIndex={-1}>
           <div className="page-heading">
             <div>
-              <span className="eyebrow">KHÔNG GIAN CỦA BẠN</span>
+              <span className="eyebrow">KHÔNG GIAN CỦA {auth.session.user.name}</span>
               <h1 ref={pageHeading} tabIndex={-1}>
                 {title}
               </h1>

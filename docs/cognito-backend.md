@@ -1,6 +1,6 @@
 # Tích hợp Cognito vào backend MâySec
 
-Backend đã ghép lõi xác thực từ `feature/cognito-auth` commit `8a18733` vào nghiệp vụ của `AWS_Phong`. Upload, thư viện, quota, báo cáo quét, quét lại, yêu thích, nội dung, đổi tên, thùng rác, lịch sử upload và thông báo đều lấy owner từ access token đã xác minh. Frontend đăng nhập và API quản trị cách ly là các bước tiếp theo.
+Backend đã ghép lõi xác thực từ `feature/cognito-auth` commit `8a18733` vào nghiệp vụ của `AWS_Phong`. Upload, thư viện, quota, báo cáo quét, quét lại, yêu thích, nội dung, đổi tên, thùng rác, lịch sử upload và thông báo đều lấy owner từ danh tính đã xác minh. Đã bổ sung bộ chọn tài khoản demo, frontend gửi token, bảng users, lịch sử từng tệp và API admin cách ly; cấu hình mới ở `docs/cognito-demo.md`.
 
 ## Cấu hình backend
 
@@ -14,7 +14,7 @@ COGNITO_APP_CLIENT_ID=75a0p1bv9bihkmgrkrrbb6nk7p
 
 Đây là định danh công khai. Backend không nhận mật khẩu và không cần App client secret. Cài `backend/requirements.txt`, khởi động lại API để nạp cấu hình. `MAYSEC_AUTH_MODE=dev` chỉ dùng Local/unconfigured; app từ chối cả cấu hình S3 và adapter S3 khi bật dev. Thiếu cấu hình Cognito không tự chuyển về dev.
 
-Launcher đọc các biến này và cho chỉnh tại menu 3 → 10. Cấu hình launcher/terminal có thể ưu tiên hơn `.env`; kiểm tra bảng ENV hiệu lực nếu kết quả khác dự kiến. Frontend hiện chưa gửi Bearer token, vì vậy gọi backend Cognito bằng giao diện cũ sẽ bị từ chối.
+Launcher đọc các biến này và cho chỉnh tại menu 3 → 10, gồm cờ bật bộ chọn demo. Cấu hình launcher/terminal có thể ưu tiên hơn `.env`; kiểm tra bảng ENV hiệu lực nếu kết quả khác dự kiến. Frontend gửi Bearer token sau khi đăng nhập/chọn tài khoản.
 
 ## Danh tính và key S3
 

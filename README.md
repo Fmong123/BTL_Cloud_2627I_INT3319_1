@@ -1,6 +1,6 @@
 # MâySec — kho lưu trữ và kiểm tra dữ liệu nhạy cảm
 
-React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý quét/cách ly. Backend xác thực access token Cognito, tách dữ liệu theo `sub` của tài khoản. Frontend hiện chưa tích hợp đăng nhập/gửi token; dùng API có Bearer token để kiểm tra backend Cognito.
+React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý quét/cách ly. Danh tính theo Cognito, tách dữ liệu theo `sub`. Frontend có màn hình chọn tài khoản demo vào ngay, tự cập nhật tài khoản mới, gửi token cho mọi API và khu quản trị cách ly. Xem [cấu hình demo và quyền AWS](docs/cognito-demo.md).
 
 ## Chức năng hiện có
 
@@ -10,6 +10,7 @@ React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý qu�
 - Danh sách từ API, tìm/lọc/sắp xếp, đánh dấu; xem ảnh/PDF/văn bản và tải xuống khi đủ điều kiện.
 - Báo cáo quét, yêu cầu quét lại, đổi tên, khôi phục/xóa vĩnh viễn; lịch sử upload/thông báo giữ sau reload.
 - Giao diện sáng/tối, sidebar thu gọn, chọn nhiều và panel chi tiết.
+- Drive/cache riêng theo tài khoản; đồng bộ `securedrive-users`, lịch sử từng tệp và admin đọc cách ly có audit.
 
 Upload thành công chỉ xác nhận đã lưu nội dung. Nội dung chỉ được xem/tải khi đã upload xong, kết quả quét `safe` và không trong rác. Quét hiện phát hiện CCCD và số thẻ, không phải quét mã độc.
 

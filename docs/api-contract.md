@@ -1,6 +1,6 @@
 # Hợp đồng HTTP MâySec
 
-Cập nhật 02/11/2026. Schema chính xác của API đang chạy nằm tại /openapi.json và Swagger /docs. Owner lấy từ `sub` của access token Cognito; mọi API dữ liệu bên dưới yêu cầu `Authorization: Bearer <access_token>`, ngoại trừ `/health` công khai. Local có thể dùng chế độ dev. Xem [cấu hình và thử Cognito](cognito-backend.md).
+Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /openapi.json và Swagger /docs. Owner lấy từ danh tính đã xác minh; mọi API dữ liệu bên dưới yêu cầu Bearer token. `/health`, `/auth/config` công khai; hai API demo chỉ công khai khi bật cờ trình diễn. Local có thể dùng chế độ dev. Xem [cấu hình và thử Cognito](cognito-backend.md) và [bộ chọn demo](cognito-demo.md).
 
 ## Endpoint
 
@@ -8,6 +8,9 @@ Cập nhật 02/11/2026. Schema chính xác của API đang chạy nằm tại /
 | --- | --- | --- |
 | GET | /health | Cấu hình và capabilities; không kiểm quyền AWS end-to-end |
 | GET | /me | ID và vai trò user/admin từ danh tính đã xác thực |
+| GET | /auth/config | auth_mode và demo_enabled; không trả secret |
+| GET | /auth/demo/accounts | Chỉ khi demo bật; danh sách Cognito, đồng bộ bảng users |
+| POST | /auth/demo/login | Chỉ khi demo bật; JSON account_id, cấp phiên demo có chữ ký |
 | POST | /upload | Multipart trường file, một tệp/request; 201 khi lưu và bookkeeping xác nhận |
 | GET | /storage/usage | limit_bytes, used_bytes, reserved_bytes, available_bytes |
 | GET | /files | limit 1–100, cursor; area=active (mặc định), trash hoặc all |
@@ -15,6 +18,9 @@ Cập nhật 02/11/2026. Schema chính xác của API đang chạy nằm tại /
 | GET | /files/{id}/scan-report | Báo cáo tổng hợp; không trả giá trị PII/OCR |
 | POST | /files/{id}/rescan | JSON request_id UUID; 202, workflow version-pinned |
 | GET | /files/{id}/content | mode=preview hoặc download; mặc định download |
+| GET | /files/{id}/history | Owner-only, limit/cursor, sự kiện audit đã lọc nội dung |
+| GET | /admin/quarantine | Admin-only, tệp cần chú ý của mọi user trong User Pool; limit/cursor |
+| GET | /admin/files/{id}/content | Admin-only, owner_id bắt buộc; version cách ly đúng cấu hình, ghi audit trước khi trả byte |
 | PATCH | /files/{id}/preferences | JSON starred boolean |
 | PATCH | /files/{id}/name | JSON name; chỉ đổi tên hiển thị |
 | POST | /files/{id}/trash | Xóa mềm, giữ 30 ngày |

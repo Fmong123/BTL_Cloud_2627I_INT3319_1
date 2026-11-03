@@ -6,6 +6,7 @@ import {
 } from '../utils/processing.js';
 import { DOWNLOAD_LIMIT } from '../utils/content.js';
 import { MB } from '../utils/files.js';
+import { apiLease } from './session.js';
 
 export class ApiError extends Error {
   constructor(message, details = {}) {
@@ -113,9 +114,21 @@ export function uploadFile(
       return;
     }
     const xhr = xhrFactory();
+    let lease;
+    try {
+      lease = apiLease(baseUrl);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     const abort = () => xhr.abort();
-    const cleanup = () => signal?.removeEventListener('abort', abort);
+    const cleanup = () => {
+      signal?.removeEventListener('abort', abort);
+      lease.signal.removeEventListener('abort', abort);
+      lease.release();
+    };
     xhr.open('POST', endpoint);
+    for (const [name, value] of Object.entries(lease.headers)) xhr.setRequestHeader(name, value);
     xhr.timeout = 300_000;
     // Same-origin cookies are sent normally. Cross-origin credentials need a future auth integration.
     xhr.upload.onprogress = (event) => {
@@ -125,6 +138,12 @@ export function uploadFile(
     };
     xhr.onload = () => {
       cleanup();
+      try {
+        lease.response(xhr.status);
+      } catch (error) {
+        reject(error);
+        return;
+      }
       if (xhr.status < 200 || xhr.status >= 300) {
         const error = uploadError(xhr, apiError(xhr));
         reject(error);
@@ -162,6 +181,7 @@ export function uploadFile(
       reject(new DOMException('Đã hủy tải lên', 'AbortError'));
     };
     signal?.addEventListener('abort', abort, { once: true });
+    lease.signal.addEventListener('abort', abort, { once: true });
     const body = new FormData();
     body.append('file', file, file.name);
     // Let the browser set the multipart boundary; never place AWS credentials in the client.
@@ -189,10 +209,15 @@ async function requestJson(
   { signal, timeout = 10000, fetcher = globalThis.fetch, method = 'GET', body } = {},
 ) {
   const base = validateApiBaseUrl(baseUrl);
+  const lease = apiLease(base);
   const controller = new AbortController();
   const abort = () => controller.abort();
-  if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+  if (signal?.aborted) {
+    lease.release();
+    throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+  }
   signal?.addEventListener('abort', abort, { once: true });
+  lease.signal.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(abort, timeout);
   try {
     const response = await fetcher(`${base}${path}`, {
@@ -201,13 +226,16 @@ async function requestJson(
       cache: 'no-store',
       headers: {
         Accept: 'application/json',
+        ...lease.headers,
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
+    lease.response(response.status);
     let data;
     try {
       data = await response.json();
+      lease.assertCurrent();
     } catch {
       if (!response.ok)
         throw new ApiError(`Máy chủ trả HTTP ${response.status}`, { status: response.status });
@@ -223,7 +251,8 @@ async function requestJson(
       );
     return data;
   } catch (error) {
-    if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+    if (signal?.aborted || lease.signal.aborted || error.name === 'AbortError')
+      throw new DOMException('Đã hủy yêu cầu', 'AbortError');
     if (controller.signal.aborted)
       throw new ApiError('Máy chủ chưa phản hồi — hãy kiểm tra lại kết nối', {
         status: 0,
@@ -237,6 +266,8 @@ async function requestJson(
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);
+    lease.signal.removeEventListener('abort', abort);
+    lease.release();
   }
 }
 
@@ -424,6 +455,35 @@ export async function getScanReport(baseUrl, id, options = {}) {
   return parseScanReport(data, id);
 }
 
+export async function getFileHistory(baseUrl, id, { cursor, ...options } = {}) {
+  const query = new URLSearchParams({ limit: '20' });
+  if (cursor) query.set('cursor', cursor);
+  const data = await requestJson(
+    baseUrl,
+    `/files/${encodeURIComponent(id)}/history?${query}`,
+    options,
+  );
+  if (
+    data?.id !== id ||
+    !Array.isArray(data.items) ||
+    (data.next_cursor != null && typeof data.next_cursor !== 'string')
+  )
+    throw new ApiError('Lịch sử tệp chưa đúng định dạng');
+  return data;
+}
+
+export async function listQuarantine(baseUrl, { cursor, ...options } = {}) {
+  const query = new URLSearchParams({ limit: '20' });
+  if (cursor) query.set('cursor', cursor);
+  const data = await requestJson(baseUrl, `/admin/quarantine?${query}`, options);
+  if (
+    !Array.isArray(data?.items) ||
+    (data.next_cursor != null && typeof data.next_cursor !== 'string')
+  )
+    throw new ApiError('Danh sách cách ly chưa đúng định dạng');
+  return data;
+}
+
 export async function rescanFile(baseUrl, id, requestId, options = {}) {
   const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/rescan`, {
     ...options,
@@ -563,25 +623,33 @@ async function readBrowserContent(reader, { id, mode, signal }) {
 export async function getFileContent(
   baseUrl,
   id,
-  { mode = 'download', signal, timeout = 60000, fetcher = globalThis.fetch } = {},
+  { mode = 'download', ownerId, signal, timeout = 60000, fetcher = globalThis.fetch } = {},
 ) {
   if (typeof id !== 'string' || !id.trim() || !['preview', 'download'].includes(mode))
     throw new Error('Yêu cầu nội dung chưa hợp lệ');
+  const lease = apiLease(baseUrl);
   const controller = new AbortController();
-  if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+  if (signal?.aborted) {
+    lease.release();
+    throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+  }
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
+  lease.signal.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(abort, timeout);
   let reader;
   try {
     const response = await fetcher(
-      `${validateApiBaseUrl(baseUrl)}/files/${encodeURIComponent(id)}/content?mode=${mode}`,
+      ownerId
+        ? `${validateApiBaseUrl(baseUrl)}/admin/files/${encodeURIComponent(id)}/content?owner_id=${encodeURIComponent(ownerId)}`
+        : `${validateApiBaseUrl(baseUrl)}/files/${encodeURIComponent(id)}/content?mode=${mode}`,
       {
         signal: controller.signal,
         cache: 'no-store',
-        headers: { Accept: 'application/x-ndjson' },
+        headers: { Accept: 'application/x-ndjson', ...lease.headers },
       },
     );
+    lease.response(response.status);
     if (!response.ok) {
       let detail;
       try {
@@ -600,7 +668,9 @@ export async function getFileContent(
       if (!response.body?.getReader)
         throw new ApiError('Trình duyệt chưa hỗ trợ đọc luồng nội dung', { code: 'unsupported' });
       reader = response.body.getReader();
-      return await readBrowserContent(reader, { id, mode, signal: controller.signal });
+      const result = await readBrowserContent(reader, { id, mode, signal: controller.signal });
+      lease.assertCurrent();
+      return result;
     }
     // Older backends still return bounded raw bytes until they are restarted/upgraded.
     const limit = mode === 'download' ? DOWNLOAD_LIMIT : previewByteLimits[type] || 0;
@@ -614,6 +684,7 @@ export async function getFileContent(
     }
     if (!response.body?.getReader) {
       const blob = await response.blob();
+      lease.assertCurrent();
       if (blob.size > limit) throw new ApiError('Nội dung vượt giới hạn đọc', { status: 413 });
       return blob;
     }
@@ -631,9 +702,11 @@ export async function getFileContent(
       chunks.push(result.value);
     }
     if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    lease.assertCurrent();
     return new Blob(chunks, { type });
   } catch (error) {
-    if (signal?.aborted) throw new DOMException('Đã hủy yêu cầu', 'AbortError');
+    if (signal?.aborted || lease.signal.aborted || error.name === 'AbortError')
+      throw new DOMException('Đã hủy yêu cầu', 'AbortError');
     if (controller.signal.aborted)
       throw new ApiError('Đọc tệp quá lâu — hãy thử lại', { code: 'timeout' });
     if (error instanceof ApiError) throw error;
@@ -641,6 +714,8 @@ export async function getFileContent(
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', abort);
+    lease.signal.removeEventListener('abort', abort);
+    lease.release();
     reader?.releaseLock();
   }
 }

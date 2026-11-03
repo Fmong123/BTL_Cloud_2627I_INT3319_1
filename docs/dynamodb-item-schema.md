@@ -218,7 +218,7 @@ Quan hệ: **users.user_id = files.owner_id**.
 
 Đây là hồ sơ và vai trò của người dùng ứng dụng, không phải IAM user dùng đăng nhập AWS Console. Backend cần cơ chế xác thực token/session; không tin role do client tự khai. Không lưu mật khẩu plaintext, access key hoặc session token vào item.
 
-Service users và chức năng đăng nhập hiện chưa được thêm. Chi tiết nguồn user_id/role cần thống nhất khi chọn cơ chế xác thực.
+Service users đã có: `user_id=sub` của Cognito, role lấy từ nhóm được server xác minh. Bộ chọn demo tự đồng bộ danh sách; `/me` cập nhật hồ sơ và last_login_at. Có thêm username, cognito_status và last_login_at; giữ created_at khi upsert. Không đổi khóa bảng hoặc gán lại owner dữ liệu cũ. Xem `cognito-demo.md`.
 
 ## 5. Dữ liệu test và dữ liệu nghiệp vụ
 

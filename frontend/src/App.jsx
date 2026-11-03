@@ -8,10 +8,13 @@ import Uploads from './pages/Uploads.jsx';
 import Settings from './pages/Settings.jsx';
 import Help from './pages/Help.jsx';
 import Trash from './pages/Trash.jsx';
+import AdminQuarantine from './pages/AdminQuarantine.jsx';
+import { AuthProvider, useAuth } from './auth/Auth.jsx';
 
-export default function App() {
+function SignedInApp() {
+  const { session } = useAuth();
   return (
-    <WorkspaceProvider>
+    <WorkspaceProvider key={`${session.baseUrl}:${session.user.id}`}>
       <Theme />
       <HashRouter>
         <Routes>
@@ -21,6 +24,7 @@ export default function App() {
             <Route path="files" element={<Drive />} />
             <Route path="uploads" element={<Uploads />} />
             <Route path="trash" element={<Trash />} />
+            <Route path="admin/quarantine" element={<AdminQuarantine />} />
             <Route path="settings" element={<Settings />} />
             <Route path="help" element={<Help />} />
             <Route
@@ -39,5 +43,13 @@ export default function App() {
         </Routes>
       </HashRouter>
     </WorkspaceProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <SignedInApp />
+    </AuthProvider>
   );
 }

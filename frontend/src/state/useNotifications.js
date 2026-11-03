@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { listNotifications, persistNotification } from '../api/client.js';
 import { NOTIFICATIONS_KEY, readNotificationRecords, writeRecords } from '../utils/persistence.js';
 
-export function useNotifications(scope, { baseUrl, available = false } = {}) {
-  const [events, renderEvents] = useState(readNotificationRecords);
+export function useNotifications(scope, { baseUrl, available = false, storageSuffix } = {}) {
+  const storageKey = storageSuffix ? `${NOTIFICATIONS_KEY}:${storageSuffix}` : NOTIFICATIONS_KEY;
+  const [events, renderEvents] = useState(() => readNotificationRecords(undefined, storageKey));
   const ref = useRef(events);
   const [storageError, setStorageError] = useState(null);
   const synced = useRef(new Map());
@@ -13,7 +14,7 @@ export function useNotifications(scope, { baseUrl, available = false } = {}) {
   function update(next) {
     ref.current = next;
     renderEvents(next);
-    if (!writeRecords(NOTIFICATIONS_KEY, next))
+    if (!writeRecords(storageKey, next))
       setStorageError('Chưa lưu được thông báo trên trình duyệt');
   }
   useEffect(() => {
