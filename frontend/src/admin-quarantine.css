@@ -2,7 +2,7 @@
   min-width: 0;
 }
 .admin-quarantine .files-heading h2 {
-  font-size: 18px;
+  font-size: 20px;
   margin: 0;
 }
 .admin-toolbar {
@@ -31,7 +31,7 @@
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   padding: 0;
   border-radius: 0;
   box-shadow: none;
@@ -49,7 +49,7 @@
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
 }
 .admin-file-list {
   overflow-x: auto;
@@ -57,18 +57,52 @@
 }
 .admin-file-list table {
   width: 100%;
+  min-width: 960px;
+  table-layout: fixed;
   border-collapse: collapse;
   text-align: left;
-  font-size: 13px;
+  font-size: 15px;
+}
+.admin-name-col {
+  width: calc(35% - 144px);
+}
+.admin-owner-col {
+  width: 21%;
+}
+.admin-status-col {
+  width: 16%;
+}
+.admin-findings-col {
+  width: 10%;
+}
+.admin-updated-col {
+  width: 18%;
+}
+.admin-actions-col {
+  width: 144px;
 }
 .admin-file-list th,
 .admin-file-list td {
-  padding: 16px 22px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.admin-file-list th:first-child,
+.admin-file-list td:first-child {
+  padding-left: 24px;
+}
+.admin-file-list th:last-child,
+.admin-file-list td:last-child {
+  padding-right: 24px;
+}
+.app-shell .admin-file-list .metadata-column {
+  padding-inline: 8px;
+}
+.admin-name-heading {
+  margin-left: 48px;
 }
 .admin-file-list th {
   color: var(--muted);
-  font-size: 11px;
   white-space: nowrap;
   background: var(--bg);
 }
@@ -79,20 +113,27 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 180px;
+  min-width: 0;
+}
+.admin-file-name > .file-icon {
+  flex: 0 0 36px;
 }
 .admin-file-name > div {
   min-width: 0;
+  flex: 1;
 }
 .admin-file-name .file-name {
+  display: block;
+  max-width: 100%;
   text-align: left;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .admin-file-list td small {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 5px;
 }
 .admin-owner {
@@ -101,6 +142,11 @@
 }
 .admin-file-list .inline-actions {
   flex-wrap: wrap;
+  justify-content: center;
+}
+.admin-file-list .cell-date,
+.admin-file-list .cell-time {
+  font-variant-numeric: tabular-nums;
 }
 .admin-feedback {
   margin: 0 24px 18px;
@@ -111,13 +157,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--muted);
 }
 .admin-detail-modal.modal.wide {
-  width: min(1040px, calc(100vw - 32px));
+  width: min(860px, calc(100vw - 32px));
   max-width: none;
-  padding: 20px;
+  padding: 0;
+  max-height: min(84dvh, 820px);
+  overflow-y: auto;
 }
 .admin-detail-body {
   padding: 24px;
@@ -156,9 +204,8 @@
   margin-bottom: 18px;
   min-width: 0;
 }
-.admin-detail-card h3,
-.extraction-report h3 {
-  font-size: 14px;
+.admin-detail-card h3 {
+  font-size: 16px;
   margin: 0 0 14px;
 }
 .admin-findings-total {
@@ -170,13 +217,15 @@
   color: var(--text);
   margin-right: 5px;
 }
-.extraction-report {
-  border-top: 1px solid var(--border);
-  padding-top: 18px;
-  margin-top: 18px;
-}
 .admin-detail-card .file-details dd {
   overflow-wrap: anywhere;
+}
+.admin-detail-card .file-details {
+  font-size: 14px;
+}
+.admin-detail-card .file-details > div {
+  font-size: 14px;
+  line-height: 1.6;
 }
 .admin-detail-card .processing-timeline {
   padding: 0;
@@ -192,7 +241,7 @@
 }
 @media (max-width: 760px) {
   .admin-detail-modal.modal.wide {
-    padding: 16px;
+    padding: 0;
   }
   .admin-detail-card .file-details > div {
     grid-template-columns: minmax(0, 1fr);
@@ -217,21 +266,38 @@
   .admin-file-list tbody {
     display: block;
     width: 100%;
+    min-width: 0;
+  }
+  .admin-file-list colgroup {
+    display: none;
   }
   .admin-file-list thead {
     display: none;
   }
   .admin-file-list tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
     padding: 16px;
     border-bottom: 1px solid var(--border);
   }
-  .admin-file-list td {
+  .admin-file-list td,
+  .admin-file-list td:first-child,
+  .admin-file-list td:last-child {
     min-width: 0;
     border: none;
     padding: 0;
+  }
+  .app-shell .admin-file-list td.metadata-column {
+    text-align: left;
+    padding: 0;
+  }
+  .admin-file-list td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--muted);
   }
   .admin-file-list td:first-child,
   .admin-file-list td:last-child,
@@ -256,5 +322,111 @@
   }
   .admin-detail-columns {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-detail-modal .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 20px 24px;
+  margin: 0;
+  background: var(--raised);
+  border-bottom: 1px solid var(--border);
+}
+.admin-detail-modal .drawer-tabs {
+  padding: 0;
+  gap: 24px;
+  margin: 0 0 20px;
+}
+.admin-detail-modal .admin-detail-card {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.admin-status-tabs {
+  display: flex;
+  gap: 22px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+.admin-status-tabs button {
+  padding: 12px 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 15px;
+  white-space: nowrap;
+}
+.admin-status-tabs button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.admin-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.admin-date-filter input {
+  max-width: 150px;
+  font: inherit;
+}
+.security-guide {
+  padding: 0;
+}
+.security-guide-content {
+  padding: 0 24px 24px;
+}
+.security-guide-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.security-guide-title svg {
+  color: var(--accent);
+}
+.security-guide-title h3 {
+  font-size: 18px;
+  margin: 0;
+}
+.security-guide-content p {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.8;
+  max-width: 840px;
+  margin: 14px 0 20px;
+}
+@media (max-width: 760px) {
+  .admin-status-tabs {
+    padding-inline: 16px;
+    gap: 18px;
+  }
+  .admin-date-filter {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+  .admin-date-filter input {
+    flex: 1;
+    max-width: 70%;
+  }
+  .admin-detail-modal .modal-header {
+    padding: 16px;
+  }
+  .admin-detail-modal .drawer-tabs {
+    gap: 14px;
+  }
+  .admin-detail-modal .drawer-tabs button {
+    font-size: 12px;
+  }
+  .security-guide .files-heading {
+    flex-wrap: wrap;
+    align-items: start;
+  }
+  .security-guide-content {
+    padding: 0 16px 20px;
   }
 }

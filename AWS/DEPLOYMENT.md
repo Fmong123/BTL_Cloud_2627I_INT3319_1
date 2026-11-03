@@ -45,15 +45,17 @@ Thông báo có trạng thái riêng theo kênh/result (sending/sent/failed/unkn
 
 ## Builder và kiểm tra hiện hành
 
+Builder và test chỉ giữ local, không đưa vào Git. Các lệnh dưới đây cần bộ công cụ local tương ứng; CI không phụ thuộc chúng.
+
 Từ gốc repo:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe AWS\tools\build_trash_cleanup.py
-.\backend\.venv\Scripts\python.exe AWS\tools\build_handoff.py --date 2026-10-31 --version 2.1
+python AWS/package_lambdas.py
+python AWS/package_lambdas.py --check
 ```
 
-Từ backend/: .venv/Scripts/python.exe -m pytest -q. Từ frontend/: npm test, npm run build và npm run test:ui -- --project=chrome.
+Từ backend/: cài requirements-dev.txt rồi chạy .venv/Scripts/python.exe -m pytest tests -q. Từ frontend/: npm test, npm run build; cài trình duyệt bằng pnpm exec playwright install chromium rồi chạy npm run test:ui. Test UI tự dựng API Moto và frontend cục bộ, không cần service/AWS thật.
 
-Không yêu cầu khôi phục script/test cũ. Bộ hiện hành có kiểm tra quota, report/rescan, guard và cleanup bằng client giả/Moto; nghiệm thu toàn pipeline cloud vẫn thực hiện riêng bằng dữ liệu tổng hợp được phép.
+Bốn ZIP Lambda phải khớp source của cùng commit; kiểm tra local bằng --check trước khi bàn giao. Bộ kiểm thử không được đưa vào Git. Nghiệm thu toàn pipeline cloud vẫn thực hiện riêng bằng dữ liệu tổng hợp được phép.
 
-Gói handoff giữ local, có manifest/SHA256 và không chứa .env thật hoặc credentials. Khi rollback, tắt lịch/quét lại và khôi phục code/config đã sao lưu; nội dung đã xóa vĩnh viễn không khôi phục bằng rollback.
+Bàn giao source/config mẫu từ repository cùng các ZIP vừa kiểm tra; không dùng lại builder gói tổng đã bỏ. Khi rollback, tắt lịch/quét lại và khôi phục code/config đã sao lưu; nội dung đã xóa vĩnh viễn không khôi phục bằng rollback.

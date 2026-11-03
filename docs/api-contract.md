@@ -20,6 +20,7 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 | GET | /files/{id}/content | mode=preview hoặc download; mặc định download |
 | GET | /files/{id}/history | Owner-only, limit/cursor, sự kiện audit đã lọc nội dung |
 | GET | /admin/quarantine | Admin-only; limit/cursor, owner_id, status, q; trả items/owners/next_cursor |
+| GET | /admin/overview | Admin-only; cursor, tổng hợp theo từng trang toàn User Pool; counts/users/next_cursor |
 | GET | /admin/files/{id} | Admin-only, owner_id bắt buộc; metadata, owner_name, can_read và report tổng hợp |
 | GET | /admin/files/{id}/history | Admin-only, owner_id bắt buộc; limit/cursor, lịch sử có tên người/hệ thống thực hiện |
 | GET | /admin/files/{id}/content | Admin-only, owner_id bắt buộc; version cách ly đúng cấu hình, ghi audit trước khi trả byte |
@@ -34,6 +35,10 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 Danh sách trả items/next_cursor. Thứ tự backend theo file_id; frontend đọc đủ trang rồi tìm/lọc/sắp xếp trên metadata. Cursor được kiểm partition/owner; không phải token xác thực. Không có GET /; GET /upload trả 405.
 
 Quản trị cách ly lọc ở server trước khi trả từng trang: `status=all|flagged|quarantined|quarantine_delete_failed`, `owner_id` là sub thuộc pool; `q` tìm tên hiển thị không phân biệt hoa thường/dấu tiếng Việt, tối đa 200 ký tự. Mỗi lượt tối đa 10 Query; trang có thể rỗng nhưng còn next_cursor. Cursor gắn với pool, danh sách owner và bộ lọc; đổi bộ lọc phải bắt đầu lại. Không dùng Scan hoặc yêu cầu GSI mới. Số tệp trên giao diện là số đã tải, không phải tổng toàn hệ thống.
+
+Lọc cập nhật bằng `updated_from` (bao gồm) và `updated_before` (không bao gồm), ISO datetime có múi giờ. Giao diện chuyển khoảng ngày theo múi giờ trình duyệt sang UTC; cursor cũng gắn với khoảng thời gian này. Thời điểm không đúng cấu trúc trả 503 khi lọc, không tự đoán ngày.
+
+Tổng quan bảo mật chỉ tính tệp active/uploaded của các owner thuộc pool. Backend trả số lượng của tối đa 10 Query/lượt (100 item/Query), không trả danh sách hay nội dung tệp. Frontend cộng counts từ các trang của cùng lượt tổng hợp, chỉ hiển thị số cuối khi next_cursor hết; users là tổng tài khoản pool, không cộng qua từng trang. Nếu lỗi hoặc phạm vi pool đổi, không hiển thị tổng chưa hoàn tất. Đây là lượt đọc nhiều trang, không phải snapshot giao dịch. Không phát sinh action IAM hoặc GSI mới.
 
 Báo cáo quét của owner và admin dùng cùng schema: bổ sung `detected_format` (text/pdf/png/jpeg/tiff), `extraction_method` (direct_text/pdf_text/textract_image/textract_pdf), `extracted_pages`, `total_pages`, `extraction_duration_ms`. Thuộc tính chưa được bộ quét ghi trả null; không suy ra từ đuôi tệp hoặc kết quả safe. `extraction_complete=false` kèm scan_reason khi chưa đọc đủ; phần đã đọc có phát hiện vẫn giữ flagged. Thời gian là riêng bước trích xuất, không phải tổng thời gian pipeline. Không trả văn bản OCR, giá trị phát hiện hoặc vị trí bí mật.
 
@@ -90,4 +95,4 @@ Notifications lưu id, kind, title, message, tone, file_id tùy chọn, created_
 
 Lỗi ứng dụng trả JSON detail. capabilities chỉ báo readiness cấu hình/client. Backend dùng credentials chain của Boto3; frontend không giữ quyền AWS. CORS không thay cho xác thực.
 
-Kiểm thử hiện hành: chạy pytest trong backend và npm test/build/test:ui trong frontend. Cài/chạy theo [api-guide.md](api-guide.md); cập nhật AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md).
+Test/script hỗ trợ chỉ lưu local, không đưa vào Git. Khi có bộ test, chạy pytest trong backend và npm test/test:ui trong frontend; npm run build không cần bộ test. Cài/chạy theo [api-guide.md](api-guide.md); cập nhật AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md).

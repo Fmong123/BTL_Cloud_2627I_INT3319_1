@@ -1,6 +1,6 @@
 # Giao diện MâySec hiện tại
 
-Cập nhật 31/10/2026. Cài/chạy theo [API guide](api-guide.md); API theo [contract](api-contract.md). Sáu trang: Tổng quan, Tệp của tôi, Hoạt động xử lý, Thùng rác, Cài đặt và Hướng dẫn.
+Cập nhật 04/11/2026. Cài/chạy theo [API guide](api-guide.md); API theo [contract](api-contract.md). Sáu trang cá nhân: Tổng quan, Tệp của tôi, Hoạt động xử lý, Thùng rác, Cài đặt và Hướng dẫn. Admin có thêm Tổng quan bảo mật và Quản trị cách ly. Cấu hình đăng nhập ở [Cognito demo](cognito-demo.md).
 
 ## Bố cục và thao tác
 
@@ -10,7 +10,8 @@ Cập nhật 31/10/2026. Cài/chạy theo [API guide](api-guide.md); API theo [c
 - Upload nằm trong thanh công cụ danh sách; chọn hoặc kéo thả tối đa 5 tệp truyền song song, phần còn lại xếp hàng. Mỗi tệp tối đa 100 MB.
 - Chọn theo trang 50 dòng, Shift chọn dải, tìm tiếng Việt không dấu, bộ lọc đã lưu, tùy chọn cột/mật độ và kéo độ rộng cột tên.
 - Ngày thêm là dòng chính; giờ HH:mm ở dưới. Định dạng hiển thị ngắn như PNG/PDF, MIME gốc ở thông tin kỹ thuật.
-- CSS giao diện ở styles.css (tokens/cơ bản), shell.css (khung/sidebar/header) và file-workspace.css (thư viện/panel/rác).
+- CSS giao diện ở styles.css (tokens/cơ bản), shell.css (khung/sidebar/header), file-workspace.css (thư viện/panel/rác), admin-quarantine.css (quản trị) và auth/login.css (đăng nhập).
+- Trang quản trị dùng khung chung với thư viện; bảng căn tiêu đề/dữ liệu theo từng cột, ngày và giờ tách dòng. Cài đặt căn giữa với chiều rộng tối đa 1480px. Login có bố cục riêng, tự chuyển một cột trên điện thoại.
 
 ## Dữ liệu và đồng bộ
 
@@ -41,11 +42,13 @@ localStorage:
 - maysec.upload-history.v1: metadata lượt upload, tối đa 2.000 bản.
 - maysec.notifications.v1: sự kiện và trạng thái đọc, tối đa 2.000 bản.
 
-Không lưu File/blob, byte nội dung, URL blob hoặc credentials. Tệp tải dở không tự gửi lại sau reload; phải chọn lại bản gốc. API đồng bộ thông báo và snapshot lịch sử đã xóa khi capability persistent_activity sẵn sàng. Các đợt upload được nhớ trên trình duyệt tạo chúng, không phải lịch sử batch toàn tài khoản.
+Các dữ liệu cá nhân trong trình duyệt được tách theo API + sub; đổi tài khoản hủy request cũ và tạo lại workspace. Không lưu File/blob, byte nội dung, URL blob hoặc credentials. Tệp tải dở không tự gửi lại sau reload; phải chọn lại bản gốc. API đồng bộ thông báo và snapshot lịch sử đã xóa khi capability persistent_activity sẵn sàng. Các đợt upload được nhớ trên trình duyệt tạo chúng, không phải lịch sử batch toàn tài khoản.
 
 Thông báo là sự kiện web đã quan sát, không thay audit log/push nền. Storage trình duyệt bị chặn vẫn cho dùng trong phiên và báo chưa lưu. Quota server là nguồn chuẩn khi có capability; fallback thư viện có nhãn tạm tính.
 
 ## Chạy và kiểm tra
+
+Test/script hỗ trợ chỉ giữ local và không được đưa vào Git. Bản clone mới dùng `pnpm install`, `pnpm run dev` hoặc `pnpm build`; các lệnh test dưới đây cần nhận bộ test local riêng.
 
 Từ frontend/:
 
@@ -54,9 +57,14 @@ pnpm.cmd install --frozen-lockfile
 pnpm.cmd run dev --port 5173 --strictPort
 npm.cmd test
 npm.cmd run build
-npm.cmd run test:ui -- --project=chrome
+pnpm.cmd exec playwright install chromium
+npm.cmd run test:ui
 ```
 
-Test UI mặc định dùng Vite dev/React StrictMode; ca kiểm chức năng dựa vào hành vi, không giả định GET chỉ phát đúng một lần. Tùy chọn MAYSEC_BUILT_APP=1 dùng dist hiện có qua fixture offline. Cần build trước khi dùng tùy chọn đó.
+Khi có bộ test local, `npm test` chạy kiểm thử phiên/API và cấu hình địa chỉ máy chủ. `npm run test:api-client` chỉ chạy nhóm phiên/API. CI chỉ kiểm tra cú pháp Python và build frontend, không chạy test local.
 
-Chưa có đăng nhập nhiều tài khoản, quản lý thư mục/chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Owner hiện là dev-user. Không tự triển khai AWS khi build web.
+Test UI cần Python và các gói `backend/requirements-dev.txt`. Mặc định tự build frontend và chạy qua proxy `/api`; `npm run test:ui:dev` kiểm chế độ Vite dev/CORS. Cả hai tự dựng FastAPI với S3/DynamoDB Moto, dùng tài khoản/khóa thử và cổng 8019/5189; không kết nối AWS thật. Ảnh kiểm tra ở `frontend/test-results`, được bỏ qua trong Git. Giữ hai cổng trống khi chạy.
+
+Tự tìm Python trong backend/.venv theo Windows/Linux; đặt biến `PYTHON` nếu dùng interpreter khác. Mặc định dùng Chromium do Playwright cài. Có thể đặt `CHROME_EXECUTABLE` thành đường dẫn tuyệt đối tới Chrome đang có để dùng trình duyệt đó.
+
+Đã có đăng nhập Cognito/demo, Drive riêng theo sub, lịch sử tệp và quản trị cách ly toàn pool. Chỉ bật đăng nhập một chạm trong môi trường trình diễn có chủ đích. Admin vẫn có Drive riêng; user không được gọi API admin. Chưa có quản lý thư mục/chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Build web không tự triển khai AWS.

@@ -4,7 +4,7 @@ React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý qu�
 
 ## Chức năng hiện có
 
-- Sáu trang: Tổng quan, Tệp của tôi, Hoạt động xử lý, Thùng rác, Cài đặt, Hướng dẫn.
+- Sáu trang cá nhân: Tổng quan, Tệp của tôi, Hoạt động xử lý, Thùng rác, Cài đặt, Hướng dẫn; admin có thêm Tổng quan bảo mật và Quản trị cách ly.
 - Upload/kéo thả, tối đa 5 tệp song song; mỗi tệp tối đa **100 MB = 100.000.000 byte**.
 - Quota **1 GB = 1.000.000.000 byte/owner**, tính cả tệp trong rác và dung lượng đang giữ chỗ.
 - Danh sách từ API, tìm/lọc/sắp xếp, đánh dấu; xem ảnh/PDF/văn bản và tải xuống khi đủ điều kiện.
@@ -65,6 +65,8 @@ Frontend mặc định demo; chọn Lưu trữ thật và URL `http://127.0.0.1:
 
 ## Kiểm tra
 
+Các bộ test và script hỗ trợ chỉ lưu local, được `.gitignore` loại khỏi Git. Các lệnh test dưới đây chỉ dùng trên máy có sẵn bộ test; bản clone mới vẫn build/chạy ứng dụng mà không cần chúng.
+
 Backend, từ `backend/`:
 
 ```powershell
@@ -77,9 +79,10 @@ Frontend, từ `frontend/`:
 ```powershell
 npm.cmd test
 npm.cmd run build
-npm.cmd run test:ui -- --project=chrome
+pnpm.cmd exec playwright install chromium
+npm.cmd run test:ui
 ```
 
-Các lệnh test trên dành cho bản làm việc local còn giữ các thư mục hỗ trợ. Theo cấu hình .gitignore, scripts/tests/tools/e2e và cấu hình test không được đưa vào Git; bản clone mới chỉ có mã nguồn và cấu hình ứng dụng. Các test local dùng client giả/Moto hoặc API giả; không triển khai AWS. Không đưa .env thật, credentials, dữ liệu upload, venv hoặc node_modules vào Git/gói bàn giao.
+Trên máy có bộ test local trong `backend/tests` và `frontend/tests`, test dùng client giả/Moto, khóa thử và API cục bộ; không thao tác AWS thật. Test giao diện tự khởi động FastAPI và bản build frontend trên cổng 8019/5189, ghi ảnh vào `frontend/test-results`. Cần cài requirements-dev của backend trước. Xem [hướng dẫn frontend](docs/frontend-guide.md) để chạy chế độ dev hoặc chọn trình duyệt/Python khác.
 
-.github/workflows/check.yml kiểm tra cú pháp Python và build frontend trên push/PR; không phụ thuộc các thư mục test local, không deploy và không cần credentials AWS.
+.github/workflows/check.yml chỉ kiểm tra cú pháp Python và build frontend trên push/PR, không phụ thuộc test/script local, không deploy và không cần credentials AWS. Không đưa .env thật, credentials, dữ liệu upload, venv hoặc node_modules vào Git/gói bàn giao.

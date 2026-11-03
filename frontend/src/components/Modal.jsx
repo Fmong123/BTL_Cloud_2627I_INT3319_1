@@ -10,9 +10,11 @@ export default function Modal({ title, children, onClose, wide = false, classNam
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
     dialog.showModal();
+    document.body.classList.add('has-modal');
     window.scrollTo(scrollX, scrollY);
     return () => {
       dialog.close();
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('has-modal');
       if (previous?.isConnected) previous.focus({ preventScroll: true });
       window.scrollTo(scrollX, scrollY);
     };

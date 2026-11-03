@@ -500,7 +500,8 @@ html:has(.file-preview-modal[open]) {
   font-size: 12px;
 }
 .app-shell .sidebar .nav-label {
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 750;
 }
 .app-shell .main-shell {
   margin-left: var(--sidebar-width);
@@ -620,6 +621,17 @@ html:has(.file-preview-modal[open]) {
   max-width: none;
   width: 100%;
   padding: 28px 24px 40px;
+}
+.app-shell.settings-page main {
+  max-width: 1480px;
+  margin-inline: auto;
+}
+.admin-nav-group {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+.sidebar-collapsed .admin-nav-group {
+  padding-top: 12px;
 }
 .workspace-page .page-heading {
   margin-bottom: 22px;

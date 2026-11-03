@@ -16,7 +16,7 @@ Nguồn đối chiếu:
 - Hiện trạng AWS: `hand_off_Bang.pdf`.
 - Bản mới: `hand_off_Bang (1).pdf`, đã làm rõ Scan ghi DB, trạng thái và khóa mặc định khác các bảng hiện có.
 - Bàn giao phần ghi DB: `HANDOFF_DB.pdf`.
-- [Bản đối chiếu bàn giao và thiết kế](<G:/code/GPT cloud/DOI_CHIEU_BAN_GIAO_AWS_VA_THIET_KE_DYNAMODB.md>).
+- [Hợp đồng API và dữ liệu hiện hành](api-contract.md) và [phụ lục bàn giao AWS](AWS-HANDOFF-2026-10-31.md).
 - [FileMetadataRepository](../backend/app/services/file_metadata.py), [AuditLogRepository](../backend/app/services/audit_log.py).
 - [Hướng dẫn test repository](dynamodb-service-test-guide.md).
 

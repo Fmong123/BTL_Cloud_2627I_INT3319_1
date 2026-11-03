@@ -71,6 +71,6 @@ Với EC2 dùng chung một role, quyền AWS phải bao phủ các owner đư�
 
 ## Kiểm tra
 
-Từ `backend/`, dùng `.venv/Scripts/python.exe -m pytest -q`. Các test dùng khóa RSA tạo trong test và S3/DynamoDB giả lập; không dùng token, tài khoản hay dữ liệu AWS thật. Thư mục tests giữ theo quy ước local-only hiện tại của repository.
+Bộ kiểm thử chỉ giữ local, được `.gitignore` loại khỏi Git. Trên máy có bộ test, từ `backend/`, cài `requirements-dev.txt` rồi dùng `.venv/Scripts/python.exe -m pytest tests -q` (Linux: `.venv/bin/python -m pytest tests -q`). Cấu hình test cô lập credentials và client mặc định; dùng khóa RSA tạo trong test và S3/DynamoDB giả lập, không dùng token, tài khoản hay dữ liệu AWS thật.
 
 Nghiệm thu thật: lần lượt đăng nhập hai user và một admin, gọi `/me`, upload, đối chiếu key và danh sách/quota riêng; thử truy cập ID tệp của user khác, token hết hạn, tài khoản không có nhóm và các thao tác vòng đời. Chỉ xem việc tách folder là đạt khi các request trái quyền cũng bị từ chối.

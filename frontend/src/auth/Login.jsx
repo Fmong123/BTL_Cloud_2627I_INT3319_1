@@ -32,13 +32,11 @@ export default function Login() {
           <div className="login-story">
             <span className="eyebrow">KHÔNG GIAN CỦA BẠN</span>
             <h1>
-              Một nơi riêng. <br />
-              Cho mọi điều <br />
-              <span>quan trọng.</span>
+              Không gian riêng <br />
+              cho tài liệu <br />
+              <span>quan trọng</span>
             </h1>
-            <p>
-              Lưu trữ, bảo vệ và tìm lại những tệp bạn cần. Bắt đầu từ không gian của riêng mình.
-            </p>
+            <p>Lưu trữ tài liệu gọn gàng và theo dõi kết quả kiểm tra bảo mật</p>
             <div className="login-cloud" aria-hidden="true">
               <Cloud size={112} strokeWidth={1.2} />
               <span>
@@ -47,18 +45,15 @@ export default function Login() {
             </div>
             <div className="login-assurance">
               <ShieldCheck size={18} />
-              <span>Tệp được kiểm tra trước khi mở</span>
+              <span>Kiểm soát truy cập theo tài khoản</span>
             </div>
           </div>
           <div className="login-panel">
             <span className="login-kicker">
-              <UsersRound size={16} /> KHÔNG GIAN LÀM VIỆC
+              <UsersRound size={18} /> CHÀO MỪNG TRỞ LẠI
             </span>
-            <h2>Bạn muốn vào tài khoản nào?</h2>
-            <p className="login-intro">
-              Chọn một tài khoản để bắt đầu. Tệp, dung lượng và hoạt động được tách riêng cho từng
-              người.
-            </p>
+            <h2>Chọn tài khoản để tiếp tục</h2>
+            <p className="login-intro">Tệp và hoạt động được tách riêng theo từng tài khoản</p>
             <div className="login-list-heading">
               <strong>Tài khoản{auth.config?.demo_enabled ? ' demo' : ''}</strong>
               <button
@@ -115,14 +110,14 @@ export default function Login() {
               )}
               {!auth.loading && auth.config?.demo_enabled && !accounts.length && !auth.error && (
                 <p className="login-empty">
-                  Chưa có tài khoản phù hợp. Danh sách tự cập nhật khi có tài khoản Cognito mới.
+                  Chưa có tài khoản phù hợp, danh sách sẽ tự cập nhật khi có tài khoản mới
                 </p>
               )}
               {!auth.loading &&
                 auth.config?.auth_mode === 'cognito' &&
                 !auth.config.demo_enabled && (
                   <p className="login-empty">
-                    Chọn tài khoản demo đang tắt trên máy chủ. Bạn có thể dùng đăng nhập Cognito.
+                    Chế độ chọn tài khoản đang tắt, hãy dùng đăng nhập Cognito
                   </p>
                 )}
             </div>
@@ -156,8 +151,8 @@ export default function Login() {
             )}
             <p className="login-footnote">
               {auth.config?.demo_enabled
-                ? 'Chế độ trình diễn · chọn tài khoản để vào ngay'
-                : 'MâySec · không gian lưu trữ an toàn'}
+                ? 'Chế độ trình diễn — chọn tài khoản để vào ngay'
+                : 'MâySec — Không gian lưu trữ an toàn'}
             </p>
             <details className="login-connection">
               <summary>Kết nối máy chủ</summary>
@@ -183,8 +178,8 @@ export default function Login() {
           </div>
         </section>
         <footer className="login-footer">
-          <span>Không gian nhỏ, những điều lớn</span>
-          <span>MâySec · cloud storage</span>
+          <span>Lưu trữ và bảo vệ tài liệu</span>
+          <span>MâySec</span>
         </footer>
       </div>
     </main>

@@ -19,6 +19,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  ShieldAlert,
   Star,
   Sun,
   X,
@@ -52,7 +53,7 @@ const navigation = [
 const shortcuts = [
   ['recent', '/files?section=recent', 'Gần đây', Clock3],
   ['starred', '/files?section=starred', 'Đã đánh dấu', Star],
-  ['quarantine', '/files?area=attention&scan=quarantined', 'Cách ly', ShieldCheck],
+  ['quarantine', '/files?area=attention&scan=quarantined', 'Tệp cách ly', ShieldCheck],
 ];
 
 export default function Layout() {
@@ -65,9 +66,16 @@ export default function Layout() {
   const userMenuRef = useRef(null);
   const filesPage = location.pathname === '/files';
   const adminPage = location.pathname === '/admin/quarantine';
-  const workspacePage = ['/files', '/overview', '/uploads', '/trash', '/admin/quarantine'].includes(
-    location.pathname,
-  );
+  const adminArea = location.pathname.startsWith('/admin/');
+  const workspacePage = [
+    '/files',
+    '/overview',
+    '/uploads',
+    '/trash',
+    '/settings',
+    '/admin/quarantine',
+    '/admin/overview',
+  ].includes(location.pathname);
   const searchValue = filesPage || adminPage ? searchParams.get('q') || '' : '';
   const [themeOpen, setThemeOpen] = useState(false);
   const themeRef = useRef(null);
@@ -95,6 +103,7 @@ export default function Layout() {
     shortcuts.find(([key]) => key === shortcut)?.[2] ||
     navigation.find(([path]) => path === location.pathname)?.[1] ||
     (location.pathname === '/admin/quarantine' ? 'Quản trị cách ly' : null) ||
+    (location.pathname === '/admin/overview' ? 'Tổng quan bảo mật' : null) ||
     'Không tìm thấy trang';
   const activity = w.activityFiles || w.files;
   const active = activity.filter(isBusy);
@@ -138,7 +147,10 @@ export default function Layout() {
   function searchFiles(value) {
     if (!filesPage && !adminPage) {
       navigate(
-        { pathname: '/files', search: value ? `?${new URLSearchParams({ q: value })}` : '' },
+        {
+          pathname: adminArea ? '/admin/quarantine' : '/files',
+          search: value ? `?${new URLSearchParams({ q: value })}` : '',
+        },
         { state: { headerSearch: true } },
       );
       return;
@@ -212,7 +224,7 @@ export default function Layout() {
 
   return (
     <div
-      className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''} ${workspacePage ? `workspace-page ${location.pathname.slice(1)}-page` : ''}`}
+      className={`app-shell ${collapsed ? 'sidebar-collapsed' : ''} ${adminArea ? 'admin-workspace' : ''} ${workspacePage ? `workspace-page ${location.pathname.slice(1).replaceAll('/', '-')}-page` : ''}`}
     >
       <a
         className="skip-link"
@@ -248,10 +260,11 @@ export default function Layout() {
         </button>
         <nav className="sidebar-navigation" aria-label="Điều hướng chính">
           <div className="sidebar-scroll-area">
-            <div className="nav-group">
+            <div className="nav-group" role="group" aria-labelledby="personal-nav-label">
+              <span className="nav-label" id="personal-nav-label">
+                KHÔNG GIAN CÁ NHÂN
+              </span>
               {navigation.slice(0, 3).map(([path, label, Icon]) => navItem(path, label, Icon))}
-              {auth.session.user.role === 'admin' &&
-                navItem('/admin/quarantine', 'Quản trị cách ly', ShieldCheck)}
             </div>
             <div
               className="nav-group sidebar-shortcuts"
@@ -259,11 +272,24 @@ export default function Layout() {
               aria-labelledby="shortcut-label"
             >
               <span className="nav-label" id="shortcut-label">
-                LỐI TẮT
+                BỘ LỌC CÁ NHÂN
               </span>
               {shortcuts.map(([key, path, label, Icon]) => navItem(path, label, Icon, key))}
               {navItem('/trash', 'Thùng rác', Trash2)}
             </div>
+            {auth.session.user.role === 'admin' && (
+              <div
+                className="nav-group admin-nav-group"
+                role="group"
+                aria-labelledby="admin-nav-label"
+              >
+                <span className="nav-label" id="admin-nav-label">
+                  QUẢN TRỊ HỆ THỐNG
+                </span>
+                {navItem('/admin/overview', 'Tổng quan bảo mật', ShieldAlert)}
+                {navItem('/admin/quarantine', 'Quản trị cách ly', ShieldCheck)}
+              </div>
+            )}
             <SidebarStorage collapsed={collapsed} />
           </div>
           <div className="sidebar-bottom">
@@ -275,7 +301,7 @@ export default function Layout() {
         <header className="topbar">
           <div className="breadcrumb">
             <Cloud size={17} />
-            <span>Không gian</span>
+            <span>{adminArea ? 'Quản trị hệ thống' : 'Không gian cá nhân'}</span>
             <span>/</span>
             <strong>{title}</strong>
           </div>

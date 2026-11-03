@@ -1,5 +1,7 @@
 # BÀN GIAO AWS — BẢN NGẮN GỌN
 
+> Cập nhật nguồn hướng dẫn 04/11/2026: cấu hình Cognito/quyền runtime theo [Cognito demo](cognito-demo.md), endpoint theo [API contract](api-contract.md), đóng gói theo [AWS README](../AWS/README.md). Các kết quả kiểm tra profile và tên gói bàn giao ngày 31/10 bên dưới là lịch sử, không xác nhận quyền hay bản code đang chạy hiện tại. Bàn giao bằng cùng commit repository và ZIP được tạo lại từ source.
+
 MâySec · v2.1 · 31/10/2026
 
 Code đã sẵn sàng ở local; chưa triển khai hay thay quyền trên AWS. Tab này hướng dẫn cài đặt; phụ lục tóm tắt quyền, dữ liệu và xử lý lỗi. JSON policy và source đầy đủ nằm trong gói ZIP.
@@ -22,7 +24,7 @@ securedrive-key → IAM user securedrive-db-dev, account 018913575473. Đã xác
 
 ### Hành vi cần giữ
 
-Quota 1 GB = 1.000.000.000 byte/owner; mỗi tệp tối đa 100 MB. Tệp trong rác vẫn tính quota; chỉ giảm khi xóa hết nội dung thành công. Đổi tên chỉ đổi tên hiển thị. Hiện dùng owner dev-user, chưa có đăng nhập thật.
+Quota 1 GB = 1.000.000.000 byte/owner; mỗi tệp tối đa 100 MB. Tệp trong rác vẫn tính quota; chỉ giảm khi xóa hết nội dung thành công. Đổi tên chỉ đổi tên hiển thị. Backend hiện dùng sub Cognito làm owner; dữ liệu dev-user cũ giữ nguyên, không tự chuyển chủ.
 
 Upload 100 MB không đồng nghĩa mọi tệp đều quét được: Scan mặc định tối đa 52.428.800 byte, OCR ảnh 10 MiB. Báo cáo hiển thị loại/số lượng dữ liệu nhạy cảm; không phải quét mã độc.
 

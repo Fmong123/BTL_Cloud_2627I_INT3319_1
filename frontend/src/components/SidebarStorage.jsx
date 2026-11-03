@@ -42,12 +42,12 @@ export default function SidebarStorage({ collapsed }) {
   return (
     <section
       className={`sidebar-storage ${used >= FREE_STORAGE_BYTES * 0.9 ? 'storage-near-limit' : ''}`}
-      aria-label={`Bộ nhớ · ${summary}`}
+      aria-label={`Bộ nhớ cá nhân · ${summary}`}
       title={collapsed ? `${summary} · ${note}` : undefined}
     >
       <div className="sidebar-storage-heading">
         <Cloud size={20} aria-hidden="true" />
-        <span>Bộ nhớ</span>
+        <span>Bộ nhớ cá nhân</span>
       </div>
       <div className="sidebar-storage-details">
         <progress

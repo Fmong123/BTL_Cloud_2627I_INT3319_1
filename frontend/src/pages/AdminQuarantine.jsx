@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Download, Info, RefreshCw, Search, ShieldAlert, ShieldCheck, X } from 'lucide-react';
+import { Info, RefreshCw, Search, ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../auth/Auth.jsx';
 import { getFileContent, listQuarantine } from '../api/client.js';
 import { formatBytes } from '../utils/files.js';
@@ -24,6 +24,20 @@ export default function AdminQuarantine() {
   const query = params.get('q') || '';
   const owner = params.get('owner') || '';
   const status = Object.hasOwn(statuses, params.get('status')) ? params.get('status') : 'all';
+  const from = params.get('from') || '';
+  const to = params.get('to') || '';
+  const invalidDate = [from, to].filter(Boolean).some((value) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return true;
+    const date = new Date(value + 'T00:00:00');
+    const [year, month, day] = value.split('-').map(Number);
+    return (
+      !Number.isFinite(date.getTime()) ||
+      date.getFullYear() !== year ||
+      date.getMonth() + 1 !== month ||
+      date.getDate() !== day
+    );
+  });
+  const dateError = invalidDate || Boolean(from && to && from > to);
   const [search, setSearch] = useState(query);
   const [state, setState] = useState({
     items: [],
@@ -40,7 +54,7 @@ export default function AdminQuarantine() {
   const [downloadError, setDownloadError] = useState('');
   const download = useRef(null);
   const isAdmin = session.user.role === 'admin';
-  const filterKey = JSON.stringify([session.baseUrl, owner, status, search]);
+  const filterKey = JSON.stringify([session.baseUrl, owner, status, search, from, to]);
   const cursor = page?.key === filterKey ? page.cursor : null;
   useEffect(() => {
     const timer = setTimeout(() => setSearch(query), 300);
@@ -52,6 +66,19 @@ export default function AdminQuarantine() {
   }, [filterKey]);
   useEffect(() => {
     if (!isAdmin) return;
+    if (dateError) {
+      setState((s) => ({
+        ...s,
+        key: filterKey,
+        items: [],
+        cursor: null,
+        loading: false,
+        error: invalidDate
+          ? 'Ngày lọc chưa hợp lệ. Hãy chọn lại ngày.'
+          : 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.',
+      }));
+      return;
+    }
     const controller = new AbortController();
     setState((s) => ({
       ...s,
@@ -66,6 +93,14 @@ export default function AdminQuarantine() {
       ownerId: owner,
       status,
       q: search,
+      updatedFrom: from ? new Date(from + 'T00:00:00').toISOString() : undefined,
+      updatedBefore: to
+        ? (() => {
+            const end = new Date(to + 'T00:00:00');
+            end.setDate(end.getDate() + 1);
+            return end.toISOString();
+          })()
+        : undefined,
       signal: controller.signal,
     })
       .then((result) => {
@@ -140,7 +175,7 @@ export default function AdminQuarantine() {
       </section>
     );
   const items = state.key === filterKey ? state.items : [];
-  const filtered = Boolean(query || owner || status !== 'all');
+  const filtered = Boolean(query || owner || status !== 'all' || from || to);
   return (
     <section className="files-section admin-quarantine" aria-label="Quản trị cách ly">
       <div className="files-heading">
@@ -162,6 +197,20 @@ export default function AdminQuarantine() {
           <RefreshCw size={16} />
           Làm mới
         </button>
+      </div>
+      <div className="admin-status-tabs" role="group" aria-label="Trạng thái cách ly">
+        {Object.entries({ ...statuses, quarantine_delete_failed: 'Cách ly lỗi' }).map(
+          ([value, label]) => (
+            <button
+              className={status === value ? 'active' : ''}
+              aria-pressed={status === value}
+              key={value}
+              onClick={() => update('status', value)}
+            >
+              {value === 'all' ? 'Tất cả' : label}
+            </button>
+          ),
+        )}
       </div>
       <div className="admin-toolbar">
         <label className="admin-search">
@@ -186,17 +235,24 @@ export default function AdminQuarantine() {
             </option>
           ))}
         </select>
-        <select
-          aria-label="Lọc trạng thái cách ly"
-          value={status}
-          onChange={(e) => update('status', e.target.value)}
-        >
-          {Object.entries(statuses).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
+        <label className="admin-date-filter">
+          Cập nhật từ
+          <input
+            type="date"
+            aria-label="Cập nhật từ ngày"
+            value={from}
+            onChange={(e) => update('from', e.target.value)}
+          />
+        </label>
+        <label className="admin-date-filter">
+          Đến ngày
+          <input
+            type="date"
+            aria-label="Cập nhật đến ngày"
+            value={to}
+            onChange={(e) => update('to', e.target.value)}
+          />
+        </label>
         {filtered && (
           <button className="text-button" onClick={() => setParams({}, { replace: true })}>
             <X size={14} />
@@ -210,14 +266,35 @@ export default function AdminQuarantine() {
         </p>
       )}
       <div className="admin-file-list">
-        <table>
+        <table className="file-table processing-table">
+          <colgroup>
+            <col className="admin-name-col" />
+            <col className="admin-owner-col" />
+            <col className="admin-status-col" />
+            <col className="admin-findings-col" />
+            <col className="admin-updated-col" />
+            <col className="admin-actions-col" />
+          </colgroup>
           <thead>
             <tr>
-              <th>Tên tệp</th>
-              <th>Chủ sở hữu</th>
-              <th>Trạng thái</th>
-              <th>Kích thước</th>
-              <th>Thao tác</th>
+              <th scope="col">
+                <span className="admin-name-heading">Tên tệp</span>
+              </th>
+              <th scope="col" className="metadata-column">
+                Chủ sở hữu
+              </th>
+              <th scope="col" className="metadata-column">
+                Trạng thái
+              </th>
+              <th scope="col" className="metadata-column">
+                Phát hiện
+              </th>
+              <th scope="col" className="metadata-column">
+                Cập nhật
+              </th>
+              <th scope="col" className="metadata-column">
+                Thao tác
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -229,6 +306,7 @@ export default function AdminQuarantine() {
                     <div>
                       <button
                         className="file-name"
+                        title={item.display_name || item.original_name}
                         onClick={() => {
                           setDownloadError('');
                           select(item);
@@ -237,6 +315,7 @@ export default function AdminQuarantine() {
                         {item.display_name || item.original_name}
                       </button>
                       <small>
+                        {formatBytes(item.size_bytes)} ·{' '}
                         {item.quarantined_at
                           ? new Date(item.quarantined_at).toLocaleString('vi-VN')
                           : item.scan_status === 'quarantined'
@@ -246,12 +325,38 @@ export default function AdminQuarantine() {
                     </div>
                   </div>
                 </td>
-                <td className="admin-owner">{item.owner_name}</td>
-                <td>
+                <td
+                  className="admin-owner metadata-column"
+                  data-label="Chủ sở hữu"
+                  title={item.owner_name}
+                >
+                  {item.owner_name}
+                </td>
+                <td className="metadata-column" data-label="Trạng thái">
                   <ScanBadge scanStatus={item.scan_status} statusReason={item.status_reason} />
                 </td>
-                <td>{formatBytes(item.size_bytes)}</td>
-                <td>
+                <td className="metadata-column" data-label="Phát hiện">
+                  {item.findings_count ?? '—'}
+                  <small>
+                    {(item.finding_types || [])
+                      .map(
+                        (type) => ({ CCCD_VN: 'CCCD', CREDIT_CARD: 'Thẻ ngân hàng' })[type] || type,
+                      )
+                      .join(', ') || 'Chưa có thống kê'}
+                  </small>
+                </td>
+                <td className="metadata-column" data-label="Cập nhật">
+                  <time className="cell-date" dateTime={item.updated_at}>
+                    {new Date(item.updated_at).toLocaleDateString('vi-VN')}
+                  </time>
+                  <span className="cell-time">
+                    {new Date(item.updated_at).toLocaleTimeString('vi-VN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </td>
+                <td className="metadata-column">
                   <div className="inline-actions">
                     <button
                       className="button secondary"
@@ -262,14 +367,6 @@ export default function AdminQuarantine() {
                     >
                       <Info size={15} />
                       Chi tiết
-                    </button>
-                    <button
-                      className="button secondary"
-                      disabled={!item.can_read || Boolean(downloading)}
-                      onClick={() => read(item)}
-                    >
-                      <Download size={15} />
-                      {downloading === item.id ? 'Đang đọc…' : 'Tải bản cách ly'}
                     </button>
                   </div>
                 </td>

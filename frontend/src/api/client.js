@@ -487,18 +487,50 @@ export async function getFileHistory(baseUrl, id, { cursor, ownerId, ...options 
   return data;
 }
 
-export async function listQuarantine(baseUrl, { cursor, ownerId, status, q, ...options } = {}) {
+export async function listQuarantine(
+  baseUrl,
+  { cursor, ownerId, status, q, updatedFrom, updatedBefore, ...options } = {},
+) {
   const query = new URLSearchParams({ limit: '20' });
   if (cursor) query.set('cursor', cursor);
   if (ownerId) query.set('owner_id', ownerId);
   if (status && status !== 'all') query.set('status', status);
   if (q) query.set('q', q);
+  if (updatedFrom) query.set('updated_from', updatedFrom);
+  if (updatedBefore) query.set('updated_before', updatedBefore);
   const data = await requestJson(baseUrl, `/admin/quarantine?${query}`, options);
   if (
     !Array.isArray(data?.items) ||
     (data.next_cursor != null && typeof data.next_cursor !== 'string')
   )
     throw new ApiError('Danh sách cách ly chưa đúng định dạng');
+  return data;
+}
+
+export async function getSecurityOverview(baseUrl, { cursor, ...options } = {}) {
+  const query = new URLSearchParams();
+  if (cursor) query.set('cursor', cursor);
+  const data = await requestJson(baseUrl, `/admin/overview?${query}`, options);
+  const statuses = [
+    'not_started',
+    'scanning',
+    'safe',
+    'flagged',
+    'quarantined',
+    'quarantine_delete_failed',
+    'error',
+    'unscanned',
+  ];
+  if (
+    !Number.isSafeInteger(data?.users) ||
+    data.users < 0 ||
+    !data.counts ||
+    statuses.some(
+      (status) => !Number.isSafeInteger(data.counts[status]) || data.counts[status] < 0,
+    ) ||
+    (data.next_cursor != null && typeof data.next_cursor !== 'string')
+  )
+    throw new ApiError('Thống kê quản trị chưa đúng định dạng', { code: 'invalid_response' });
   return data;
 }
 

@@ -95,6 +95,7 @@ export function AuthProvider({ children }) {
     };
     setApiSession(next, () => clear('Phiên đăng nhập đã hết hạn. Hãy chọn lại tài khoản.'));
     setSession(next);
+    return next;
   }
 
   useEffect(() => {
@@ -202,7 +203,8 @@ export function AuthProvider({ children }) {
         signal: controller.signal,
         body: { account_id: account.id },
       });
-      await accept(result, controller.signal);
+      const signed = await accept(result, controller.signal);
+      if (signed) location.hash = signed.user.role === 'admin' ? '/admin/overview' : '/files';
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message || 'Không đăng nhập được');
     } finally {

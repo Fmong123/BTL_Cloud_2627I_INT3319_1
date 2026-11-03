@@ -20,6 +20,7 @@ import ScanBadge from './ScanBadge.jsx';
 import { scanStates } from '../utils/processing.js';
 import FileScanReport from './FileScanReport.jsx';
 import FileHistory from './FileHistory.jsx';
+import DetailTabs from './DetailTabs.jsx';
 import '../file-workspace.css';
 
 const time = (value) =>
@@ -208,51 +209,10 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
           </p>
         </div>
       </div>
-      <div
-        className="drawer-tabs"
-        role="tablist"
-        aria-label="Chi tiết tệp"
-        onKeyDown={(event) => {
-          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-          event.preventDefault();
-          const next =
-            event.key === 'Home'
-              ? 'information'
-              : event.key === 'End'
-                ? 'processing'
-                : tab === 'information'
-                  ? 'processing'
-                  : 'information';
-          setTab(next);
-          document
-            .getElementById(next === 'information' ? 'detail-info-tab' : 'detail-processing-tab')
-            ?.focus();
-        }}
-      >
-        <button
-          id="detail-info-tab"
-          role="tab"
-          aria-selected={tab === 'information'}
-          tabIndex={tab === 'information' ? 0 : -1}
-          aria-controls="detail-info"
-          onClick={() => setTab('information')}
-        >
-          Thông tin
-        </button>
-        <button
-          id="detail-processing-tab"
-          role="tab"
-          aria-selected={tab === 'processing'}
-          tabIndex={tab === 'processing' ? 0 : -1}
-          aria-controls="detail-processing"
-          onClick={() => setTab('processing')}
-        >
-          Xử lý
-        </button>
-      </div>
+      <DetailTabs prefix="detail" value={tab} onChange={setTab} />
       <div className="drawer-content">
         {tab === 'information' ? (
-          <section id="detail-info" role="tabpanel" aria-labelledby="detail-info-tab">
+          <section id="detail-information" role="tabpanel" aria-labelledby="detail-information-tab">
             <button
               className="button secondary scan-report-shortcut"
               onClick={() => setTab('processing')}
@@ -295,10 +255,9 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
               <p>Object key là định danh, không phải liên kết tải xuống.</p>
             </details>
           </section>
-        ) : (
+        ) : tab === 'processing' ? (
           <section id="detail-processing" role="tabpanel" aria-labelledby="detail-processing-tab">
             <FileScanReport file={file} refreshKey={check?.checkedAt} />
-            <FileHistory key={file.remoteId || file.id} file={file} />
             <ol className="processing-timeline">
               <li className={uploadConfirmed ? 'complete' : 'pending'}>
                 <span className="timeline-marker">
@@ -362,6 +321,10 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                 </div>
               </li>
             </ol>
+          </section>
+        ) : (
+          <section id="detail-history" role="tabpanel" aria-labelledby="detail-history-tab">
+            <FileHistory key={file.remoteId || file.id} file={file} />
           </section>
         )}
         {file.error && (

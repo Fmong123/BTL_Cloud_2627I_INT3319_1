@@ -15,14 +15,16 @@ Handler cả bốn: handler.lambda_handler. Ba pipeline ZIP có handler.py + pip
 
 ## Đóng gói từ thư mục gốc repo
 
+Script đóng gói chỉ giữ local, được `.gitignore` loại khỏi Git. Các lệnh dưới đây dành cho máy có sẵn `AWS/package_lambdas.py`; bản clone mới dùng source và các ZIP đã bàn giao, không tự có script này.
+
 ```powershell
-.\backend\.venv\Scripts\python.exe AWS\tools\build_trash_cleanup.py
-.\backend\.venv\Scripts\python.exe AWS\tools\build_handoff.py --date 2026-10-31 --version 2.1
+python AWS/package_lambdas.py
+python AWS/package_lambdas.py --check
 ```
 
-Lệnh thứ nhất tạo cả bốn ZIP Lambda trong AWS/build. Lệnh thứ hai đóng thêm backend, policy, workflow, hướng dẫn và manifest/checksum thành gói bàn giao. Source frontend lấy từ repository đầy đủ.
+Lệnh thứ nhất tạo cả bốn ZIP Lambda trong AWS/build từ source hiện tại, chỉ lấy file Python cần đóng gói. Lệnh thứ hai kiểm tra nội dung ZIP khớp source, báo lỗi nếu thiếu/cũ. Đóng gói lại sau khi sửa Lambda, pipeline_common.py hoặc backend dùng trong cleanup. Frontend/backend, policy và workflow bàn giao từ cùng commit của repository; không dùng lại gói tổng cũ làm source hiện hành.
 
-Các builder chỉ tạo file local, không cấp quyền/deploy AWS. Không còn dùng AWS/scripts/build_packages.py hoặc bộ AWS/tests cũ. Kiểm thử hiện hành nằm trong backend/tests và frontend; có test guard execution/lifecycle và cleanup, không thay cho nghiệm thu OCR/quarantine/SNS trên AWS.
+Builder chỉ tạo file local, không cấp quyền/deploy AWS và không thu thập .env, credentials hoặc dữ liệu upload. Test trong backend/tests và frontend/tests cũng chỉ giữ local, không thay cho nghiệm thu OCR/quarantine/SNS trên AWS.
 
 ## Cấu hình cần giữ khớp
 

@@ -9,6 +9,8 @@ import hashlib
 import json
 import logging
 import unicodedata
+from datetime import datetime, timezone
+from pydantic import AwareDatetime
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -73,18 +75,23 @@ def quarantine_list(request: Request, response: Response,
                     limit: int = Query(20, ge=1, le=100), cursor: str | None = Query(None, max_length=4096),
                     owner_id: UUID | None = Query(None), q: str = Query("", max_length=200),
                     status: Literal["all", "quarantined", "flagged", "quarantine_delete_failed"] = Query("all"),
+                    updated_from: AwareDatetime | None = Query(None), updated_before: AwareDatetime | None = Query(None),
                     user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
                     metadata=Depends(get_file_metadata)):
     response.headers["Cache-Control"] = "no-store"
     require_metadata(settings, metadata)
     accounts = pool_accounts(request)
+    if updated_from and updated_before and updated_from >= updated_before:
+        raise HTTPException(400, "Khoảng thời gian cập nhật không hợp lệ")
     if owner_id is not None and str(owner_id) not in accounts:
         raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
     owners = [str(owner_id)] if owner_id else sorted(accounts)
     def normalized(value):
         return "".join(c for c in unicodedata.normalize("NFD", value.casefold().replace("đ", "d")) if not unicodedata.combining(c))
     search = normalized(q.strip())
-    scope = hashlib.sha256(json.dumps([settings.cognito_user_pool_id, sorted(accounts), owners, status, search]).encode()).hexdigest()[:24]
+    scope = hashlib.sha256(json.dumps([settings.cognito_user_pool_id, sorted(accounts), owners, status, search,
+        updated_from.astimezone(timezone.utc).isoformat() if updated_from else None,
+        updated_before.astimezone(timezone.utc).isoformat() if updated_before else None]).encode()).hexdigest()[:24]
     index, start = 0, None
     if cursor:
         try:
@@ -111,6 +118,15 @@ def quarantine_list(request: Request, response: Response,
                         and (status == "all" or item.get("status") == status)
                         and search in normalized(item.get("display_name") or item.get("original_name", ""))):
                     view = public_file(item, owner)
+                    if updated_from or updated_before:
+                        try:
+                            updated = datetime.fromisoformat(view.updated_at.replace("Z", "+00:00"))
+                            if updated.tzinfo is None:
+                                raise ValueError()
+                        except (ValueError, TypeError):
+                            raise HTTPException(503, "Thời gian cập nhật của tệp chưa đúng cấu trúc") from None
+                        if (updated_from and updated < updated_from) or (updated_before and updated >= updated_before):
+                            continue
                     items.append({**view.model_dump(), "owner_name": accounts[owner]["name"],
                                   "can_read": can_read_quarantine(item, settings)})
             start = page.next_key
@@ -121,6 +137,50 @@ def quarantine_list(request: Request, response: Response,
     next_cursor = base64.urlsafe_b64encode(json.dumps({"scope": scope, "index": index, "start": start}).encode()).decode().rstrip("=") if index < len(owners) else None
     return {"items": items, "next_cursor": next_cursor,
             "owners": [{"id": ident, "name": accounts[ident]["name"]} for ident in sorted(accounts)]}
+
+
+@router.get("/admin/overview")
+def security_overview(request: Request, response: Response, cursor: str | None = Query(None, max_length=4096),
+                      user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                      metadata=Depends(get_file_metadata)):
+    """Bounded aggregation pages, no Scan/index or client-provided totals."""
+    response.headers["Cache-Control"] = "no-store"
+    require_metadata(settings, metadata)
+    accounts = pool_accounts(request)
+    owners = sorted(accounts)
+    scope = hashlib.sha256(json.dumps(["overview", settings.cognito_user_pool_id, owners]).encode()).hexdigest()[:24]
+    index, start = 0, None
+    if cursor:
+        try:
+            data = json.loads(base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True))
+            if not isinstance(data, dict) or set(data) != {"scope", "index", "start"} or data["scope"] != scope:
+                raise ValueError()
+            index, start = data["index"], data["start"]
+            if type(index) is not int or not 0 <= index < len(owners):
+                raise ValueError()
+            if start is not None:
+                if not isinstance(start, dict) or set(start) != {"owner_id", "file_id"} or start["owner_id"] != owners[index]:
+                    raise ValueError()
+                file_key(start["owner_id"], start["file_id"])
+        except (ValueError, TypeError, KeyError, binascii.Error, UnicodeDecodeError):
+            raise HTTPException(400, "Phạm vi thống kê đã đổi hoặc cursor không hợp lệ. Hãy tải lại.") from None
+    counts = {status: 0 for status in ("not_started", "scanning", "safe", "flagged", "quarantined", "quarantine_delete_failed", "error", "unscanned")}
+    queries = 0
+    try:
+        while index < len(owners) and queries < 10:
+            page = metadata.list_files(owners[index], limit=100, start_key=start)
+            queries += 1
+            for item in page.items:
+                if lifecycle_state(item) == "active" and item.get("upload_state") == "uploaded":
+                    view = public_file(item, owners[index])
+                    counts[view.scan_status] += 1
+            start = page.next_key
+            if start is None:
+                index += 1
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    next_cursor = base64.urlsafe_b64encode(json.dumps({"scope": scope, "index": index, "start": start}).encode()).decode().rstrip("=") if index < len(owners) else None
+    return {"users": len(owners), "counts": counts, "next_cursor": next_cursor}
 
 
 def admin_file(request, owner_id, file_id, settings, metadata):

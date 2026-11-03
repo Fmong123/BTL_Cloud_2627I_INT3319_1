@@ -47,6 +47,10 @@ Drive cá nhân của admin vẫn chỉ chứa file của admin. Menu **Quản t
 
 Trang quản trị dùng khung nội dung chung với Tệp của tôi/Thùng rác; có tìm tên, lọc chủ sở hữu và trạng thái ở server. Chọn tên tệp hoặc **Chi tiết** để xem kết quả, lý do, thống kê trích xuất và lịch sử. Tải bản cách ly xong sẽ cập nhật lịch sử; dữ liệu cũ chưa có thống kê hiển thị rõ là chưa có, không tự tạo kết quả.
 
+Điều hướng chia hai nhóm: **Không gian cá nhân** (Tổng quan, Tệp của tôi, Hoạt động xử lý, bộ lọc cá nhân, Thùng rác) và **Quản trị hệ thống** chỉ dành cho admin (Tổng quan bảo mật, Quản trị cách ly). Chọn tài khoản demo admin sẽ mở Tổng quan bảo mật; user mở Tệp của tôi. Admin vẫn có Drive/quota riêng; bộ lọc **Tệp cách ly** chỉ chứa tệp của chính admin. Không bổ sung quản lý tài khoản hoặc giải phóng bản cách ly trên web.
+
+Trang cách ly có tab Tất cả/Chờ cách ly/Đã cách ly/Cách ly lỗi, lọc chủ sở hữu và ngày cập nhật. Nút tải bản cách ly đặt trong Chi tiết. Chi tiết tệp cá nhân và quản trị dùng chung ba tab **Thông tin / Kết quả kiểm tra / Lịch sử**. Tổng quan bảo mật dùng API `/admin/overview`, không lấy số tệp đã tải trên giao diện làm tổng hệ thống. Trình duyệt user mở URL admin trực tiếp bị chặn ở giao diện; API tiếp tục kiểm require_admin.
+
 Triển khai đồng thời frontend và backend, cập nhật Lambda `securedrive-scan-pii` bằng handler mới cùng `pipeline_common.py` ở gốc ZIP (giữ layer PDF). Các lượt quét mới ghi thêm thuộc tính vào item files hiện có; không đổi khóa bảng, không cần GSI hoặc quyền IAM mới ngoài policy runtime đã bàn giao. Không tự quét lại hay sửa dữ liệu cũ. Nghiệm thu thêm PDF scan nhiều trang, PDF có mật khẩu, ảnh OCR rỗng và lượt quét không đầy đủ trên AWS thật.
 
 Đọc cách ly yêu cầu metadata active/uploaded, status quarantined hoặc quarantine_delete_failed, bucket đúng cấu hình, key thuộc đúng owner/file và khớp source_version_id, có quarantine_version_id. Không đọc nhầm bucket nguồn, không inline HTML hoặc tự chạy nội dung. Nếu ghi audit thất bại thì không trả byte. Quyền cần thêm: GetObject/GetObjectVersion ở quarantine và kms:Decrypt ở đúng key (kể cả key policy).

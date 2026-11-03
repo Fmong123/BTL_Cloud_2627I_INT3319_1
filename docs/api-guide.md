@@ -96,7 +96,7 @@ Mở MaySec.cmd ở thư mục gốc. Chọn chế độ → kiểm tra cấu h�
 
 ## 6. Kiểm thử và xử lý lỗi
 
-Backend: cài requirements-dev.txt rồi chạy .venv/Scripts/python.exe -m pytest -q. Frontend: npm.cmd test, npm.cmd run build; npm.cmd run test:ui -- --project=chrome. Dùng các bộ hiện có, không cần script/test cũ.
+Test/script hỗ trợ chỉ lưu local, không có trong bản clone Git. Trên máy có bộ test: backend cài requirements-dev.txt rồi chạy .venv/Scripts/python.exe -m pytest tests -q; frontend chạy npm.cmd test, cài trình duyệt bằng pnpm.cmd exec playwright install chromium rồi chạy npm.cmd run test:ui. Test giao diện tự khởi động API Moto và bản build frontend cục bộ, không gọi AWS thật. Bản clone mới vẫn chạy npm.cmd run build mà không cần bộ test. Chi tiết tùy chọn ở [frontend guide](frontend-guide.md).
 
 | Hiện tượng | Kiểm tra |
 | --- | --- |

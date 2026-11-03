@@ -1,5 +1,7 @@
 # Rà soát và hoàn thiện mã nguồn MâySec — 31/10/2026
 
+> Báo cáo lịch sử của ngày 31/10, không mô tả tính năng hiện tại. Đăng nhập, phân quyền, quản trị và cách kiểm thử mới xem [Cognito demo](cognito-demo.md), [frontend guide](frontend-guide.md) và [API contract](api-contract.md).
+
 Phạm vi: repository `BTL_Cloud_2627I_INT3319_1`, nhánh `AWS_Phong`; đối chiếu frontend, backend, launcher, Lambda, cấu hình triển khai và tài liệu. Báo cáo này cập nhật kết quả sau khi sửa các vấn đề phát hiện trong lần rà soát. Chưa triển khai lên AWS, chưa commit/push.
 
 Theo lựa chọn của người dùng, tiếp tục dùng `dev-user`; không triển khai Cognito/JWT và không khôi phục các script/test cũ.
