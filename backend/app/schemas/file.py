@@ -128,6 +128,11 @@ class FileScanReport(FileStatusResponse):
     counts_complete: bool = False
     extraction_complete: bool | None = None
     scan_reason: str | None = None
+    detected_format: Literal["text", "pdf", "png", "jpeg", "tiff"] | None = None
+    extraction_method: Literal["direct_text", "pdf_text", "textract_image", "textract_pdf"] | None = None
+    extracted_pages: int | None = Field(default=None, ge=0)
+    total_pages: int | None = Field(default=None, ge=0)
+    extraction_duration_ms: int | None = Field(default=None, ge=0)
     rescan_requested_at: str | None = None
     rescan_request_id: str | None = None
     rescan_dispatch: Literal["pending", "started", "unknown", "failed"] | None = None
@@ -136,3 +141,26 @@ class FileScanReport(FileStatusResponse):
 class RescanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID
+
+
+class AdminFileView(FileListItem):
+    owner_name: str
+    can_read: bool
+
+
+class AdminOwner(BaseModel):
+    id: str
+    name: str
+
+
+class AdminQuarantineResponse(BaseModel):
+    items: list[AdminFileView]
+    owners: list[AdminOwner]
+    next_cursor: str | None = None
+
+
+class AdminFileDetail(BaseModel):
+    file: FileListItem
+    owner_name: str
+    can_read: bool
+    report: FileScanReport

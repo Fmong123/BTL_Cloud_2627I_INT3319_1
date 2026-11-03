@@ -107,7 +107,8 @@ class FileMetadataRepository:
             names[f"#s{index}"] = name
             values[f":s{index}"] = value
             sets.append(f"#s{index} = :s{index}")
-        remove = ["scan_result", "status_reason", "reason", "scan_reason", "extraction_complete", "scanned_at"]
+        remove = ["scan_result", "status_reason", "reason", "scan_reason", "extraction_complete", "scanned_at",
+                  "detected_format", "extraction_method", "total_pages", "extracted_pages", "extraction_duration_ms"]
         for index, name in enumerate(remove):
             names[f"#r{index}"] = name
         response = call_dynamodb(self.client, "update_item", TableName=self.table_name,

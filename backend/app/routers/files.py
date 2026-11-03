@@ -404,13 +404,17 @@ def scan_report(item, view):
     complete = bool(valid and sum(counts.values()) == view.findings_count)
     reason = item.get("scan_reason") or view.status_reason
     # Never expose raw OCR text, findings values/locations, SDK errors or the nested document.
-    if reason and not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", reason):
+    if reason and (not isinstance(reason, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,95}", reason)):
         reason = "scan_detail_unavailable"
     return FileScanReport(**view.model_dump(),
         finding_counts=[{"type": name, "count": count} for name, count in sorted(counts.items())] if valid else [],
         counts_complete=complete,
         extraction_complete=item.get("extraction_complete") if type(item.get("extraction_complete")) is bool else None,
         scan_reason=reason,
+        detected_format=item.get("detected_format") if isinstance(item.get("detected_format"), str) and item["detected_format"] in {"text", "pdf", "png", "jpeg", "tiff"} else None,
+        extraction_method=item.get("extraction_method") if isinstance(item.get("extraction_method"), str) and item["extraction_method"] in {"direct_text", "pdf_text", "textract_image", "textract_pdf"} else None,
+        **{name: item.get(name) if type(item.get(name)) is int and item[name] >= 0 else None
+           for name in ("extracted_pages", "total_pages", "extraction_duration_ms")},
         rescan_request_id=item.get("scan_request_id"),
         rescan_dispatch=item.get("rescan_dispatch"))
 
@@ -607,6 +611,11 @@ def file_history(
     response.headers["Cache-Control"] = "no-store"
     require_metadata(settings, metadata, audit, writing=True)
     owned_file(metadata, owner_id, file_id)
+    return history_response(file_id, owner_id, audit, limit, cursor)
+
+
+def history_response(file_id, owner_id, audit, limit, cursor):
+    """Authorize the file before calling; whitelist fields shared by owner/admin."""
     start = None
     if cursor:
         try:

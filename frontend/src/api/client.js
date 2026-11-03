@@ -423,6 +423,15 @@ function parseScanReport(data, id) {
     typeof data.counts_complete !== 'boolean' ||
     (data.extraction_complete != null && typeof data.extraction_complete !== 'boolean') ||
     (data.scan_reason != null && typeof data.scan_reason !== 'string') ||
+    (data.detected_format != null &&
+      !['text', 'pdf', 'png', 'jpeg', 'tiff'].includes(data.detected_format)) ||
+    (data.extraction_method != null &&
+      !['direct_text', 'pdf_text', 'textract_image', 'textract_pdf'].includes(
+        data.extraction_method,
+      )) ||
+    ['extracted_pages', 'total_pages', 'extraction_duration_ms'].some(
+      (key) => data[key] != null && (!Number.isSafeInteger(data[key]) || data[key] < 0),
+    ) ||
     (data.rescan_dispatch != null &&
       !['pending', 'started', 'unknown', 'failed'].includes(data.rescan_dispatch))
   )
@@ -443,6 +452,11 @@ function parseScanReport(data, id) {
     findingCounts: data.finding_counts,
     countsComplete: data.counts_complete,
     extractionComplete: data.extraction_complete ?? null,
+    detectedFormat: data.detected_format ?? null,
+    extractionMethod: data.extraction_method ?? null,
+    extractedPages: data.extracted_pages ?? null,
+    totalPages: data.total_pages ?? null,
+    extractionDurationMs: data.extraction_duration_ms ?? null,
     scanReason: data.scan_reason ?? null,
     rescanRequestedAt: status.rescanRequestedAt,
     rescanRequestId: data.rescan_request_id ?? null,
@@ -455,12 +469,13 @@ export async function getScanReport(baseUrl, id, options = {}) {
   return parseScanReport(data, id);
 }
 
-export async function getFileHistory(baseUrl, id, { cursor, ...options } = {}) {
+export async function getFileHistory(baseUrl, id, { cursor, ownerId, ...options } = {}) {
   const query = new URLSearchParams({ limit: '20' });
   if (cursor) query.set('cursor', cursor);
+  if (ownerId) query.set('owner_id', ownerId);
   const data = await requestJson(
     baseUrl,
-    `/files/${encodeURIComponent(id)}/history?${query}`,
+    `${ownerId ? '/admin' : ''}/files/${encodeURIComponent(id)}/history?${query}`,
     options,
   );
   if (
@@ -472,9 +487,12 @@ export async function getFileHistory(baseUrl, id, { cursor, ...options } = {}) {
   return data;
 }
 
-export async function listQuarantine(baseUrl, { cursor, ...options } = {}) {
+export async function listQuarantine(baseUrl, { cursor, ownerId, status, q, ...options } = {}) {
   const query = new URLSearchParams({ limit: '20' });
   if (cursor) query.set('cursor', cursor);
+  if (ownerId) query.set('owner_id', ownerId);
+  if (status && status !== 'all') query.set('status', status);
+  if (q) query.set('q', q);
   const data = await requestJson(baseUrl, `/admin/quarantine?${query}`, options);
   if (
     !Array.isArray(data?.items) ||
@@ -482,6 +500,23 @@ export async function listQuarantine(baseUrl, { cursor, ...options } = {}) {
   )
     throw new ApiError('Danh sách cách ly chưa đúng định dạng');
   return data;
+}
+
+export async function getAdminFileDetail(baseUrl, id, ownerId, options = {}) {
+  const query = new URLSearchParams({ owner_id: ownerId });
+  const data = await requestJson(
+    baseUrl,
+    `/admin/files/${encodeURIComponent(id)}?${query}`,
+    options,
+  );
+  if (
+    data?.file?.id !== id ||
+    data.file.owner_id !== ownerId ||
+    typeof data.owner_name !== 'string' ||
+    typeof data.can_read !== 'boolean'
+  )
+    throw new ApiError('Chi tiết quản trị không khớp tệp yêu cầu', { code: 'invalid_response' });
+  return { ...data, report: parseScanReport(data.report, id) };
 }
 
 export async function rescanFile(baseUrl, id, requestId, options = {}) {

@@ -39,9 +39,15 @@
 | GET /me | Token hợp lệ; trả id/role như contract cũ và đồng bộ hồ sơ |
 | GET /files/{id}/history | Chủ sở hữu; phân trang cursor, không trả raw findings hoặc nội dung nhạy cảm |
 | GET /admin/quarantine | Chỉ admin; tệp cần chú ý của các user thuộc User Pool, phân trang |
+| GET /admin/files/{id}?owner_id=UUID | Chỉ admin; metadata và báo cáo quét/trích xuất của tệp thuộc pool |
+| GET /admin/files/{id}/history?owner_id=UUID | Chỉ admin; lịch sử phân trang, tên người/hệ thống thực hiện |
 | GET /admin/files/{id}/content?owner_id=UUID | Chỉ admin; đọc đúng version của bản cách ly, ghi audit trước khi trả byte |
 
 Drive cá nhân của admin vẫn chỉ chứa file của admin. Menu **Quản trị cách ly** là khu vực riêng cho tất cả user trong pool theo phạm vi đã thống nhất. User thường không thấy menu và gọi API trực tiếp bị 403. Không cho admin xóa/đổi chủ/khôi phục file của người khác qua các API này.
+
+Trang quản trị dùng khung nội dung chung với Tệp của tôi/Thùng rác; có tìm tên, lọc chủ sở hữu và trạng thái ở server. Chọn tên tệp hoặc **Chi tiết** để xem kết quả, lý do, thống kê trích xuất và lịch sử. Tải bản cách ly xong sẽ cập nhật lịch sử; dữ liệu cũ chưa có thống kê hiển thị rõ là chưa có, không tự tạo kết quả.
+
+Triển khai đồng thời frontend và backend, cập nhật Lambda `securedrive-scan-pii` bằng handler mới cùng `pipeline_common.py` ở gốc ZIP (giữ layer PDF). Các lượt quét mới ghi thêm thuộc tính vào item files hiện có; không đổi khóa bảng, không cần GSI hoặc quyền IAM mới ngoài policy runtime đã bàn giao. Không tự quét lại hay sửa dữ liệu cũ. Nghiệm thu thêm PDF scan nhiều trang, PDF có mật khẩu, ảnh OCR rỗng và lượt quét không đầy đủ trên AWS thật.
 
 Đọc cách ly yêu cầu metadata active/uploaded, status quarantined hoặc quarantine_delete_failed, bucket đúng cấu hình, key thuộc đúng owner/file và khớp source_version_id, có quarantine_version_id. Không đọc nhầm bucket nguồn, không inline HTML hoặc tự chạy nội dung. Nếu ghi audit thất bại thì không trả byte. Quyền cần thêm: GetObject/GetObjectVersion ở quarantine và kms:Decrypt ở đúng key (kể cả key policy).
 

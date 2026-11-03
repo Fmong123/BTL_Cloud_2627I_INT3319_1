@@ -19,7 +19,9 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 | POST | /files/{id}/rescan | JSON request_id UUID; 202, workflow version-pinned |
 | GET | /files/{id}/content | mode=preview hoặc download; mặc định download |
 | GET | /files/{id}/history | Owner-only, limit/cursor, sự kiện audit đã lọc nội dung |
-| GET | /admin/quarantine | Admin-only, tệp cần chú ý của mọi user trong User Pool; limit/cursor |
+| GET | /admin/quarantine | Admin-only; limit/cursor, owner_id, status, q; trả items/owners/next_cursor |
+| GET | /admin/files/{id} | Admin-only, owner_id bắt buộc; metadata, owner_name, can_read và report tổng hợp |
+| GET | /admin/files/{id}/history | Admin-only, owner_id bắt buộc; limit/cursor, lịch sử có tên người/hệ thống thực hiện |
 | GET | /admin/files/{id}/content | Admin-only, owner_id bắt buộc; version cách ly đúng cấu hình, ghi audit trước khi trả byte |
 | PATCH | /files/{id}/preferences | JSON starred boolean |
 | PATCH | /files/{id}/name | JSON name; chỉ đổi tên hiển thị |
@@ -30,6 +32,10 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 | GET / POST | /notifications | Đọc phân trang hoặc lưu sự kiện/thao tác đã đọc |
 
 Danh sách trả items/next_cursor. Thứ tự backend theo file_id; frontend đọc đủ trang rồi tìm/lọc/sắp xếp trên metadata. Cursor được kiểm partition/owner; không phải token xác thực. Không có GET /; GET /upload trả 405.
+
+Quản trị cách ly lọc ở server trước khi trả từng trang: `status=all|flagged|quarantined|quarantine_delete_failed`, `owner_id` là sub thuộc pool; `q` tìm tên hiển thị không phân biệt hoa thường/dấu tiếng Việt, tối đa 200 ký tự. Mỗi lượt tối đa 10 Query; trang có thể rỗng nhưng còn next_cursor. Cursor gắn với pool, danh sách owner và bộ lọc; đổi bộ lọc phải bắt đầu lại. Không dùng Scan hoặc yêu cầu GSI mới. Số tệp trên giao diện là số đã tải, không phải tổng toàn hệ thống.
+
+Báo cáo quét của owner và admin dùng cùng schema: bổ sung `detected_format` (text/pdf/png/jpeg/tiff), `extraction_method` (direct_text/pdf_text/textract_image/textract_pdf), `extracted_pages`, `total_pages`, `extraction_duration_ms`. Thuộc tính chưa được bộ quét ghi trả null; không suy ra từ đuôi tệp hoặc kết quả safe. `extraction_complete=false` kèm scan_reason khi chưa đọc đủ; phần đã đọc có phát hiện vẫn giữ flagged. Thời gian là riêng bước trích xuất, không phải tổng thời gian pipeline. Không trả văn bản OCR, giá trị phát hiện hoặc vị trí bí mật.
 
 ## Upload và dung lượng
 

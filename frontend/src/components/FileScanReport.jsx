@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import { getScanReport, rescanFile } from '../api/client.js';
 import { useWorkspace } from '../state/Workspace.jsx';
-import { scanExplanation, scanStates } from '../utils/processing.js';
+import { scanStates } from '../utils/processing.js';
+import ExtractionReport from './ExtractionReport.jsx';
 
 const types = {
   CCCD_VN: 'Căn cước công dân',
@@ -187,22 +188,7 @@ export default function FileScanReport({ file, refreshKey }) {
               </div>
             )}
           </dl>
-          {report && report.extractionComplete !== true && file.scanStatus !== 'scanning' && (
-            <p className="scan-report-note">
-              {report.extractionComplete === false
-                ? 'Chưa đọc hết nội dung tệp.'
-                : 'Chưa xác nhận đã đọc đầy đủ.'}
-            </p>
-          )}
-          {['error', 'unscanned'].includes(file.scanStatus) &&
-            (report?.scanReason || file.statusReason) && (
-              <p className="scan-report-note">
-                {scanExplanation({
-                  ...file,
-                  statusReason: report?.scanReason || file.statusReason,
-                })}
-              </p>
-            )}
+          {report && <ExtractionReport report={report} />}
           {w.scanReportAvailable && state?.identity === identity && state.loading && (
             <p role="status">Đang đọc báo cáo…</p>
           )}

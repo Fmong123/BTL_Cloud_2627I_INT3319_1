@@ -22,12 +22,16 @@ const labels = {
   notify_safe: 'Đã gửi thông báo an toàn',
   notify_quarantined: 'Đã gửi thông báo cách ly',
   notify_failed: 'Gửi thông báo gặp lỗi',
+  notify_safe_sns: 'Đã gửi thông báo an toàn qua SNS',
+  notify_quarantined_sns: 'Đã gửi thông báo cách ly qua SNS',
+  notify_safe_webhook: 'Đã gửi thông báo an toàn qua kênh tích hợp',
+  notify_quarantined_webhook: 'Đã gửi thông báo cách ly qua kênh tích hợp',
   admin_quarantine_read_started: 'Quản trị viên bắt đầu đọc bản cách ly',
   admin_quarantine_read_completed: 'Quản trị viên đã đọc bản cách ly',
   admin_quarantine_read_failed: 'Quản trị viên đọc bản cách ly chưa thành công',
 };
 
-export default function FileHistory({ file }) {
+export default function FileHistory({ file, ownerId, refreshKey }) {
   const [state, setState] = useState({ items: [], cursor: null, loading: true, error: '' });
   const [revision, refresh] = useState(0);
   const [page, setPage] = useState(null);
@@ -40,6 +44,7 @@ export default function FileHistory({ file }) {
     setState((s) => ({ ...s, loading: true, error: '' }));
     getFileHistory(file.connection.baseUrl, file.remoteId, {
       cursor: page,
+      ownerId,
       signal: controller.signal,
     })
       .then((result) => {
@@ -56,10 +61,10 @@ export default function FileHistory({ file }) {
           setState((s) => ({ ...s, loading: false, error: e.message }));
       });
     return () => controller.abort();
-  }, [file.remoteId, file.connection?.baseUrl, page, revision]);
+  }, [file.remoteId, file.connection?.baseUrl, ownerId, page, revision, refreshKey]);
   return (
     <section className="file-history" aria-label="Lịch sử tệp">
-      <div className="login-list-heading">
+      <div className="file-history-heading">
         <h3>
           <Clock3 size={16} /> Lịch sử tệp
         </h3>
@@ -92,6 +97,11 @@ export default function FileHistory({ file }) {
             <div>
               <strong>{labels[item.action] || item.action}</strong>
               <p>{new Date(item.occurred_at).toLocaleString('vi-VN')}</p>
+              {ownerId && (
+                <p className="muted">
+                  Thực hiện bởi: {item.actor_name || item.actor || 'Hệ thống'}
+                </p>
+              )}
             </div>
           </li>
         ))}

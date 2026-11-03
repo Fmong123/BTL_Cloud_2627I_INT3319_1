@@ -64,8 +64,11 @@ export default function Layout() {
   const headerSearchRef = useRef(null);
   const userMenuRef = useRef(null);
   const filesPage = location.pathname === '/files';
-  const workspacePage = ['/files', '/overview', '/uploads', '/trash'].includes(location.pathname);
-  const searchValue = filesPage ? searchParams.get('q') || '' : '';
+  const adminPage = location.pathname === '/admin/quarantine';
+  const workspacePage = ['/files', '/overview', '/uploads', '/trash', '/admin/quarantine'].includes(
+    location.pathname,
+  );
+  const searchValue = filesPage || adminPage ? searchParams.get('q') || '' : '';
   const [themeOpen, setThemeOpen] = useState(false);
   const themeRef = useRef(null);
   const themeTrigger = useRef(null);
@@ -133,7 +136,7 @@ export default function Layout() {
     headerSearchRef.current?.select();
   }
   function searchFiles(value) {
-    if (!filesPage) {
+    if (!filesPage && !adminPage) {
       navigate(
         { pathname: '/files', search: value ? `?${new URLSearchParams({ q: value })}` : '' },
         { state: { headerSearch: true } },

@@ -1,42 +1,59 @@
-.admin-summary {
+.admin-quarantine {
+  min-width: 0;
+}
+.admin-quarantine .files-heading h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.admin-toolbar {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 26px;
-  background: var(--hero);
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 24px 20px;
+}
+.admin-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 240px;
+  min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 20px;
-  margin-bottom: 24px;
-}
-.admin-summary > div {
-  flex: 1;
-}
-.admin-summary h2 {
-  margin: 5px 0;
-  font-size: 24px;
-}
-.admin-summary p {
-  margin: 0;
-  font-size: 13px;
+  border-radius: 10px;
+  padding: 9px 12px;
   color: var(--muted);
-  max-width: 630px;
 }
-.admin-summary-icon {
-  display: grid;
-  place-items: center;
-  height: 60px;
-  width: 60px;
+.admin-search input:not([type='radio']):not([type='checkbox']):not([type='file']) {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.admin-search:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.admin-toolbar select {
+  max-width: 100%;
+  min-width: 170px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
   background: var(--surface);
-  color: var(--accent);
-  border-radius: 18px;
-  flex-shrink: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
 }
 .admin-file-list {
   overflow-x: auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  margin-bottom: 18px;
+  border-top: 1px solid var(--border);
 }
 .admin-file-list table {
   width: 100%;
@@ -46,20 +63,31 @@
 }
 .admin-file-list th,
 .admin-file-list td {
-  padding: 16px 20px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--border);
 }
 .admin-file-list th {
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
+  background: var(--bg);
 }
-.admin-file-list td:first-child {
-  min-width: 210px;
+.admin-file-list tbody tr:hover {
+  background: var(--hover);
 }
-.admin-file-list td strong {
-  display: block;
+.admin-file-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 180px;
+}
+.admin-file-name > div {
+  min-width: 0;
+}
+.admin-file-name .file-name {
+  text-align: left;
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 .admin-file-list td small {
   display: block;
@@ -67,34 +95,123 @@
   font-size: 11px;
   margin-top: 5px;
 }
-.admin-file-list tr:last-child td {
-  border-bottom: none;
+.admin-owner {
+  overflow-wrap: anywhere;
+  max-width: 240px;
 }
-.admin-status {
-  display: inline-flex;
-  padding: 5px 9px;
-  color: var(--warning);
-  background: var(--warning-bg);
-  border-radius: 8px;
-  font-size: 11px;
-  white-space: nowrap;
+.admin-file-list .inline-actions {
+  flex-wrap: wrap;
+}
+.admin-feedback {
+  margin: 0 24px 18px;
+}
+.admin-pagination {
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.admin-detail-modal.modal.wide {
+  width: min(1040px, calc(100vw - 32px));
+  max-width: none;
+  padding: 20px;
+}
+.admin-detail-body {
+  padding: 24px;
+}
+.admin-detail-title {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.admin-detail-title h3 {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.admin-detail-title p {
+  margin: 0;
+  font-size: 13px;
+}
+.admin-detail-title > div {
+  min-width: 0;
+}
+.admin-detail-title .inline-actions {
+  flex-wrap: wrap;
+}
+.admin-detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.admin-detail-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 18px;
+  min-width: 0;
+}
+.admin-detail-card h3,
+.extraction-report h3 {
+  font-size: 14px;
+  margin: 0 0 14px;
+}
+.admin-findings-total {
+  color: var(--muted);
+  font-size: 13px;
+}
+.admin-findings-total strong {
+  font-size: 24px;
+  color: var(--text);
+  margin-right: 5px;
+}
+.extraction-report {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 18px;
+}
+.admin-detail-card .file-details dd {
+  overflow-wrap: anywhere;
+}
+.admin-detail-card .processing-timeline {
+  padding: 0;
+}
+.admin-detail-card .file-history-heading {
+  margin-bottom: 18px;
+}
+.admin-detail-card .file-history-heading h3 {
+  margin: 0;
+  display: flex;
+  gap: 7px;
+  align-items: center;
 }
 @media (max-width: 760px) {
-  .admin-summary {
-    padding: 20px;
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr);
+  .admin-detail-modal.modal.wide {
+    padding: 16px;
+  }
+  .admin-detail-card .file-details > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .admin-quarantine .files-heading {
     align-items: start;
+    flex-wrap: wrap;
+    padding: 20px 16px;
   }
-  .admin-summary > button {
-    grid-column: 1 / -1;
+  .admin-toolbar {
+    padding: 0 16px 18px;
+    gap: 10px;
   }
-  .admin-summary-icon {
-    height: 44px;
-    width: 44px;
-  }
-  .admin-summary h2 {
-    font-size: 21px;
+  .admin-toolbar select,
+  .admin-search {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
   }
   .admin-file-list table,
   .admin-file-list tbody {
@@ -106,29 +223,38 @@
   }
   .admin-file-list tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
     padding: 16px;
-    gap: 12px;
     border-bottom: 1px solid var(--border);
   }
-  .admin-file-list tr:last-child {
-    border-bottom: none;
-  }
   .admin-file-list td {
-    display: block;
     min-width: 0;
     border: none;
     padding: 0;
   }
-  .admin-file-list td:first-child {
+  .admin-file-list td:first-child,
+  .admin-file-list td:last-child,
+  .admin-file-list .admin-owner {
+    grid-column: 1 / -1;
+  }
+  .admin-file-name {
     min-width: 0;
-    grid-column: 1 / -1;
   }
-  .admin-file-list td:last-child {
-    grid-column: 1 / -1;
-  }
-  .admin-file-list td:last-child button {
-    width: 100%;
+  .admin-file-list .inline-actions > button {
+    flex: 1;
     justify-content: center;
+  }
+  .admin-pagination {
+    padding: 16px;
+  }
+  .admin-detail-body {
+    padding: 16px;
+  }
+  .admin-detail-title {
+    flex-direction: column;
+  }
+  .admin-detail-columns {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -777,6 +777,20 @@
   padding: 16px;
   margin-bottom: 22px;
 }
+.file-history-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.file-history-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 14px;
+}
 .scan-report-heading {
   display: flex;
   align-items: center;
