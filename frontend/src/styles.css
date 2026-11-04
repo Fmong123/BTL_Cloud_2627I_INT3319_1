@@ -330,6 +330,7 @@ body.has-modal {
   color: #211e30;
 }
 .brand-wordmark {
+  color: var(--accent);
   font-family: 'Poppins', sans-serif;
   font-style: italic;
   font-size: 28px;

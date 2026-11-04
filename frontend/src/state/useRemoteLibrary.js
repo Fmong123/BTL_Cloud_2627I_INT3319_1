@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { checkHealth, getFileStatus, listFiles } from '../api/client.js';
-import { mergeServerFiles, needsTracking } from '../utils/processing.js';
+import { isStaleFileStatus, mergeServerFiles, needsTracking } from '../utils/processing.js';
 
 const emptySync = { phase: 'idle', loaded: 0, lastSyncedAt: null, error: null, skippedItems: [] };
 
@@ -209,7 +209,7 @@ export function useRemoteLibrary({
           JSON.stringify(previous.findingTypes) !== JSON.stringify(patch.findingTypes);
         finishCheck(
           file.remoteId,
-          patch.updatedAt < previous.updatedAt
+          isStaleFileStatus(previous, patch)
             ? { phase: 'error', error: 'Máy chủ trả dữ liệu cũ — hãy thử lại.' }
             : { phase: 'success', checkedAt: Date.now(), changed },
         );

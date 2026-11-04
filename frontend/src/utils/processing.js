@@ -227,6 +227,29 @@ function sameIdentity(a, b) {
   );
 }
 
+export function isStaleFileStatus(previous, record) {
+  if (Object.hasOwn(scanStates, previous.scanStatus) && Object.hasOwn(scanStates, record.scanStatus)) {
+    const previousAttempt = previous.rescanRequestedAt ?? 0;
+    const nextAttempt = record.rescanRequestedAt ?? 0;
+    if (previousAttempt !== nextAttempt) return nextAttempt < previousAttempt;
+
+    // FastAPI and Lambda have separate clocks. Within a scan attempt, a
+    // persisted result takes precedence over an upload or pending snapshot.
+    const previousPending = ['not_started', 'scanning'].includes(previous.scanStatus);
+    const nextPending = ['not_started', 'scanning'].includes(record.scanStatus);
+    if (previousPending && !nextPending && Number.isFinite(record.scannedAt)) return false;
+    if (nextPending && !previousPending && Number.isFinite(previous.scannedAt)) return true;
+  }
+  return (
+    (Number.isFinite(previous.updatedAt) &&
+      Number.isFinite(record.updatedAt) &&
+      record.updatedAt < previous.updatedAt) ||
+    (record.updatedAt === previous.updatedAt &&
+      previous.statusSource === 'status' &&
+      record.statusSource !== 'status')
+  );
+}
+
 export function mergeServerFiles(current, incoming, { replace = false } = {}) {
   const merged = replace
     ? current.filter(
@@ -258,14 +281,6 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
             retryable: false,
           }
         : {};
-    const older =
-      Number.isFinite(previous.updatedAt) &&
-      Number.isFinite(record.updatedAt) &&
-      record.updatedAt < previous.updatedAt;
-    const lowerPriority =
-      record.updatedAt === previous.updatedAt &&
-      previous.statusSource === 'status' &&
-      record.statusSource !== 'status';
     const starPatch =
       typeof record.starred === 'boolean' &&
       ((record.starredUpdatedAt || 0) > (previous.starredUpdatedAt || 0) ||
@@ -285,7 +300,7 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
       for (const key of [stamp, ...keys])
         if (source[key] !== undefined) editPatch[key] = source[key];
     }
-    if (older || lowerPriority) {
+    if (isStaleFileStatus(previous, record)) {
       merged[index] = { ...previous, ...starPatch, ...editPatch, ...erasedPatch };
       continue;
     }
