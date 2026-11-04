@@ -1,3 +1,5 @@
+> **Tài liệu tham chiếu lịch sử.** Các mốc tính năng, giới hạn và lệnh script/test bên dưới thuộc bản trước. Cài/chạy theo [API guide hiện hành](api-guide.md), endpoint theo [API contract](api-contract.md), triển khai AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md). Không cần khôi phục script/test cũ.
+
 # Test lớp DynamoDB độc lập
 
 Cập nhật ngày 21/10/2026. Chạy trong project chính `G:\code\BTL_Cloud_2627I_INT3319_1`.

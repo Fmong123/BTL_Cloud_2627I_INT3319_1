@@ -1,0 +1,123 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageCognitoFilesQuotaHistoryNotifications",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:UpdateItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:ConditionCheckItem"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-files",
+      "Condition": {
+        "ForAllValues:StringLike": {
+          "dynamodb:LeadingKeys": [
+            "????????-????-????-????-????????????",
+            "!quota!????????-????-????-????-????????????",
+            "!history!????????-????-????-????-????????????",
+            "!notifications!????????-????-????-????-????????????"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "BackendAudit",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:Query"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-audit-log"
+    },
+    {
+      "Sid": "ListOnlyOwnedFileVersions",
+      "Effect": "Allow",
+      "Action": "s3:ListBucketVersions",
+      "Resource": [
+        "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an",
+        "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an"
+      ],
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": "uploads/????????-????-????-????-????????????/*/"
+        }
+      }
+    },
+    {
+      "Sid": "UploadAndReadOwnedSource",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:AbortMultipartUpload"
+      ],
+      "Resource": "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an/uploads/????????-????-????-????-????????????/*"
+    },
+    {
+      "Sid": "PermanentlyEraseOwnedVersions",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+      ],
+      "Resource": [
+        "arn:aws:s3:::securedrive-project-int3319-018913575473-ap-southeast-2-an/uploads/????????-????-????-????-????????????/*",
+        "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an/uploads/????????-????-????-????-????????????/*"
+      ]
+    },
+    {
+      "Sid": "ReadDemoCognitoDirectory",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:ListUsers",
+        "cognito-idp:ListUsersInGroup"
+      ],
+      "Resource": "arn:aws:cognito-idp:ap-southeast-2:018913575473:userpool/ap-southeast-2_ZgGsJVM2u"
+    },
+    {
+      "Sid": "SyncCognitoUserProfiles",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-users"
+    },
+    {
+      "Sid": "ReadQuarantineForAuditedAdminAPI",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Resource": "arn:aws:s3:::securedrive-quarantine-int3319-018913575473-ap-southeast-2-an/uploads/????????-????-????-????-????????????/*"
+    },
+    {
+      "Sid": "DecryptQuarantineForAuditedAdminAPI",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:ap-southeast-2:018913575473:key/8e6a35d0-a14d-431b-b1a2-f9a905735055",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "s3.ap-southeast-2.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "StartConfiguredRescanWorkflow",
+      "Effect": "Allow",
+      "Action": [
+        "states:DescribeStateMachine",
+        "states:StartExecution"
+      ],
+      "Resource": "arn:aws:states:ap-southeast-2:018913575473:stateMachine:securedrive-scan-pipeline"
+    }
+  ]
+}

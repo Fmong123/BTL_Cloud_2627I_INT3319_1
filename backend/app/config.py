@@ -3,9 +3,12 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 MIB = 1024 * 1024
+MB = 1_000_000
+MAX_UPLOAD_BYTES = 100 * MB
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -18,7 +21,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 @dataclass(frozen=True)
 class Settings:
     storage_mode: str = "unconfigured"
-    max_file_size_bytes: int = 100 * MIB
+    max_file_size_bytes: int = MAX_UPLOAD_BYTES
     local_storage_dir: Path = BACKEND_DIR / "data"
     cors_origins: tuple[str, ...] = (
         "http://localhost:5173", "http://127.0.0.1:5173",
@@ -30,12 +33,36 @@ class Settings:
     s3_max_concurrency: int = 2
     metadata_mode: str = "disabled"
     scan_pipeline_enabled: bool = False
+    rescan_state_machine_arn: str = ""
+    quarantine_bucket_name: str = ""
     dynamodb_region: str = "ap-southeast-2"
     dynamodb_files_table: str = "securedrive-files"
     dynamodb_audit_table: str = "securedrive-audit-log"
     dynamodb_users_table: str = "securedrive-users"
+    auth_mode: str = "cognito"
+    dev_role: str = "user"
+    cognito_user_pool_id: str = ""
+    cognito_app_client_id: str = ""
+    demo_login_enabled: bool = False
+    demo_signing_key: str = ""
 
     def __post_init__(self) -> None:
+        if self.demo_login_enabled and (self.auth_mode != "cognito" or not self.cognito_user_pool_id):
+            raise ValueError("Demo account selection requires Cognito mode and a User Pool ID")
+        if self.demo_signing_key and len(self.demo_signing_key) < 32:
+            raise ValueError("MAYSEC_DEMO_SIGNING_KEY must contain at least 32 characters")
+        if self.auth_mode not in {"cognito", "dev"}:
+            raise ValueError("MAYSEC_AUTH_MODE must be cognito or dev")
+        if self.dev_role not in {"user", "admin"}:
+            raise ValueError("MAYSEC_DEV_ROLE must be user or admin")
+        if self.auth_mode == "dev" and self.storage_mode == "s3":
+            raise ValueError("MAYSEC_AUTH_MODE=dev is not allowed with S3 storage")
+        if self.rescan_state_machine_arn and (
+            not self.scan_pipeline_enabled or not re.fullmatch(
+                r"arn:aws:states:ap-southeast-2:\d{12}:stateMachine:[A-Za-z0-9_-]+", self.rescan_state_machine_arn
+            )
+        ):
+            raise ValueError("Rescan requires the S3 pipeline and an unqualified Sydney state machine ARN")
         if type(self.scan_pipeline_enabled) is not bool:
             raise ValueError("MAYSEC_SCAN_PIPELINE_ENABLED must be a boolean")
         if self.scan_pipeline_enabled and (
@@ -56,8 +83,10 @@ class Settings:
                     raise ValueError("DynamoDB table names must start with securedrive-")
         if self.storage_mode not in {"unconfigured", "local", "s3"}:
             raise ValueError("MAYSEC_STORAGE_MODE must be unconfigured, local or s3")
-        if self.max_file_size_bytes <= 0:
+        if type(self.max_file_size_bytes) is not int or self.max_file_size_bytes <= 0:
             raise ValueError("MAYSEC_MAX_FILE_SIZE_BYTES must be positive")
+        if self.max_file_size_bytes > MAX_UPLOAD_BYTES:
+            object.__setattr__(self, "max_file_size_bytes", MAX_UPLOAD_BYTES)
         if self.s3_multipart_threshold_bytes <= 0:
             raise ValueError("MAYSEC_S3_MULTIPART_THRESHOLD_BYTES must be positive")
         if not 5 * MIB <= self.s3_multipart_chunksize_bytes <= 5 * 1024 * MIB:
@@ -77,7 +106,8 @@ class Settings:
             directory = BACKEND_DIR / directory
         return cls(
             storage_mode=os.getenv("MAYSEC_STORAGE_MODE", "unconfigured").strip().lower(),
-            max_file_size_bytes=int(os.getenv("MAYSEC_MAX_FILE_SIZE_BYTES", str(100 * MIB))),
+            quarantine_bucket_name=os.getenv("MAYSEC_QUARANTINE_BUCKET_NAME", "").strip(),
+            max_file_size_bytes=int(os.getenv("MAYSEC_MAX_FILE_SIZE_BYTES", str(MAX_UPLOAD_BYTES))),
             local_storage_dir=directory.resolve(),
             cors_origins=tuple(origin.strip() for origin in os.getenv(
                 "MAYSEC_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
@@ -93,6 +123,7 @@ class Settings:
             s3_max_concurrency=int(os.getenv("MAYSEC_S3_MAX_CONCURRENCY", "2")),
             metadata_mode=os.getenv("MAYSEC_METADATA_MODE", "disabled").strip().lower(),
             scan_pipeline_enabled=env_bool("MAYSEC_SCAN_PIPELINE_ENABLED"),
+            rescan_state_machine_arn=os.getenv("MAYSEC_RESCAN_STATE_MACHINE_ARN", "").strip(),
             dynamodb_region=os.getenv("DYNAMODB_REGION", "ap-southeast-2").strip(),
             dynamodb_files_table=os.getenv(
                 "DYNAMODB_FILES_TABLE", "securedrive-files"
@@ -103,4 +134,10 @@ class Settings:
             dynamodb_users_table=os.getenv(
                 "DYNAMODB_USERS_TABLE", "securedrive-users"
             ).strip(),
+            auth_mode=os.getenv("MAYSEC_AUTH_MODE", "cognito").strip().lower(),
+            dev_role=os.getenv("MAYSEC_DEV_ROLE", "user").strip().lower(),
+            cognito_user_pool_id=os.getenv("COGNITO_USER_POOL_ID", "").strip(),
+            cognito_app_client_id=os.getenv("COGNITO_APP_CLIENT_ID", "").strip(),
+            demo_login_enabled=env_bool("MAYSEC_DEMO_LOGIN_ENABLED"),
+            demo_signing_key=os.getenv("MAYSEC_DEMO_SIGNING_KEY", "").strip(),
         )

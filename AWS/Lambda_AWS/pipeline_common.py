@@ -12,6 +12,11 @@ class PipelineConflict(Exception):
     """Missing/mismatched metadata, stale execution, or conflicting replay."""
 
 
+def verify_rescan_execution(row, event):
+    if row.get("scan_request_id") and row.get("execution_id") != (event.get("ctx") or {}).get("execution"):
+        raise PipelineConflict("stale_rescan_execution")
+
+
 def utc(value=None):
     instant = datetime.now(timezone.utc) if value is None else datetime.fromisoformat(value.replace("Z", "+00:00"))
     if instant.tzinfo is None:
@@ -62,6 +67,8 @@ def read_file(table, source):
     row = table.get_item(Key=file_key(source), ConsistentRead=True).get("Item")
     if not row or row.get("storage") != "s3" or row.get("key") != source["key"] or row.get("upload_bucket") != source["bucket"]:
         raise PipelineConflict("metadata_source_mismatch")
+    if row.get("lifecycle_state", "active") != "active":
+        raise PipelineConflict("file_in_trash")
     if row.get("source_version_id") and row["source_version_id"] != source["version"]:
         raise PipelineConflict("source_version_mismatch")
     return row
@@ -69,9 +76,9 @@ def read_file(table, source):
 
 def update_file(table, source, fields, *, statuses, remove=(), execution=None, extra_condition=None, extra_names=None, extra_values=None):
     """Never upsert an incomplete file or mutate a different object/execution."""
-    names = {"#owner": "owner_id", "#file": "file_id", "#key": "key", "#bucket": "upload_bucket", "#storage": "storage", "#status": "status", "#version": "source_version_id"}
-    values = {":key": source["key"], ":bucket": source["bucket"], ":storage": "s3"}
-    conditions = ["attribute_exists(#owner)", "attribute_exists(#file)", "#key = :key", "#bucket = :bucket", "#storage = :storage"]
+    names = {"#owner": "owner_id", "#file": "file_id", "#key": "key", "#bucket": "upload_bucket", "#storage": "storage", "#status": "status", "#version": "source_version_id", "#life": "lifecycle_state"}
+    values = {":key": source["key"], ":bucket": source["bucket"], ":storage": "s3", ":active": "active"}
+    conditions = ["attribute_exists(#owner)", "attribute_exists(#file)", "#key = :key", "#bucket = :bucket", "#storage = :storage", "(attribute_not_exists(#life) OR #life = :active)"]
     if source.get("version"):
         values[":version"] = source["version"]
         conditions.append("(attribute_not_exists(#version) OR #version = :version)")

@@ -65,9 +65,18 @@ class Unreadable(Exception):
 
 
 class Incomplete(Unsupported):
-    def __init__(self, reason, text=""):
+    def __init__(self, reason, text="", metadata=None):
         super().__init__(reason)
         self.text = text
+        self.metadata = metadata or {}
+
+
+class ExtractedText(str):
+    """Text stays local; only bounded extraction statistics are persisted."""
+    def __new__(cls, value, **metadata):
+        result = super().__new__(cls, value)
+        result.metadata = metadata
+        return result
 
 
 @lru_cache(maxsize=None)
@@ -98,7 +107,7 @@ def _decode_text(data: bytes) -> str:
         try:
             return data.decode("utf-16")
         except UnicodeDecodeError:
-            raise Unreadable("Không đọc được nội dung văn bản của tệp") from None
+            raise Unreadable("text_decode_failed") from None
     try:
         return data.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -109,7 +118,7 @@ def _decode_text(data: bytes) -> str:
     printable = sum(ch.isprintable() or ch in "\r\n\t" for ch in sample)
     if sample and printable / len(sample) >= 0.95:
         return text
-    raise Unreadable("Không đọc được nội dung văn bản của tệp")
+    raise Unreadable("text_decode_failed")
 
 
 def _pdf_text(data: bytes):
@@ -121,7 +130,7 @@ def _pdf_text(data: bytes):
     try:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted and not reader.decrypt(""):
-            raise Unreadable("PDF có mật khẩu, không đọc được")
+            raise Unreadable("pdf_password_protected")
         pages = list(reader.pages)
         texts = [(page.extract_text() or "") for page in pages]
         # Mixed PDFs must go through OCR instead of accepting only their text layer.
@@ -131,8 +140,8 @@ def _pdf_text(data: bytes):
     except Unreadable:
         raise
     except Exception:
-        raise Unreadable("PDF bị hỏng hoặc không đọc được") from None
-    return text if len(text.strip()) >= MIN_PDF_TEXT_CHARS else None
+        raise Unreadable("pdf_invalid") from None
+    return ExtractedText(text, total_pages=len(pages), extracted_pages=len(pages)) if len(text.strip()) >= MIN_PDF_TEXT_CHARS else None
 
 
 def _lines(blocks):
@@ -148,7 +157,7 @@ def _ocr_image(bucket, key, version=None) -> str:
             Document={"S3Object": obj})
     except ClientError as exc:
         if exc.response["Error"]["Code"] in TEXTRACT_UNREADABLE:
-            raise Unreadable("Không đọc được nội dung ảnh (OCR)") from None
+            raise Unreadable("ocr_document_unreadable") from None
         raise
     text = "\n".join(_lines(resp.get("Blocks", [])))
     if not text.strip():
@@ -166,7 +175,7 @@ def _ocr_pdf(bucket, key, context, version=None) -> str:
             DocumentLocation={"S3Object": obj})["JobId"]
     except ClientError as exc:
         if exc.response["Error"]["Code"] in TEXTRACT_UNREADABLE:
-            raise Unreadable("Không đọc được nội dung PDF (OCR)") from None
+            raise Unreadable("ocr_document_unreadable") from None
         raise
     remaining_ms = context.get_remaining_time_in_millis() if hasattr(context, "get_remaining_time_in_millis") else 120_000
     deadline = time.monotonic() + max(remaining_ms / 1000 - 15, 5)
@@ -176,9 +185,9 @@ def _ocr_pdf(bucket, key, context, version=None) -> str:
         if status in ("SUCCEEDED", "PARTIAL_SUCCESS"):
             break
         if status == "FAILED":
-            raise Unreadable("OCR không đọc được toàn bộ nội dung PDF")
+            raise Unreadable("ocr_failed")
         if time.monotonic() > deadline:
-            raise Unreadable("OCR PDF quá thời gian cho phép")
+            raise Incomplete("ocr_timeout")
         time.sleep(2)
     partial = status == "PARTIAL_SUCCESS"
     blocks = list(resp.get("Blocks", []))
@@ -186,7 +195,8 @@ def _ocr_pdf(bucket, key, context, version=None) -> str:
     token = resp.get("NextToken")
     while token:
         if time.monotonic() > deadline:
-            raise Incomplete("ocr_timeout", "\n".join(_lines(blocks)))
+            raise Incomplete("ocr_timeout", "\n".join(_lines(blocks)), {"total_pages": expected_pages,
+                "extracted_pages": len({b.get("Page") for b in blocks if b.get("BlockType") == "LINE" and b.get("Text", "").strip()})})
         resp = textract.get_document_text_detection(JobId=job, NextToken=token)
         blocks += resp.get("Blocks", [])
         partial = partial or resp.get("JobStatus") == "PARTIAL_SUCCESS"
@@ -194,19 +204,32 @@ def _ocr_pdf(bucket, key, context, version=None) -> str:
     text = "\n".join(_lines(blocks))
     pages_with_text = {b.get("Page") for b in blocks if b.get("BlockType") == "LINE" and b.get("Text", "").strip()}
     if partial or not text.strip() or not expected_pages or len(pages_with_text) < expected_pages:
-        raise Incomplete("ocr_incomplete", text)
-    return text
+        raise Incomplete("ocr_incomplete", text, {"total_pages": expected_pages, "extracted_pages": len(pages_with_text)})
+    return ExtractedText(text, total_pages=expected_pages, extracted_pages=len(pages_with_text))
 
 
 def extract_text(bucket, key, context, version=None) -> str:
+    trace = {}
+    started = time.monotonic()
+    try:
+        result = _extract_text(bucket, key, context, version, trace)
+        return ExtractedText(result, **trace, **getattr(result, "metadata", {}),
+                             extraction_duration_ms=max(0, int((time.monotonic() - started) * 1000)))
+    except Exception as exc:
+        exc.metadata = {**trace, **getattr(exc, "metadata", {}),
+                        "extraction_duration_ms": max(0, int((time.monotonic() - started) * 1000))}
+        raise
+
+
+def _extract_text(bucket, key, context, version, trace) -> str:
     args = {"Bucket": bucket, "Key": key}
     if version:
         args["VersionId"] = version
     size = _client("s3").head_object(**args)["ContentLength"]
     if size == 0:
-        raise Unreadable("Tệp rỗng, không có nội dung để quét")
+        raise Unreadable("empty_file")
     if size > MAX_SCAN_BYTES:
-        raise Unsupported("Tệp vượt giới hạn dung lượng có thể quét")
+        raise Unsupported("file_too_large")
     body = _client("s3").get_object(**args)["Body"]
     try:
         data = body.read(MAX_SCAN_BYTES + 1)
@@ -215,13 +238,21 @@ def extract_text(bucket, key, context, version=None) -> str:
     if len(data) != size or len(data) > MAX_SCAN_BYTES:
         raise Unreadable("source_size_mismatch")
     kind = _detect_kind(data)
+    trace["detected_format"] = kind
     if kind == "text":
+        trace["extraction_method"] = "direct_text"
         return _decode_text(data)
     if kind == "pdf":
+        trace["extraction_method"] = "pdf_text"
         text = _pdf_text(data)
-        return text if text is not None else _ocr_pdf(bucket, key, context, version)
+        if text is not None:
+            return text
+        trace["extraction_method"] = "textract_pdf"
+        return _ocr_pdf(bucket, key, context, version)
+    trace["detected_format"] = "png" if data.startswith(b"\x89PNG") else "jpeg" if data.startswith(b"\xff\xd8") else "tiff"
+    trace["extraction_method"] = "textract_image"
     if size > MAX_OCR_IMAGE_BYTES:
-        raise Unsupported("Ảnh vượt giới hạn dung lượng của OCR")
+        raise Unsupported("image_too_large")
     return _ocr_image(bucket, key, version)
 
 
@@ -273,12 +304,17 @@ def audit_scan(row, source):
     return result
 
 
-def record_result(source, status, findings, counts, reason, ctx, *, complete=True):
+def record_result(source, status, findings, counts, reason, ctx, *, complete=True, extraction=None):
     timestamp = utc()
     fields = {**status_fields(status, source["file_id"], timestamp),
               "scan_result": {"status": status, "findings": findings, "finding_counts": counts},
               "findings_count": sum(counts.values()), "finding_types": sorted(counts),
               "scanned_at": timestamp, "scan_reason": reason or "", "extraction_complete": complete}
+    for name, value in (extraction or {}).items():
+        if name in {"detected_format", "extraction_method"} and isinstance(value, str):
+            fields[name] = value
+        elif name in {"total_pages", "extracted_pages", "extraction_duration_ms"} and type(value) is int and value >= 0:
+            fields[name] = value
     if source["version"]:
         fields["source_version_id"] = source["version"]
     if ctx.get("execution"):
@@ -308,6 +344,8 @@ def lambda_handler(event, context):
         raise PipelineConflict("source_version_required")
     ctx = event.get("ctx") or {}
     row = read_file(_table(FILES_TABLE), source)
+    from pipeline_common import verify_rescan_execution
+    verify_rescan_execution(row, event)
     if row["status"] not in {"not_started", "scanning"}:
         return audit_scan(row, source)
     if event.get("operation") == "record_failure":
@@ -316,19 +354,24 @@ def lambda_handler(event, context):
     if ctx.get("execution"):
         fields["execution_id"] = ctx["execution"]
     update_file(_table(FILES_TABLE), source, fields, statuses=["not_started", "scanning"], execution=ctx.get("execution"))
-    findings, counts, reason, complete = [], {}, None, True
+    findings, counts, reason, complete, extraction = [], {}, None, True, {}
     try:
         text = extract_text(source["bucket"], source["key"], context, source["version"])
+        extraction = getattr(text, "metadata", {})
         findings, counts = find_pii(text)
         status = FLAGGED if counts else SAFE
     except Incomplete as exc:
+        extraction = exc.metadata
         findings, counts = find_pii(exc.text)
         status, reason, complete = (FLAGGED if counts else UNSCANNED), str(exc), False
-    except Unsupported:
-        status, reason, complete = UNSCANNED, "unsupported_type_or_size", False
-    except Unreadable:
-        status, reason, complete = ERROR, "unreadable_document", False
-    except Exception:
+    except Unsupported as exc:
+        extraction = getattr(exc, "metadata", {})
+        status, reason, complete = UNSCANNED, str(exc) if str(exc) in {"file_too_large", "image_too_large"} else "unsupported_type_or_size", False
+    except Unreadable as exc:
+        extraction = getattr(exc, "metadata", {})
+        status, reason, complete = ERROR, str(exc) if str(exc) in {"empty_file", "source_size_mismatch", "text_decode_failed", "pdf_password_protected", "pdf_invalid", "ocr_document_unreadable", "ocr_failed"} else "unreadable_document", False
+    except Exception as exc:
+        extraction = getattr(exc, "metadata", {})
         logger.exception("Scan failed for file_id=%s", source["file_id"])
         status, reason, complete = ERROR, "scan_failed", False
-    return record_result(source, status, findings, counts, reason, ctx, complete=complete)
+    return record_result(source, status, findings, counts, reason, ctx, complete=complete, extraction=extraction)

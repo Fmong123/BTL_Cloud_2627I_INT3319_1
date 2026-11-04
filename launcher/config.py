@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = Path(__file__).resolve().parent / "runtime"
-MIB = 1024 * 1024
+MB = 1_000_000
 MODES = {
     "demo": ("Demo — chỉ giao diện", None, "disabled"),
     "local": ("Local — không AWS", "local", "disabled"),
@@ -20,9 +20,13 @@ MODES = {
 BACKEND_DEFAULTS = {
     "MAYSEC_STORAGE_MODE": "unconfigured", "MAYSEC_METADATA_MODE": "disabled",
     "MAYSEC_SCAN_PIPELINE_ENABLED": "false", "MAYSEC_LOCAL_STORAGE_DIR": "data",
-    "MAYSEC_MAX_FILE_SIZE_BYTES": str(100 * MIB),
+    "MAYSEC_RESCAN_STATE_MACHINE_ARN": "", "MAYSEC_QUARANTINE_BUCKET_NAME": "",
+    "MAYSEC_MAX_FILE_SIZE_BYTES": str(100 * MB),
     "MAYSEC_CORS_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "AWS_PROFILE": "", "S3_BUCKET_NAME": "", "AWS_REGION": "",
+    "MAYSEC_AUTH_MODE": "cognito", "MAYSEC_DEV_ROLE": "user",
+    "COGNITO_USER_POOL_ID": "", "COGNITO_APP_CLIENT_ID": "",
+    "MAYSEC_DEMO_LOGIN_ENABLED": "false",
     "DYNAMODB_REGION": "ap-southeast-2", "DYNAMODB_FILES_TABLE": "securedrive-files",
     "DYNAMODB_AUDIT_TABLE": "securedrive-audit-log", "DYNAMODB_USERS_TABLE": "securedrive-users",
     "MAYSEC_S3_MULTIPART_THRESHOLD_BYTES": "16777216",
@@ -31,6 +35,8 @@ BACKEND_DEFAULTS = {
 FRONTEND_DEFAULTS = {
     "VITE_UPLOAD_MODE": "demo", "VITE_API_BASE_URL": "http://127.0.0.1:8000",
     "VITE_MAX_FILE_SIZE_MB": "100",
+    "VITE_COGNITO_DOMAIN": "", "VITE_COGNITO_APP_CLIENT_ID": "75a0p1bv9bihkmgrkrrbb6nk7p",
+    "VITE_COGNITO_REDIRECT_URI": "", "VITE_COGNITO_LOGOUT_URI": "",
 }
 EDITABLE = set(BACKEND_DEFAULTS) - {
     "MAYSEC_STORAGE_MODE", "MAYSEC_METADATA_MODE", "MAYSEC_MAX_FILE_SIZE_BYTES",
@@ -137,11 +143,11 @@ class Settings:
     def size_bytes(value) -> int:
         try:
             amount = Decimal(str(value))
-            if not amount.is_finite() or not 0 < amount <= 10240 or amount * MIB != int(amount * MIB):
+            if not amount.is_finite() or not 0 < amount <= 100 or amount * MB != int(amount * MB):
                 raise ValueError
-            return int(amount * MIB)
+            return int(amount * MB)
         except (ValueError, InvalidOperation, OverflowError):
-            raise ValueError("Dung lượng phải lớn hơn 0, tối đa 10240 MB và tương ứng số byte nguyên.") from None
+            raise ValueError("Dung lượng phải lớn hơn 0, tối đa 100 MB mỗi tệp và tương ứng số byte nguyên.") from None
 
     def save(self):
         self.validate()
@@ -177,20 +183,26 @@ class Settings:
             size = self.size_bytes(self.data["max_file_mb"])
             size_source = "Launcher đã lưu"
         elif sources["MAYSEC_MAX_FILE_SIZE_BYTES"] != "Mặc định":
-            size = int(backend["MAYSEC_MAX_FILE_SIZE_BYTES"])
-            self.size_bytes(Decimal(size) / MIB)
+            size = min(int(backend["MAYSEC_MAX_FILE_SIZE_BYTES"]), 100 * MB)
+            self.size_bytes(Decimal(size) / MB)
             size_source = sources["MAYSEC_MAX_FILE_SIZE_BYTES"]
         else:
             size = self.size_bytes(frontend["VITE_MAX_FILE_SIZE_MB"])
             size_source = sources["VITE_MAX_FILE_SIZE_MB"]
         put(backend, "MAYSEC_MAX_FILE_SIZE_BYTES", size, size_source)
-        put(frontend, "VITE_MAX_FILE_SIZE_MB", format(Decimal(size) / MIB, "f"), "Launcher · đồng bộ giới hạn")
+        put(frontend, "VITE_MAX_FILE_SIZE_MB", format(Decimal(size) / MB, "f"), "Launcher · đồng bộ giới hạn")
         origins = [v.strip() for v in backend["MAYSEC_CORS_ORIGINS"].split(",") if v.strip()]
         origins += [f"http://127.0.0.1:{self.data['web_port']}", f"http://localhost:{self.data['web_port']}"]
         put(backend, "MAYSEC_CORS_ORIGINS", ",".join(dict.fromkeys(origins)), "Launcher · đồng bộ CORS")
         if self.data["mode"] != "s3-db":
             put(backend, "MAYSEC_SCAN_PIPELINE_ENABLED", "false")
-        if metadata == "disabled":
+            if sources["MAYSEC_AUTH_MODE"] == "Mặc định":
+                demo = backend["MAYSEC_DEMO_LOGIN_ENABLED"].strip().lower() in {"true", "1"}
+                put(backend, "MAYSEC_AUTH_MODE", "cognito" if demo else "dev",
+                    "Demo Cognito" if demo else "Local mặc định dùng danh tính phát triển")
+        if backend["MAYSEC_SCAN_PIPELINE_ENABLED"].strip().lower() not in {"true", "1"}:
+            put(backend, "MAYSEC_RESCAN_STATE_MACHINE_ARN", "", "Quét lại tắt khi pipeline không bật")
+        if metadata == "disabled" and backend["MAYSEC_DEMO_LOGIN_ENABLED"].strip().lower() not in {"true", "1"}:
             put(backend, "AWS_PROFILE", "", "Không dùng AWS trong chế độ này")
         return {"mode": self.data["mode"], "backend": backend, "frontend": frontend,
                 "web_port": self.data["web_port"], "api_port": self.data["api_port"], "sources": sources}
@@ -199,7 +211,7 @@ class Settings:
         # A frontend process never inherits the backend's AWS credentials or settings.
         env = clean_aws_env(parent)
         for key in list(env):
-            if key.startswith(("VITE_", "MAYSEC_", "DYNAMODB_", "S3_")):
+            if key.startswith(("VITE_", "MAYSEC_", "DYNAMODB_", "S3_", "COGNITO_")):
                 env.pop(key)
         env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
         env.update(resolved[service])
@@ -209,4 +221,10 @@ class Settings:
                     env.pop(key)
         elif not resolved["backend"]["AWS_PROFILE"]:
             env.pop("AWS_PROFILE", None)
+        if service == "backend":
+            # Keep signing keys out of resolved tables, saved overrides and frontend.
+            inherited = os.environ if parent is None else parent
+            key = inherited.get("MAYSEC_DEMO_SIGNING_KEY") or read_env(self.root / "backend/.env").get("MAYSEC_DEMO_SIGNING_KEY")
+            if key:
+                env["MAYSEC_DEMO_SIGNING_KEY"] = key
         return env

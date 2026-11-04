@@ -1,6 +1,8 @@
-from fastapi import Request
+from fastapi import Depends, Request
 
+from .auth import get_current_user
 from .config import Settings
+from .services.cognito_auth import AuthUser
 from .services.audit_log import AuditLogRepository
 from .services.file_metadata import FileMetadataRepository
 from .services.storage import Storage
@@ -23,6 +25,10 @@ def get_audit_log(request: Request) -> AuditLogRepository | None:
     return request.app.state.audit_log
 
 
-def get_dev_owner_id() -> str:
-    """Development only. Replace with verified application identity before shared use."""
-    return "dev-user"
+def get_rescanner(request: Request):
+    return request.app.state.rescanner
+
+
+def get_current_owner_id(user: AuthUser = Depends(get_current_user)) -> str:
+    """Use only verified identity; request parameters never select the owner."""
+    return user.owner_id

@@ -3,9 +3,12 @@ import { fileCategory } from '../utils/files.js';
 
 export default function FileIcon({ file, large = false }) {
   const category = fileCategory(file);
-  let Icon = { image: FileImage, sheet: FileSpreadsheet, document: FileText, other: File }[
-    category
-  ];
+  let Icon = {
+    image: FileImage,
+    sheet: FileSpreadsheet,
+    document: FileText,
+    other: File,
+  }[category];
   if (/\.(zip|rar|7z|tar|gz)$/i.test(file.name)) Icon = FileArchive;
   if (file.type?.startsWith('video/')) Icon = Film;
   if (file.type?.startsWith('audio/')) Icon = Music;

@@ -1,3 +1,5 @@
+> **Schema nền để tham chiếu.** Hợp đồng HTTP và các trường lifecycle/history/notifications hiện hành ở [API contract](api-contract.md) và [phụ lục AWS](AWS-HANDOFF-2026-10-31.md). Các mô tả tiến độ/test cũ bên dưới không thay hướng dẫn cài hiện hành.
+
 # Schema item DynamoDB cho MaySec / SecureDrive
 
 Cập nhật: **23/10/2026**, bổ sung tương thích bàn giao AWS mới.
@@ -14,7 +16,7 @@ Nguồn đối chiếu:
 - Hiện trạng AWS: `hand_off_Bang.pdf`.
 - Bản mới: `hand_off_Bang (1).pdf`, đã làm rõ Scan ghi DB, trạng thái và khóa mặc định khác các bảng hiện có.
 - Bàn giao phần ghi DB: `HANDOFF_DB.pdf`.
-- [Bản đối chiếu bàn giao và thiết kế](<G:/code/GPT cloud/DOI_CHIEU_BAN_GIAO_AWS_VA_THIET_KE_DYNAMODB.md>).
+- [Hợp đồng API và dữ liệu hiện hành](api-contract.md) và [phụ lục bàn giao AWS](AWS-HANDOFF-2026-10-31.md).
 - [FileMetadataRepository](../backend/app/services/file_metadata.py), [AuditLogRepository](../backend/app/services/audit_log.py).
 - [Hướng dẫn test repository](dynamodb-service-test-guide.md).
 
@@ -216,7 +218,7 @@ Quan hệ: **users.user_id = files.owner_id**.
 
 Đây là hồ sơ và vai trò của người dùng ứng dụng, không phải IAM user dùng đăng nhập AWS Console. Backend cần cơ chế xác thực token/session; không tin role do client tự khai. Không lưu mật khẩu plaintext, access key hoặc session token vào item.
 
-Service users và chức năng đăng nhập hiện chưa được thêm. Chi tiết nguồn user_id/role cần thống nhất khi chọn cơ chế xác thực.
+Service users đã có: `user_id=sub` của Cognito, role lấy từ nhóm được server xác minh. Bộ chọn demo tự đồng bộ danh sách; `/me` cập nhật hồ sơ và last_login_at. Có thêm username, cognito_status và last_login_at; giữ created_at khi upsert. Không đổi khóa bảng hoặc gán lại owner dữ liệu cũ. Xem `cognito-demo.md`.
 
 ## 5. Dữ liệu test và dữ liệu nghiệp vụ
 

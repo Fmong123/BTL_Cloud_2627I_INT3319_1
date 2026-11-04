@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadDemoCognitoDirectory",
+      "Effect": "Allow",
+      "Action": ["cognito-idp:ListUsers", "cognito-idp:ListUsersInGroup"],
+      "Resource": "arn:aws:cognito-idp:ap-southeast-2:018913575473:userpool/ap-southeast-2_ZgGsJVM2u"
+    },
+    {
+      "Sid": "SyncCognitoUserProfiles",
+      "Effect": "Allow",
+      "Action": ["dynamodb:UpdateItem"],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-users"
+    },
+    {
+      "Sid": "ReadOwnedFileAuditHistory",
+      "Effect": "Allow",
+      "Action": ["dynamodb:Query"],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-audit-log"
+    }
+  ]
+}

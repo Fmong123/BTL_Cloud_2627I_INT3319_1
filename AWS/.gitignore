@@ -1,3 +1,7 @@
-build/
+build/*
+!build/securedrive-scan-pii.zip
+!build/securedrive-quarantine-file.zip
+!build/securedrive-notify.zip
+!build/securedrive-trash-cleanup.zip
 __pycache__/
 .pytest_cache/

@@ -1,0 +1,27 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Invoke the existing MaySec trash-cleanup Lambda hourly.
+Parameters:
+  CleanupLambdaArn:
+    Type: String
+    Description: ARN of securedrive-trash-cleanup deployed from AWS/build/securedrive-trash-cleanup.zip
+Resources:
+  CleanupSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Erase MaySec files after their thirty-day trash retention.
+      ScheduleExpression: rate(1 hour)
+      State: DISABLED
+      Targets:
+        - Arn: !Ref CleanupLambdaArn
+          Id: MaySecTrashCleanup
+          Input: '{}'
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+            MaximumEventAgeInSeconds: 3600
+  AllowScheduledInvocation:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CleanupLambdaArn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CleanupSchedule.Arn

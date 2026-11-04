@@ -5,6 +5,7 @@ dist/
 .env.*
 !.env.example
 test-results/
+test-results-*/
 *.log
 backend/.venv/
 backend/data/
@@ -13,18 +14,28 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 
-# Local tests and utility scripts at any directory depth.
+# Tests and helper scripts stay local; runtime source stays tracked.
 test/
 tests/
 __tests__/
 e2e/
 script/
 scripts/
+tools/
 test_*
 *_test.*
 *.test.*
 *.spec.*
 conftest.py
+pytest.ini
+playwright.config.*
+/AWS/package_lambdas.py
 
 # Local test run outputs.
 pytest-*/
+playwright-report/
+blob-report/
+coverage/
+htmlcov/
+.coverage
+.coverage.*

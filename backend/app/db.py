@@ -110,7 +110,7 @@ def deserialize_item(item: Mapping[str, Any]) -> dict:
 
 def call_dynamodb(client, operation: str, **kwargs) -> dict:
     """Keep provider messages out of public error text; preserve causes for diagnosis."""
-    writing = operation in {"put_item", "update_item"}
+    writing = operation in {"put_item", "update_item", "delete_item", "transact_write_items"}
     try:
         return getattr(client, operation)(**kwargs)
     except ClientError as exc:

@@ -109,6 +109,8 @@ def lambda_handler(event, context):
     if result not in {"safe", "quarantined"}:
         raise PipelineConflict("invalid_notification_result")
     source, row = notification_source(event)
+    from pipeline_common import verify_rescan_execution
+    verify_rescan_execution(row, event)
     if row["status"] != result or row.get("upload_state") not in {"uploading", "uploaded", "unknown"}:
         raise PipelineConflict("notification_status_mismatch")
     if result == "quarantined" and row.get("quarantine_status") != "completed":

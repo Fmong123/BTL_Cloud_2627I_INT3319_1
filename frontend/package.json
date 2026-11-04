@@ -7,15 +7,22 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test:api-client": "node --test scripts/test-client.mjs"
+    "test:api-client": "node --test tests/auth-session.test.mjs",
+    "test": "node --test tests/auth-session.test.mjs tests/api-config.test.mjs",
+    "test:ui": "node tests/fullstack-auth.browser.mjs",
+    "test:ui:dev": "node tests/fullstack-auth.browser.mjs --dev",
+    "format": "prettier --write src index.html vite.config.js"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "prettier": "^3.9.10",
     "vite": "^6.4.0"
   }
 }
