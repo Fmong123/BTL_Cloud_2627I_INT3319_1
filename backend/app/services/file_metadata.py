@@ -1,9 +1,10 @@
 """File metadata repository; does not upload bytes or write audit automatically."""
 
 from ..db import (
-    DynamoDBConflict, QueryPage, call_dynamodb, deserialize_item, file_key, query_page,
+    DynamoDBConflict, DynamoDBError, QueryPage, call_dynamodb, deserialize_item, file_key, query_page,
     query_parameters, require_table, require_text, serialize_item, utc_timestamp,
 )
+from .lifecycle import notification_put
 
 
 class FileMetadataRepository:
@@ -92,11 +93,13 @@ class FileMetadataRepository:
         """Only update upload fields, even if a scanner has already marked the file safe."""
         return self._mark_upload(owner_id, file_id, "uploaded", updated_at=updated_at)
 
-    def claim_rescan(self, owner_id, file_id, previous, *, request_id, execution, version):
+    def claim_rescan(self, owner_id, file_id, previous, *, request_id, execution, version,
+                     admin_actor=None):
         timestamp = utc_timestamp()
         fields = {
             "status": "scanning", "updated_at": timestamp, "status_time": f"{timestamp}#{file_id}",
             "execution_id": execution, "scan_request_id": request_id,
+            "rescan_actor": admin_actor or "fastapi",
             "rescan_requested_at": timestamp, "rescan_dispatch": "pending",
             "source_version_id": version, "findings_count": 0, "finding_types": [],
         }
@@ -107,15 +110,29 @@ class FileMetadataRepository:
             names[f"#s{index}"] = name
             values[f":s{index}"] = value
             sets.append(f"#s{index} = :s{index}")
-        remove = ["scan_result", "status_reason", "reason", "scan_reason", "extraction_complete", "scanned_at",
+        remove = ["scan_result", "status_reason", "reason", "scan_reason", "extraction_complete", "scanned_at", "scan_started_at",
                   "detected_format", "extraction_method", "total_pages", "extracted_pages", "extraction_duration_ms"]
         for index, name in enumerate(remove):
             names[f"#r{index}"] = name
-        response = call_dynamodb(self.client, "update_item", TableName=self.table_name,
+        update = dict(TableName=self.table_name,
             Key=serialize_item(file_key(owner_id, file_id)),
             UpdateExpression="SET " + ", ".join(sets) + " REMOVE " + ", ".join(f"#r{i}" for i in range(len(remove))),
             ConditionExpression="#upload = :uploaded AND #previous = :previous AND #status = :status AND (attribute_not_exists(#life) OR #life = :active)",
-            ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values), ReturnValues="ALL_NEW")
+            ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values))
+        if admin_actor:
+            name = previous.get("display_name") or previous["original_name"]
+            try:
+                call_dynamodb(self.client, "transact_write_items", TransactItems=[
+                    {"Update": update},
+                    notification_put(self, owner_id, file_id, f"admin-rescan-{request_id}", timestamp,
+                                     "admin-scan-retry", "Quản trị viên yêu cầu quét lại", name, "info"),
+                ])
+            except DynamoDBError as exc:
+                if exc.code == "TransactionCanceledException":
+                    raise DynamoDBConflict("transact_write_items") from None
+                raise
+            return self.get_file(owner_id, file_id)
+        response = call_dynamodb(self.client, "update_item", **update, ReturnValues="ALL_NEW")
         return deserialize_item(response["Attributes"])
 
     def set_rescan_dispatch(self, owner_id, file_id, request_id, state):

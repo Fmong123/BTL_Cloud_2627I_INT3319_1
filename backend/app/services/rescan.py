@@ -15,7 +15,7 @@ class Rescanner:
     def __init__(self, client, state_machine_arn):
         self.client, self.arn = client, state_machine_arn
 
-    def request(self, item, request_id, metadata, storage, audit):
+    def request(self, item, request_id, metadata, storage, audit, *, admin_actor=None):
         owner, file_id = item["owner_id"], item["file_id"]
         same_request = item.get("scan_request_id") == request_id
         if same_request and item.get("rescan_dispatch") in {"started", "failed"}:
@@ -49,7 +49,8 @@ class Rescanner:
             execution = self.arn.replace(":stateMachine:", ":execution:") + ":" + name
             try:
                 item = metadata.claim_rescan(owner, file_id, item, request_id=request_id,
-                                             execution=execution, version=version)
+                                             execution=execution, version=version,
+                                             **({"admin_actor": admin_actor} if admin_actor else {}))
             except DynamoDBConflict:
                 raise HTTPException(409, "Trạng thái tệp đã đổi — hãy cập nhật trước khi quét lại") from None
         name = item["execution_id"].rsplit(":", 1)[-1]
@@ -59,7 +60,8 @@ class Rescanner:
         payload = {"detail": {"bucket": {"name": item["upload_bucket"]},
                               "object": {"key": item["key"], "version-id": item["source_version_id"]}}}
         audit.write_event(owner_id=owner, file_id=file_id, event_id=f"{file_id}:rescan:{request_id}",
-                          occurred_at=item["rescan_requested_at"], action="rescan_requested", actor="fastapi",
+                          occurred_at=item["rescan_requested_at"], action="rescan_requested",
+                          actor=item.get("rescan_actor") or "fastapi",
                           execution_id=item["execution_id"],
                           details={"request_id": request_id, "source_version_id": item["source_version_id"]})
         try:

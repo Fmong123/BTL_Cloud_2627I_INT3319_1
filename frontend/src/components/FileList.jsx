@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, FolderOpen, SearchX } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleAlert, Eye, FolderOpen, SearchX } from 'lucide-react';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
@@ -7,6 +7,7 @@ import { formatBytes } from '../utils/files.js';
 import FileActions from './FileActions.jsx';
 import { previewInfo } from '../utils/content.js';
 import { activityAction, activityTime } from '../utils/activity.js';
+import { needsCompression } from '../utils/processing.js';
 
 function SelectAll({ files, selected, onSelectAll }) {
   const ref = useRef(null);
@@ -160,6 +161,19 @@ export default function FileList({
       </div>
     </div>
   );
+  const compressionBadge = (file) =>
+    needsCompression(file) && (
+      <button
+        type="button"
+        className="status-badge warning"
+        title="Quản trị viên yêu cầu nén tệp"
+        aria-label={`Cần xử lý ${file.name}: quản trị viên yêu cầu nén tệp`}
+        onClick={() => actions.onInspect?.(file.id)}
+      >
+        <CircleAlert size={13} />
+        Cần xử lý
+      </button>
+    );
   const resultBadge = (file) =>
     activity && file.lifecycleState === 'purged' ? (
       <span className="status-badge muted">Đã xóa</span>
@@ -293,6 +307,7 @@ export default function FileList({
               >
                 {file.name}
               </button>
+              {compressionBadge(file)}
               {previewButton(file)}
               <p className="file-meta">
                 {[
@@ -385,6 +400,7 @@ export default function FileList({
                     >
                       {file.name}
                     </button>
+                    {compressionBadge(file)}
                     {progress(file)}
                     {file.lifecycleState === 'purged' && (
                       <span className="file-error">Đã xóa vĩnh viễn · chỉ còn lịch sử</span>

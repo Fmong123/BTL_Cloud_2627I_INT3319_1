@@ -8,6 +8,7 @@ import FileHistory from './FileHistory.jsx';
 import ScanBadge from './ScanBadge.jsx';
 import ExtractionReport from './ExtractionReport.jsx';
 import DetailTabs from './DetailTabs.jsx';
+import QuarantineReview from './QuarantineReview.jsx';
 
 const at = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'Chưa có');
 const types = { CCCD_VN: 'Căn cước công dân', CREDIT_CARD: 'Thẻ ngân hàng' };
@@ -20,6 +21,8 @@ export default function AdminFileDetail({
   downloading,
   revision,
   downloadError,
+  focusReview = false,
+  onReviewSaved,
 }) {
   const [state, setState] = useState({ loading: true });
   const [reload, refresh] = useState(0);
@@ -38,12 +41,20 @@ export default function AdminFileDetail({
   }, [baseUrl, item.id, item.owner_id, reload, revision]);
   const data = state.data;
   return (
-    <Modal title="Chi tiết tệp cách ly" wide className="admin-detail-modal" onClose={onClose}>
+    <Modal title="Chi tiết xử lý tệp" wide className="admin-detail-modal" onClose={onClose}>
       <div className="admin-detail-body">
         <div className="admin-detail-title">
           <div>
-            <h3>{item.display_name || item.original_name}</h3>
-            <p className="muted">Chủ sở hữu: {data?.owner_name || item.owner_name}</p>
+            <h3>
+              {data?.file.display_name ||
+                data?.file.original_name ||
+                item.display_name ||
+                item.original_name ||
+                'Đang mở chi tiết tệp'}
+            </h3>
+            <p className="muted">
+              Chủ sở hữu: {data?.owner_name || item.owner_name || item.owner_id}
+            </p>
           </div>
           <div className="inline-actions">
             <button
@@ -54,14 +65,17 @@ export default function AdminFileDetail({
               <RefreshCw size={15} />
               Cập nhật chi tiết
             </button>
-            <button
-              className="button secondary"
-              disabled={!(data ? data.can_read : item.can_read) || downloading}
-              onClick={() => onDownload(item)}
-            >
-              <Download size={15} />
-              Tải bản cách ly
-            </button>
+            {onDownload && (
+              <button
+                className="button secondary"
+                disabled={!(data ? data.can_read : item.can_read) || downloading}
+                title={data && !data.can_read ? 'Tệp chưa có bản cách ly có thể tải' : undefined}
+                onClick={() => onDownload(data?.file ?? item)}
+              >
+                <Download size={15} />
+                Tải bản cách ly
+              </button>
+            )}
           </div>
         </div>
         {state.loading && <p role="status">Đang đọc chi tiết tệp…</p>}
@@ -77,6 +91,17 @@ export default function AdminFileDetail({
         )}
         {data && (
           <div>
+            <QuarantineReview
+              baseUrl={baseUrl}
+              id={item.id}
+              ownerId={item.owner_id}
+              initialReview={data.quarantine_review}
+              focusReason={focusReview}
+              onDecision={() => {
+                refresh((value) => value + 1);
+                onReviewSaved?.();
+              }}
+            />
             <DetailTabs prefix="admin-detail" value={tab} onChange={setTab} />
             <div className="admin-detail-panels">
               {tab === 'information' && (
@@ -94,6 +119,9 @@ export default function AdminFileDetail({
                         <ScanBadge
                           scanStatus={data.file.scan_status}
                           statusReason={data.file.status_reason}
+                          scanStartedAt={Date.parse(data.file.scan_started_at)}
+                          createdAt={Date.parse(data.file.created_at)}
+                          rescanRequestedAt={Date.parse(data.file.rescan_requested_at)}
                         />
                       </dd>
                     </div>
@@ -106,7 +134,11 @@ export default function AdminFileDetail({
                       <dd>{at(data.file.created_at)}</dd>
                     </div>
                     <div>
-                      <dt>Quét lúc</dt>
+                      <dt>Bắt đầu quét</dt>
+                      <dd>{at(data.file.scan_started_at)}</dd>
+                    </div>
+                    <div>
+                      <dt>Hoàn tất quét</dt>
                       <dd>{at(data.file.scanned_at)}</dd>
                     </div>
                     <div>

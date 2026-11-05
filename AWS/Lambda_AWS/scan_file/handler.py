@@ -350,7 +350,9 @@ def lambda_handler(event, context):
         return audit_scan(row, source)
     if event.get("operation") == "record_failure":
         return record_result(source, ERROR, [], {}, "scan_crashed", ctx, complete=False)
-    fields = {**status_fields("scanning", source["file_id"]), "source_version_id": source["version"]}
+    started_at = row.get("scan_started_at") or utc()
+    fields = {**status_fields("scanning", source["file_id"]), "source_version_id": source["version"],
+              "scan_started_at": started_at}
     if ctx.get("execution"):
         fields["execution_id"] = ctx["execution"]
     update_file(_table(FILES_TABLE), source, fields, statuses=["not_started", "scanning"], execution=ctx.get("execution"))

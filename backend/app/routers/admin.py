@@ -10,7 +10,7 @@ import json
 import logging
 import unicodedata
 from datetime import datetime, timezone
-from pydantic import AwareDatetime
+from pydantic import AwareDatetime, BaseModel
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -20,31 +20,37 @@ from fastapi.responses import Response
 
 from ..auth import require_admin
 from ..db import DynamoDBError, utc_timestamp, file_key
-from ..dependencies import get_settings, get_file_metadata, get_audit_log, get_storage
+from ..dependencies import get_settings, get_file_metadata, get_audit_log, get_storage, get_rescanner
 from ..services.cognito_auth import AuthError, AuthUser
 from ..services.storage import read_bounded, StorageTooLarge, StorageFailure
 from .files import (owned_file, public_file, require_metadata, metadata_failure,
-                    safe_filename, scan_report, history_response)
+                    safe_filename, scan_report, history_response, content_key)
 from ..services.lifecycle import state as lifecycle_state
 from ..schemas.file import AdminFileDetail, AdminQuarantineResponse
+from ..services.quarantine_review import (
+    ReviewDecision, is_restored, quarantine_location, review_view, save_review, verify_restorable,
+)
+from ..services.scan_operations import operations_for, request_compression, resolve_compression, check_execution, compression_pending
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 STATUSES = {"quarantined", "quarantine_delete_failed", "flagged"}
 
 
+class ScanOperation(BaseModel):
+    action: Literal["check", "retry", "request_compression", "withdraw_compression"]
+    request_id: UUID
+
+
 def can_read_quarantine(item, settings):
-    prefix = f"uploads/{item['owner_id']}/{item['file_id']}/"
-    source = item.get("key", "")
-    return (lifecycle_state(item) == "active" and item.get("upload_state") == "uploaded"
-            and item.get("status") in {"quarantined", "quarantine_delete_failed"}
-            and bool(settings.quarantine_bucket_name)
-            and item.get("quarantine_bucket") == settings.quarantine_bucket_name
-            and settings.quarantine_bucket_name != settings.s3_bucket_name
-            and bool(item.get("quarantine_version_id")) and bool(item.get("source_version_id"))
-            and isinstance(source, str) and source.startswith(prefix) and "/" not in source[len(prefix):]
-            and item.get("quarantine_key") == source + ".version-" + str(item.get("source_version_id"))
-            and type(item.get("size_bytes")) is int and 0 < item["size_bytes"] <= settings.max_file_size_bytes)
+    if (lifecycle_state(item) != "active" or item.get("upload_state") != "uploaded"
+            or item.get("status") not in {"quarantined", "quarantine_delete_failed"} or is_restored(item)):
+        return False
+    try:
+        quarantine_location(item, settings)
+    except HTTPException:
+        return False
+    return type(item.get("size_bytes")) is int and 0 < item["size_bytes"] <= settings.max_file_size_bytes
 
 
 def pool_accounts(request):
@@ -114,7 +120,7 @@ def quarantine_list(request: Request, response: Response,
             page = metadata.list_files(owner, limit=max(1, limit - len(items)), start_key=start)
             queries += 1
             for item in page.items:
-                if (item.get("status") in STATUSES and lifecycle_state(item) == "active"
+                if (item.get("status") in STATUSES and lifecycle_state(item) == "active" and not is_restored(item)
                         and (status == "all" or item.get("status") == status)
                         and search in normalized(item.get("display_name") or item.get("original_name", ""))):
                     view = public_file(item, owner)
@@ -164,8 +170,11 @@ def security_overview(request: Request, response: Response, cursor: str | None =
                 file_key(start["owner_id"], start["file_id"])
         except (ValueError, TypeError, KeyError, binascii.Error, UnicodeDecodeError):
             raise HTTPException(400, "Phạm vi thống kê đã đổi hoặc cursor không hợp lệ. Hãy tải lại.") from None
-    counts = {status: 0 for status in ("not_started", "scanning", "safe", "flagged", "quarantined", "quarantine_delete_failed", "error", "unscanned")}
+    counts = {status: 0 for status in ("not_started", "scanning", "safe", "flagged", "quarantined", "quarantine_delete_failed", "error", "unscanned", "restored")}
     queries = 0
+    operations = []
+    durations = {}
+    now = datetime.now(timezone.utc)
     try:
         while index < len(owners) and queries < 10:
             page = metadata.list_files(owners[index], limit=100, start_key=start)
@@ -174,13 +183,39 @@ def security_overview(request: Request, response: Response, cursor: str | None =
                 if lifecycle_state(item) == "active" and item.get("upload_state") == "uploaded":
                     view = public_file(item, owners[index])
                     counts[view.scan_status] += 1
+                    method, duration = item.get("extraction_method"), item.get("extraction_duration_ms")
+                    if (method in ("direct_text", "pdf_text", "textract_image", "textract_pdf")
+                            and type(duration) is int and duration >= 0):
+                        bucket = durations.setdefault(method, {"count": 0, "total_ms": 0})
+                        bucket["count"] += 1
+                        bucket["total_ms"] += duration
+                    review = review_view(item)
+                    review_pending = bool(review and review["status"] in {"pending", "recommend_release"})
+                    if (view.scan_status in {"scanning", "error", "unscanned", "quarantine_delete_failed"}
+                            or review_pending or compression_pending(item)):
+                        since = view.scan_started_at or view.rescan_requested_at or view.created_at
+                        try:
+                            age = max(0, int((now - datetime.fromisoformat(since.replace("Z", "+00:00"))).total_seconds()))
+                        except (ValueError, TypeError):
+                            age = None
+                        operations.append({
+                            "id": view.id, "owner_id": view.owner_id, "owner_name": accounts[view.owner_id]["name"],
+                            "name": view.original_name, "status": view.scan_status, "reason": view.status_reason,
+                            "execution_id": item.get("execution_id"), "scan_started_at": view.scan_started_at,
+                            "age_seconds": age if view.scan_status == "scanning" else None,
+                            "review_pending": review_pending,
+                            "actions": operations_for(item),
+                            "compression_requested": bool(item.get("compression_requested_at")),
+                            "compression_resolution": item.get("compression_resolution"),
+                        })
             start = page.next_key
             if start is None:
                 index += 1
     except DynamoDBError as exc:
         raise metadata_failure(exc) from None
     next_cursor = base64.urlsafe_b64encode(json.dumps({"scope": scope, "index": index, "start": start}).encode()).decode().rstrip("=") if index < len(owners) else None
-    return {"users": len(owners), "counts": counts, "next_cursor": next_cursor}
+    return {"users": len(owners), "counts": counts, "next_cursor": next_cursor,
+            "operations": operations, "durations": durations}
 
 
 def admin_file(request, owner_id, file_id, settings, metadata):
@@ -201,7 +236,63 @@ def file_detail(file_id: UUID, request: Request, response: Response, owner_id: U
     item, view, accounts = admin_file(request, owner_id, file_id, settings, metadata)
     # Only schema-whitelisted metadata and aggregate findings; never raw text or quarantine locations.
     return {"file": view.model_dump(), "owner_name": accounts[str(owner_id)]["name"],
-            "report": scan_report(item, view).model_dump(), "can_read": can_read_quarantine(item, settings)}
+            "report": scan_report(item, view).model_dump(), "can_read": can_read_quarantine(item, settings),
+            "quarantine_review": review_view(item)}
+
+
+@router.post("/admin/files/{file_id}/quarantine-review")
+def decide_review(file_id: UUID, payload: ReviewDecision, request: Request, owner_id: UUID = Query(...),
+                  user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                  metadata=Depends(get_file_metadata), audit=Depends(get_audit_log), storage=Depends(get_storage)):
+    item, _, _ = admin_file(request, owner_id, file_id, settings, metadata)
+    require_metadata(settings, metadata, audit, writing=True)
+    previous = review_view(item)
+    expected = "restored" if payload.decision == "restore" else "keep_quarantine"
+    if previous and previous["status"] == expected and previous.get("decision_reason") == payload.reason:
+        return {"review": previous}
+    if not previous or previous["status"] not in {"pending", "recommend_release"}:
+        raise HTTPException(409, "Tệp không có yêu cầu đang chờ xử lý")
+    if payload.decision == "restore":
+        if not can_read_quarantine(item, settings):
+            raise HTTPException(409, "Tệp chưa có bản cách ly có thể khôi phục")
+        verify_restorable(item, settings, storage)
+    try:
+        return {"review": save_review(metadata, audit, item, user.owner_id, payload)}
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+
+
+@router.post("/admin/files/{file_id}/scan-operation")
+def scan_operation(file_id: UUID, payload: ScanOperation, request: Request, owner_id: UUID = Query(...),
+                   user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                   metadata=Depends(get_file_metadata), audit=Depends(get_audit_log),
+                   storage=Depends(get_storage), rescanner=Depends(get_rescanner)):
+    item, view, _ = admin_file(request, owner_id, file_id, settings, metadata)
+    require_metadata(settings, metadata, audit, writing=True)
+    if view.lifecycle_state != "active" or view.upload_state != "uploaded":
+        raise HTTPException(409, "Tệp không còn ở trạng thái có thể xử lý")
+    try:
+        if payload.action == "request_compression":
+            message = request_compression(metadata, audit, item, user.owner_id)
+        elif payload.action == "withdraw_compression":
+            resolve_compression(metadata, audit, item, user.owner_id, withdrawn=True)
+            message = "Đã thu hồi yêu cầu nén tệp."
+        elif payload.action == "check":
+            message = check_execution(metadata, audit, item, user.owner_id, rescanner)
+        else:
+            request_id = str(payload.request_id)
+            if "retry" not in operations_for(item) and item.get("scan_request_id") != request_id:
+                raise HTTPException(409, "Trạng thái hiện tại không cho phép thử quét lại")
+            if not settings.scan_pipeline_enabled or rescanner is None or view.storage != "s3":
+                raise HTTPException(503, "Chưa cấu hình dịch vụ quét lại")
+            content_key(item, view, str(owner_id), settings, storage)
+            if item.get("status") == "scanning" and item.get("rescan_dispatch") in {"pending", "unknown"}:
+                request_id = item["scan_request_id"]
+            rescanner.request(item, request_id, metadata, storage, audit, admin_actor=user.owner_id)
+            message = "Đã gửi yêu cầu quét lại."
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    return {"message": message}
 
 
 @router.get("/admin/files/{file_id}/history")
@@ -233,17 +324,11 @@ def quarantine_content(file_id: UUID, request: Request, owner_id: UUID = Query(.
     if owner not in pool_accounts(request):
         raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
     item, view = owned_file(metadata, owner, ident)
-    if lifecycle_state(item) != "active" or item.get("upload_state") != "uploaded" or item.get("status") not in {"quarantined", "quarantine_delete_failed"}:
+    if (lifecycle_state(item) != "active" or item.get("upload_state") != "uploaded" or is_restored(item)
+            or item.get("status") not in {"quarantined", "quarantine_delete_failed"}):
         raise HTTPException(409, "Tệp chưa có bản cách ly sẵn sàng để đọc")
-    bucket, key, version = item.get("quarantine_bucket"), item.get("quarantine_key"), item.get("quarantine_version_id")
-    prefix = f"uploads/{owner}/{ident}/"
-    source_key = item.get("key", "")
-    expected_key = source_key + ".version-" + str(item.get("source_version_id", ""))
-    if (not settings.quarantine_bucket_name or bucket != settings.quarantine_bucket_name or bucket == settings.s3_bucket_name
-            or not isinstance(key, str) or not key.startswith(prefix) or key != expected_key
-            or not item.get("source_version_id") or not source_key.startswith(prefix)
-            or "/" in source_key[len(prefix):] or not version):
-        raise HTTPException(503, "Vị trí hoặc version cách ly không khớp cấu hình")
+    location = quarantine_location(item, settings)
+    version = location["VersionId"]
     if type(item.get("size_bytes")) is not int or not 0 < item["size_bytes"] <= settings.max_file_size_bytes:
         raise HTTPException(413, "Tệp vượt giới hạn đọc nội dung")
     client = getattr(storage, "client", None)
@@ -262,7 +347,7 @@ def quarantine_content(file_id: UUID, request: Request, owner_id: UUID = Query(.
     record("admin_quarantine_read_started", {"quarantine_version_id": version})
     body = None
     try:
-        result = client.get_object(Bucket=bucket, Key=key, VersionId=version)
+        result = client.get_object(**location)
         body = result.get("Body")
         if body is None or result.get("ContentLength") != item["size_bytes"]:
             raise StorageFailure("Quarantine object does not match metadata")

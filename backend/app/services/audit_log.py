@@ -58,6 +58,21 @@ class AuditLogRepository:
             raise
         return True
 
+    def event_put(self, owner, ident, event_id, action, actor, timestamp, details):
+        record = {
+            **file_key(owner, ident),
+            "event_key": f"{timestamp}#{event_id}",
+            "occurred_at": timestamp,
+            "action": action,
+            "actor": actor,
+            "details": details,
+        }
+        return {"Put": {
+            "TableName": self.table_name,
+            "Item": serialize_item(record),
+            "ConditionExpression": "attribute_not_exists(event_key)",
+        }}
+
     def list_history(
         self, file_id: str, *, limit: int = 20, start_key: dict | None = None,
     ) -> QueryPage:

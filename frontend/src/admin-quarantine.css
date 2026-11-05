@@ -40,7 +40,7 @@
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-.admin-toolbar select {
+.admin-filter-select {
   max-width: 100%;
   min-width: 170px;
   border: 1px solid var(--border);
@@ -429,4 +429,27 @@
   .security-guide-content {
     padding: 0 16px 20px;
   }
+}
+.operation-list {
+  list-style: none;
+  padding: 0 20px;
+}
+.operation-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.operation-list li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.operation-list .button.secondary {
+  color: var(--text);
+}
+.operation-list p {
+  margin: 4px 0;
+  color: var(--muted);
 }

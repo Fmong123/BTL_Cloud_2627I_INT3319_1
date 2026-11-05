@@ -132,7 +132,7 @@ export default function FileScanReport({ file, refreshKey }) {
       }
     }
   }
-  const hasResult = ['safe', 'flagged', 'quarantined', 'quarantine_delete_failed'].includes(
+  const hasResult = ['safe', 'flagged', 'quarantined', 'quarantine_delete_failed', 'restored'].includes(
     file.scanStatus,
   );
   const counts = report?.findingCounts || [];

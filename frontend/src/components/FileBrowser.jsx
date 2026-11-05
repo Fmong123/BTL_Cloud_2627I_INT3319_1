@@ -22,6 +22,7 @@ import { canRetry, filterFiles, isBusy, savedFilterValues, sorts } from '../util
 import { formatBytes } from '../utils/files.js';
 import { isAttention, scanStates } from '../utils/processing.js';
 import FileList from './FileList.jsx';
+import FolderControls from './FolderControls.jsx';
 import LibraryWarnings from './LibraryWarnings.jsx';
 import FileDetail from './FileDetail.jsx';
 import FileSelectionDetail from './FileSelectionDetail.jsx';
@@ -80,11 +81,15 @@ export default function FileBrowser({ activity = false, overview = false }) {
   const savedRef = useRef(null);
   const columnsRef = useRef(null);
   const searchRef = useRef(null);
+  const foldersEnabled = !activity && !overview && w.preferences.mode === 'api';
+  const folder = foldersEnabled ? params.get('folder') : null;
   const source = overview
     ? [...w.files].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5)
     : activity
       ? w.activityFiles || w.files
-      : w.files;
+      : folder
+        ? w.files.filter((file) => (folder === 'root' ? !file.folderId : file.folderId === folder))
+        : w.files;
   const sync = w.sync || { phase: 'idle' };
   const q = params.get('q') || '';
   const status = Object.hasOwn(statuses, params.get('status')) ? params.get('status') : 'all';
@@ -170,6 +175,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
     dateTo,
     sort,
     scope,
+    folder,
     page,
     activityGroup,
     includeDeleted,
@@ -428,6 +434,19 @@ export default function FileBrowser({ activity = false, overview = false }) {
                 </button>
               ))}
             </div>
+          )}
+          {foldersEnabled && (
+            <FolderControls
+              key={scope}
+              baseUrl={w.preferences.baseUrl}
+              folder={folder}
+              onFolder={(value) => change('folder', value)}
+              selected={selectedFiles}
+              onMoved={() => {
+                setSelected(new Set());
+                w.refreshFiles();
+              }}
+            />
           )}
           <div className="files-heading">
             <div>

@@ -1050,3 +1050,25 @@
   font-size: 14px;
   margin: 0 0 14px;
 }
+.folder-controls {
+  margin: 12px 0;
+}
+.folder-controls .inline-actions,
+.review-panel form {
+  margin-top: 10px;
+}
+.review-panel form {
+  display: grid;
+  gap: 8px;
+}
+.review-panel textarea {
+  width: 100%;
+  min-height: 75px;
+  resize: vertical;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}

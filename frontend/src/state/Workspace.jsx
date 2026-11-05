@@ -174,7 +174,8 @@ export function WorkspaceProvider({ children }) {
       });
     if (
       record.scanStatus !== prior.scanStatus &&
-      !['not_started', 'scanning'].includes(record.scanStatus)
+      !['not_started', 'scanning', 'restored'].includes(record.scanStatus) &&
+      !['execution_failed', 'execution_result_missing'].includes(record.statusReason)
     ) {
       notificationsRef.current.addEvent({
         ...event,

@@ -12,6 +12,11 @@ export const scanStates = {
     description: 'Có dữ liệu nhạy cảm, đang chờ cách ly.',
   },
   quarantined: { label: 'Đã cách ly', tone: 'warning' },
+  restored: {
+    label: 'Đã khôi phục',
+    tone: 'success',
+    description: 'Quản trị viên đã khôi phục quyền xem và tải. Kết quả quét ban đầu vẫn được lưu.',
+  },
   quarantine_delete_failed: {
     label: 'Cách ly lỗi',
     tone: 'error',
@@ -51,6 +56,8 @@ const scanReasons = {
   ocr_incomplete: 'OCR chưa đọc đủ nội dung hoặc số trang.',
   ocr_timeout: 'OCR quá thời gian xử lý.',
   scan_crashed: 'Dịch vụ quét bị gián đoạn.',
+  execution_failed: 'Lượt quét trên AWS đã kết thúc với lỗi.',
+  execution_result_missing: 'Lượt quét đã kết thúc nhưng MâySec chưa ghi nhận được kết quả.',
   rescan_start_failed: 'Chưa khởi chạy được lượt quét lại.',
   scan_detail_unavailable: 'Máy chủ chưa cung cấp lý do có thể hiển thị.',
   quota_exceeded: 'Không đủ dung lượng trong gói 1 GB.',
@@ -82,9 +89,18 @@ const attentionStates = new Set([
 export function isAttention(file) {
   return (
     file.mode !== 'demo' &&
-    (attentionStates.has(file.scanStatus) ||
+    (needsCompression(file) ||
+      attentionStates.has(file.scanStatus) ||
       ['failed', 'unknown'].includes(file.uploadState) ||
       ['error', 'unknown'].includes(file.status))
+  );
+}
+
+export function needsCompression(file) {
+  return Boolean(
+    file?.compressionRequestedAt &&
+    !file.compressionResolvedAt &&
+    (!file.lifecycleState || file.lifecycleState === 'active'),
   );
 }
 
@@ -144,6 +160,7 @@ function summary(record) {
     scannedAt: timestamp(record.scanned_at, 'thời gian quét', true),
     quarantinedAt: timestamp(record.quarantined_at, 'thời gian cách ly', true),
     rescanRequestedAt: timestamp(record.rescan_requested_at, 'thời gian quét lại', true),
+    scanStartedAt: timestamp(record.scan_started_at, 'thời gian bắt đầu quét', true),
   };
 }
 
@@ -171,6 +188,21 @@ export function normalizeStatus(record, source = 'status') {
 
 function fileEdits(record) {
   const result = {};
+  if (record.compression_requested_at) {
+    result.compressionRequestedAt = timestamp(
+      record.compression_requested_at,
+      'thời gian yêu cầu nén',
+    );
+    result.compressionResolvedAt = timestamp(
+      record.compression_resolved_at,
+      'thời gian xử lý yêu cầu nén',
+      true,
+    );
+  }
+  if (record.folder_updated_at) {
+    result.folderId = record.folder_id ?? null;
+    result.folderUpdatedAt = timestamp(record.folder_updated_at, 'thời gian chuyển thư mục');
+  }
   if (record.lifecycle_state != null) {
     if (!['active', 'trashed', 'deleting', 'purged'].includes(record.lifecycle_state))
       throw new Error('Trạng thái Thùng rác chưa hợp lệ');
@@ -228,10 +260,15 @@ function sameIdentity(a, b) {
 }
 
 export function isStaleFileStatus(previous, record) {
-  if (Object.hasOwn(scanStates, previous.scanStatus) && Object.hasOwn(scanStates, record.scanStatus)) {
+  if (
+    Object.hasOwn(scanStates, previous.scanStatus) &&
+    Object.hasOwn(scanStates, record.scanStatus)
+  ) {
     const previousAttempt = previous.rescanRequestedAt ?? 0;
     const nextAttempt = record.rescanRequestedAt ?? 0;
     if (previousAttempt !== nextAttempt) return nextAttempt < previousAttempt;
+    if (previous.scanStatus === 'restored' && record.scanStatus === 'quarantined') return true;
+    if (previous.scanStatus === 'quarantined' && record.scanStatus === 'restored') return false;
 
     // FastAPI and Lambda have separate clocks. Within a scan attempt, a
     // persisted result takes precedence over an upload or pending snapshot.
@@ -239,6 +276,11 @@ export function isStaleFileStatus(previous, record) {
     const nextPending = ['not_started', 'scanning'].includes(record.scanStatus);
     if (previousPending && !nextPending && Number.isFinite(record.scannedAt)) return false;
     if (nextPending && !previousPending && Number.isFinite(previous.scannedAt)) return true;
+    if (previousPending && nextPending) {
+      const previousStarted = Number.isFinite(previous.scanStartedAt);
+      const nextStarted = Number.isFinite(record.scanStartedAt);
+      if (previousStarted !== nextStarted) return previousStarted;
+    }
   }
   return (
     (Number.isFinite(previous.updatedAt) &&
@@ -294,11 +336,23 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
     for (const [stamp, keys] of [
       ['lifecycleUpdatedAt', ['lifecycleState', 'trashedAt', 'trashExpiresAt']],
       ['nameUpdatedAt', ['name']],
+      ['folderUpdatedAt', ['folderId']],
     ]) {
       const source =
         (record[stamp] || 0) >= (previous[stamp] || 0) && record[stamp] != null ? record : previous;
       for (const key of [stamp, ...keys])
         if (source[key] !== undefined) editPatch[key] = source[key];
+    }
+    // Each file has one compression request. A response read before it was
+    // closed cannot reopen it, even if both requests share a timestamp.
+    const compression =
+      record.compressionRequestedAt &&
+      (!previous.compressionResolvedAt || record.compressionResolvedAt)
+        ? record
+        : previous;
+    if (compression.compressionRequestedAt) {
+      editPatch.compressionRequestedAt = compression.compressionRequestedAt;
+      editPatch.compressionResolvedAt = compression.compressionResolvedAt;
     }
     if (isStaleFileStatus(previous, record)) {
       merged[index] = { ...previous, ...starPatch, ...editPatch, ...erasedPatch };

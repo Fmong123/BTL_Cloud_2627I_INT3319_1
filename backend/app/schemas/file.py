@@ -7,7 +7,7 @@ from ..db import utc_timestamp
 
 ScanStatus = Literal[
     "not_started", "scanning", "safe", "flagged", "quarantined",
-    "quarantine_delete_failed", "unscanned", "error",
+    "quarantine_delete_failed", "unscanned", "error", "restored",
 ]
 UploadState = Literal["uploading", "uploaded", "failed", "unknown"]
 
@@ -35,8 +35,13 @@ class ScanSummary(BaseModel):
     scanned_at: str | None = None
     quarantined_at: str | None = None
     rescan_requested_at: str | None = None
+    scan_started_at: str | None = None
+    compression_requested_at: str | None = None
+    compression_resolved_at: str | None = None
+    compression_resolution: Literal["completed", "withdrawn"] | None = None
 
-    @field_validator("scanned_at", "quarantined_at", "rescan_requested_at")
+    @field_validator("scanned_at", "quarantined_at", "rescan_requested_at", "scan_started_at",
+                     "compression_requested_at", "compression_resolved_at")
     @classmethod
     def normalize_result_timestamp(cls, value: str | None) -> str | None:
         return utc_timestamp(value) if value is not None else None
@@ -55,6 +60,8 @@ class FileListItem(UploadResponse, ScanSummary):
     trash_expires_at: str | None = None
     display_name: str | None = None
     name_updated_at: str | None = None
+    folder_id: str | None = None
+    folder_updated_at: str | None = None
 
     @field_validator("starred_updated_at")
     @classmethod
@@ -163,4 +170,5 @@ class AdminFileDetail(BaseModel):
     file: FileListItem
     owner_name: str
     can_read: bool
+    quarantine_review: dict[str, str] | None = None
     report: FileScanReport

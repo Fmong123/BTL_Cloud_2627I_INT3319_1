@@ -133,6 +133,10 @@ class FileLifecycle:
         # Preserve a minimal upload-history snapshot, atomically with metadata
         # removal. Quota continues counting if bytes or this transaction fail.
         snapshot = {k: claimed[k] for k in HISTORY_FIELDS if k in claimed}
+        review = claimed.get("quarantine_review") or {}
+        if (claimed.get("status") == "quarantined" and review.get("status") == "restored"
+                and review.get("version") == claimed.get("quarantine_version_id")):
+            snapshot["status"] = "restored"
         snapshot.update(owner_id=f"!history!{item['owner_id']}", lifecycle_state="purged")
         call_dynamodb(self.metadata.client, "transact_write_items", TransactItems=[
             {"Put": {"TableName": self.metadata.table_name, "Item": serialize_item(snapshot)}},
@@ -151,6 +155,18 @@ def history_page(metadata, owner, *, limit, start_key):
     for item in page.items:
         item["owner_id"] = owner
     return page
+
+
+def notification_put(metadata, owner, ident, event_id, timestamp, kind, title, message, tone):
+    record = {
+        **file_key(f"!notifications!{owner}", f"{timestamp}#{event_id}"),
+        "target_file_id": ident, "id": event_id, "created_at": timestamp,
+        "kind": kind, "title": title, "message": message, "tone": tone, "read": False,
+    }
+    return {"Put": {
+        "TableName": metadata.table_name, "Item": serialize_item(record),
+        "ConditionExpression": "attribute_not_exists(file_id)",
+    }}
 
 
 def save_notification(metadata, owner, data):

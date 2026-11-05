@@ -15,6 +15,7 @@ from .routers.auth import router as auth_router
 from .routers.admin import router as admin_router
 from .routers.files import router
 from .routers.lifecycle import router as lifecycle_router
+from .routers.folders import router as folder_router
 from .services.audit_log import AuditLogRepository
 from .services.cognito_auth import build_verifier
 from .services.file_metadata import FileMetadataRepository
@@ -238,6 +239,7 @@ def create_app(
 
     app.include_router(router, tags=["Files"])
     app.include_router(lifecycle_router, tags=["File management"])
+    app.include_router(folder_router, tags=["Folders"])
     app.include_router(auth_router, tags=["Auth"])
     app.include_router(admin_router, tags=["Administration"])
     return app

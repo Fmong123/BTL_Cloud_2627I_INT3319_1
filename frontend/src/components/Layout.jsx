@@ -272,7 +272,7 @@ export default function Layout() {
               aria-labelledby="shortcut-label"
             >
               <span className="nav-label" id="shortcut-label">
-                BỘ LỌC CÁ NHÂN
+                LỐI TẮT
               </span>
               {shortcuts.map(([key, path, label, Icon]) => navItem(path, label, Icon, key))}
               {navItem('/trash', 'Thùng rác', Trash2)}

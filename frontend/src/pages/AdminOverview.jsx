@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, RefreshCw, ShieldAlert, ShieldCheck, Clock3, UsersRound } from 'lucide-react';
 import { useAuth } from '../auth/Auth.jsx';
 import { getSecurityOverview } from '../api/client.js';
+import ScanOperations from '../components/ScanOperations.jsx';
 import '../admin-quarantine.css';
 
 export default function AdminOverview() {
@@ -11,9 +12,11 @@ export default function AdminOverview() {
   const [state, setState] = useState({ loading: true });
   useEffect(() => {
     const controller = new AbortController();
-    setState({ loading: true });
+    setState((previous) => ({ ...previous, loading: true, error: null }));
     async function load() {
       const counts = {};
+      const operations = [];
+      const durations = {};
       const seen = new Set();
       let cursor = null;
       do {
@@ -24,10 +27,24 @@ export default function AdminOverview() {
         if (controller.signal.aborted) return;
         for (const [key, count] of Object.entries(result.counts))
           counts[key] = (counts[key] || 0) + count;
+        operations.push(...(result.operations || []));
+        for (const [method, data] of Object.entries(result.durations || {})) {
+          durations[method] ??= { count: 0, total_ms: 0 };
+          durations[method].count += data.count;
+          durations[method].total_ms += data.total_ms;
+        }
         cursor = result.next_cursor;
         if (cursor && seen.has(cursor)) throw new Error('Thống kê chưa hoàn tất. Hãy tải lại.');
         if (cursor) seen.add(cursor);
-        if (!cursor) setState({ counts, users: result.users, at: Date.now(), loading: false });
+        if (!cursor)
+          setState({
+            counts,
+            operations,
+            durations,
+            users: result.users,
+            at: Date.now(),
+            loading: false,
+          });
       } while (cursor);
     }
     load().catch((error) => {
@@ -111,6 +128,15 @@ export default function AdminOverview() {
           </Link>
         </div>
       </div>
+      {state.operations && (
+        <ScanOperations
+          baseUrl={session.baseUrl}
+          counts={state.counts}
+          durations={state.durations}
+          operations={state.operations}
+          onChange={() => refresh((value) => value + 1)}
+        />
+      )}
     </section>
   );
 }

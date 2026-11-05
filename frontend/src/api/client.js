@@ -534,6 +534,46 @@ export async function getSecurityOverview(baseUrl, { cursor, ...options } = {}) 
   return data;
 }
 
+export async function listFolders(baseUrl, signal) {
+  const items = [];
+  const cursors = new Set();
+  let cursor;
+  do {
+    const query = new URLSearchParams(cursor ? { cursor } : {});
+    const page = await requestJson(baseUrl, `/folders?${query}`, { signal });
+    items.push(...page.items);
+    cursor = page.next_cursor;
+    if (cursor && cursors.has(cursor)) throw new ApiError('Danh sách thư mục bị lặp');
+    cursors.add(cursor);
+  } while (cursor);
+  return items.sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+}
+
+export function saveFolder(baseUrl, id, name) {
+  return requestJson(baseUrl, id ? `/folders/${encodeURIComponent(id)}` : '/folders', {
+    method: id ? 'PATCH' : 'POST',
+    body: { name },
+  });
+}
+
+export function moveFilesToFolder(baseUrl, fileIds, folderId) {
+  return requestJson(baseUrl, '/folders/move-files', {
+    method: 'POST',
+    body: { file_ids: fileIds, folder_id: folderId },
+  });
+}
+
+export async function quarantineReview(baseUrl, id, { ownerId, reason, decision, signal } = {}) {
+  const path = `${ownerId ? '/admin' : ''}/files/${encodeURIComponent(id)}/quarantine-review`;
+  const query = ownerId ? `?${new URLSearchParams({ owner_id: ownerId })}` : '';
+  const data = await requestJson(baseUrl, path + query, {
+    signal,
+    method: reason ? 'POST' : 'GET',
+    body: reason ? { reason, ...(decision && { decision }) } : undefined,
+  });
+  return data.review;
+}
+
 export async function getAdminFileDetail(baseUrl, id, ownerId, options = {}) {
   const query = new URLSearchParams({ owner_id: ownerId });
   const data = await requestJson(
@@ -549,6 +589,19 @@ export async function getAdminFileDetail(baseUrl, id, ownerId, options = {}) {
   )
     throw new ApiError('Chi tiết quản trị không khớp tệp yêu cầu', { code: 'invalid_response' });
   return { ...data, report: parseScanReport(data.report, id) };
+}
+
+export function runAdminScanOperation(baseUrl, item, action) {
+  const query = new URLSearchParams({ owner_id: item.owner_id });
+  return requestJson(
+    baseUrl,
+    `/admin/files/${encodeURIComponent(item.id)}/scan-operation?${query}`,
+    {
+      method: 'POST',
+      body: { action, request_id: crypto.randomUUID() },
+      timeout: 30000,
+    },
+  );
 }
 
 export async function rescanFile(baseUrl, id, requestId, options = {}) {

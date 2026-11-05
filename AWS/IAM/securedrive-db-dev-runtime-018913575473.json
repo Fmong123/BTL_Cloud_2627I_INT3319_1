@@ -11,7 +11,7 @@
       "Resource": "arn:aws:dynamodb:ap-southeast-2:018913575473:table/securedrive-files",
       "Condition": {
         "ForAllValues:StringEquals": {
-          "dynamodb:LeadingKeys": ["dev-user", "!quota!dev-user", "!history!dev-user", "!notifications!dev-user"]
+          "dynamodb:LeadingKeys": ["dev-user", "!quota!dev-user", "!history!dev-user", "!notifications!dev-user", "!folders!dev-user"]
         }
       }
     },

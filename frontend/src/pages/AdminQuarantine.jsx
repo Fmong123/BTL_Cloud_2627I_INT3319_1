@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Info, RefreshCw, Search, ShieldAlert, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '../auth/Auth.jsx';
 import { getFileContent, listQuarantine } from '../api/client.js';
@@ -21,8 +21,10 @@ const statuses = {
 export default function AdminQuarantine() {
   const { session } = useAuth();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const query = params.get('q') || '';
   const owner = params.get('owner') || '';
+  const linkedFile = params.get('file');
   const status = Object.hasOwn(statuses, params.get('status')) ? params.get('status') : 'all';
   const from = params.get('from') || '';
   const to = params.get('to') || '';
@@ -175,6 +177,13 @@ export default function AdminQuarantine() {
       </section>
     );
   const items = state.key === filterKey ? state.items : [];
+  const detail =
+    owner && linkedFile
+      ? (items.find((item) => item.id === linkedFile && item.owner_id === owner) ?? {
+          id: linkedFile,
+          owner_id: owner,
+        })
+      : selected;
   const filtered = Boolean(query || owner || status !== 'all' || from || to);
   return (
     <section className="files-section admin-quarantine" aria-label="Quản trị cách ly">
@@ -224,6 +233,7 @@ export default function AdminQuarantine() {
           />
         </label>
         <select
+          className="admin-filter-select"
           aria-label="Lọc chủ sở hữu"
           value={owner}
           onChange={(e) => update('owner', e.target.value)}
@@ -410,12 +420,18 @@ export default function AdminQuarantine() {
           </button>
         )}
       </div>
-      {selected && (
+      {detail && (
         <AdminFileDetail
-          key={`${selected.owner_id}:${selected.id}`}
-          item={selected}
+          key={`${detail.owner_id}:${detail.id}`}
+          item={detail}
           baseUrl={session.baseUrl}
-          onClose={() => select(null)}
+          focusReview={Boolean(linkedFile && location.state?.focusReview)}
+          onReviewSaved={() => refresh((value) => value + 1)}
+          onClose={() => {
+            select(null);
+            setDownloadError('');
+            if (linkedFile) update('file', null);
+          }}
           onDownload={read}
           downloading={Boolean(downloading)}
           revision={detailRevision}

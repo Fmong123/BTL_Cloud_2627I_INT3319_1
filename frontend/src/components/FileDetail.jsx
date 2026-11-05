@@ -12,12 +12,14 @@ import {
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
+import { changeFile } from '../api/client.js';
 import { formatBytes, formatFileType } from '../utils/files.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
-import { scanStates } from '../utils/processing.js';
+import QuarantineReview from './QuarantineReview.jsx';
+import { needsCompression, scanStates } from '../utils/processing.js';
 import FileScanReport from './FileScanReport.jsx';
 import FileHistory from './FileHistory.jsx';
 import DetailTabs from './DetailTabs.jsx';
@@ -43,6 +45,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
     downloadingId: w.downloadingId,
   });
   const [tab, setTab] = useState('information');
+  const [compressionAction, setCompressionAction] = useState(null);
   const check = file?.remoteId ? w.statusChecks?.[file.remoteId] : null;
   const titleRef = useRef(null);
   const closeRef = useRef(null);
@@ -132,7 +135,9 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
   const uploadConfirmed = file.status === 'success' || file.uploadState === 'uploaded';
   const isolated = file.scanStatus === 'quarantined';
   const quarantineProblem = file.scanStatus === 'quarantine_delete_failed';
-  const detected = ['flagged', 'quarantined', 'quarantine_delete_failed'].includes(file.scanStatus);
+  const detected = ['flagged', 'quarantined', 'quarantine_delete_failed', 'restored'].includes(
+    file.scanStatus,
+  );
   const scanStep =
     file.mode === 'demo'
       ? { label: 'Không áp dụng · trải nghiệm', tone: 'muted', state: 'pending', icon: Clock3 }
@@ -213,6 +218,41 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
       <div className="drawer-content">
         {tab === 'information' ? (
           <section id="detail-information" role="tabpanel" aria-labelledby="detail-information-tab">
+            {needsCompression(file) && (
+              <section className="banner warning">
+                <div>
+                  <strong>
+                    <CircleAlert size={16} /> Quản trị viên yêu cầu nén tệp
+                  </strong>
+                  <p>Hãy nén tệp rồi tải bản đã nén lên. Sau đó đánh dấu yêu cầu đã xử lý.</p>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={compressionAction?.id === file.id && compressionAction.busy}
+                    onClick={async () => {
+                      setCompressionAction({ id: file.id, busy: true });
+                      try {
+                        const updated = await changeFile(
+                          w.preferences.baseUrl,
+                          file.remoteId,
+                          'compression-request/complete',
+                        );
+                        w.applyScanStatus(file, updated);
+                        w.notify('Đã đánh dấu yêu cầu nén tệp là đã xử lý.');
+                        setCompressionAction(null);
+                      } catch (error) {
+                        setCompressionAction({ id: file.id, error: error.message });
+                      }
+                    }}
+                  >
+                    Đánh dấu đã xử lý
+                  </button>
+                  {compressionAction?.id === file.id && compressionAction.error && (
+                    <p role="alert">{compressionAction.error}</p>
+                  )}
+                </div>
+              </section>
+            )}
             <button
               className="button secondary scan-report-shortcut"
               onClick={() => setTab('processing')}
@@ -239,6 +279,17 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
               )}
               {row('Cập nhật máy chủ', time(file.updatedAt))}
             </dl>
+            {['quarantined', 'restored'].includes(file.scanStatus) &&
+              (!file.lifecycleState || file.lifecycleState === 'active') &&
+              file.remoteId &&
+              file.mode === 'api' && (
+                <QuarantineReview
+                  key={file.remoteId}
+                  baseUrl={w.preferences.baseUrl}
+                  id={file.remoteId}
+                  refreshKey={file.updatedAt}
+                />
+              )}
             <details className="technical-details">
               <summary>Thông tin kỹ thuật</summary>
               <dl className="file-details">
@@ -281,10 +332,15 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                 </span>
                 <div>
                   <h3>Quét dữ liệu</h3>
-                  <span className={`status-badge ${scanStep.tone}`}>
-                    <ScanStepIcon size={13} />
-                    {scanStep.label}
-                  </span>
+                  {file.scanStatus === 'scanning' ? (
+                    <ScanBadge {...file} />
+                  ) : (
+                    <span className={`status-badge ${scanStep.tone}`}>
+                      <ScanStepIcon size={13} />
+                      {scanStep.label}
+                    </span>
+                  )}
+                  {file.scanStartedAt && <p>Bắt đầu lúc {time(file.scanStartedAt)}</p>}
                   <p>
                     {file.mode === 'demo'
                       ? 'Không áp dụng với tệp trải nghiệm.'
@@ -307,15 +363,17 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                 <div>
                   <h3>Cách ly</h3>
                   <p className="timeline-label">
-                    {file.mode === 'demo' || file.scanStatus === 'safe'
-                      ? 'Không áp dụng'
-                      : isolated
-                        ? 'Đã cách ly'
-                        : quarantineProblem
-                          ? 'Chưa hoàn tất — bản nguồn có thể vẫn còn'
-                          : file.scanStatus === 'flagged'
-                            ? 'Đang chờ hoặc đang thực hiện cách ly'
-                            : 'Chưa có xác nhận cách ly'}
+                    {file.scanStatus === 'restored'
+                      ? 'Đã khôi phục bởi quản trị viên'
+                      : file.mode === 'demo' || file.scanStatus === 'safe'
+                        ? 'Không áp dụng'
+                        : isolated
+                          ? 'Đã cách ly'
+                          : quarantineProblem
+                            ? 'Chưa hoàn tất — bản nguồn có thể vẫn còn'
+                            : file.scanStatus === 'flagged'
+                              ? 'Đang chờ hoặc đang thực hiện cách ly'
+                              : 'Chưa có xác nhận cách ly'}
                   </p>
                   {file.quarantinedAt && <p>{time(file.quarantinedAt)}</p>}
                 </div>
