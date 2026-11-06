@@ -21,6 +21,7 @@ from .routers.folders import router as folder_router
 from .services.audit_log import AuditLogRepository
 from .services.cognito_auth import build_verifier
 from .services.file_metadata import FileMetadataRepository
+from .services.folders import FolderError
 from .services.user_profiles import UserProfiles
 from .services.s3_service import upload_to_s3
 from .services.storage import LocalStorage, Storage, UnconfiguredStorage
@@ -199,6 +200,10 @@ def create_app(
         return JSONResponse(status_code=422, content={
             "detail": detail
         })
+
+    @app.exception_handler(FolderError)
+    async def folder_error(request, exc):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request, exc):

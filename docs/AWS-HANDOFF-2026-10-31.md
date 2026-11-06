@@ -13,7 +13,7 @@ Backend dùng principal riêng; mỗi Lambda dùng execution role của nó. B�
 | Backend · DynamoDB | files: GetItem, Query, PutItem, UpdateItem, DeleteItem, ConditionCheckItem. audit-log: GetItem, PutItem. |
 | Backend · S3 | Upload: PutObject, GetObject, GetObjectVersion, AbortMultipartUpload. Cả hai bucket: ListBucketVersions, DeleteObject, DeleteObjectVersion. |
 | Backend · quét lại | states:DescribeStateMachine và states:StartExecution trên đúng workflow STANDARD. |
-| Lambda cleanup | files: Scan, GetItem, UpdateItem, PutItem, DeleteItem. Cả hai bucket: ListBucketVersions, DeleteObject, DeleteObjectVersion; thêm CloudWatch Logs. |
+| Lambda cleanup | files: Scan, Query, GetItem, UpdateItem, PutItem, DeleteItem; audit: PutItem. Cả hai bucket: ListBucketVersions, DeleteObject, DeleteObjectVersion; thêm CloudWatch Logs. |
 
 Phạm vi backend: chỉ dữ liệu owner hiện tại dev-user và các partition !quota!dev-user, !history!dev-user, !notifications!dev-user. S3 giới hạn prefix uploads/dev-user/. Role cleanup có phạm vi uploads/ để dọn rác hết hạn. Policy mẫu đã có điều kiện prefix/partition; giữ đúng khi áp dụng.
 

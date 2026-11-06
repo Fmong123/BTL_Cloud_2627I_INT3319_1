@@ -4,8 +4,14 @@
     {
       "Sid": "FindAndEraseExpiredTrashKeepHistory",
       "Effect": "Allow",
-      "Action": ["dynamodb:Scan", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:PutItem", "dynamodb:DeleteItem"],
+      "Action": ["dynamodb:Scan", "dynamodb:Query", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:PutItem", "dynamodb:DeleteItem"],
       "Resource": "arn:aws:dynamodb:ap-southeast-2:ACCOUNT_ID:table/securedrive-files"
+    },
+    {
+      "Sid": "AuditFolderErasure",
+      "Effect": "Allow",
+      "Action": "dynamodb:PutItem",
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:ACCOUNT_ID:table/securedrive-audit-log"
     },
     {
       "Sid": "ListFileVersions",

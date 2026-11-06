@@ -6,6 +6,8 @@ Phạm vi: mã nguồn và bộ công cụ local tại `G:/code/BTL_Cloud_2627I_
 
 ## Kết luận
 
+> Cập nhật sau rà soát: mục 5 đã được bổ sung. Cleanup dùng chung luồng purge với API thư mục, chỉ dọn nhóm đã hết hạn, xóa hết nội dung trước metadata, bảo vệ khôi phục đồng thời và tiếp tục xóa dở. ZIP/policy/env cần cập nhật theo [hướng dẫn cleanup](trash-cleanup.md); chưa triển khai AWS. Phát hiện ở mục 5 bên dưới giữ nguyên làm lịch sử đối chiếu.
+
 > Cập nhật tiếp theo: phần còn thiếu ở mục 4 đã được bổ sung trong mã nguồn, gồm thử lại riêng cách ly, gửi đúng kênh và xác nhận thủ công theo bằng chứng, có audit và chặn xung đột. Bốn ZIP local ở mục 3 đã được build lại và kiểm tra khớp source. Xem [hướng dẫn xử lý pipeline](pipeline-recovery.md) để cập nhật đồng bộ workflow/Lambda/backend/frontend; chưa triển khai hoặc nghiệm thu AWS thật. Nội dung phát hiện bên dưới giữ lại để đối chiếu thời điểm rà soát.
 
 Các chức năng chính đã kết nối frontend–backend và vượt qua kiểm thử cục bộ: đăng nhập, dữ liệu riêng theo tài khoản, upload, thư mục, Thùng rác, quản trị tài khoản/quota và thống kê/xuất CSV/PDF. Tuy nhiên, hệ thống **chưa thống nhất hoàn toàn**. Cần ưu tiên đồng nhất phạm vi admin, xử lý quota Local + DynamoDB và cập nhật gói Lambda trước khi bàn giao/triển khai.

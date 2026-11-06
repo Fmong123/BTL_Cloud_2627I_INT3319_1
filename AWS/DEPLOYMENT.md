@@ -22,10 +22,12 @@ Source chưa tự triển khai lên AWS. /health chỉ xác nhận readiness c�
 | Quarantine | QUARANTINE_BUCKET/KMS_KEY_ID đúng; copy/kiểm tra đích, xóa version nguồn, KMS và files/audit |
 | Notify | SNS_TOPIC_ARN (SNS/email); trạng thái giao nhận trên files và audit, Logs |
 | Step Functions | STANDARD; InvokeFunction ba Lambda; ctx.execution=$states.context.Execution.Id |
-| Cleanup | Python 3.12, handler.lambda_handler; FILES_TABLE/UPLOAD_BUCKET/QUARANTINE_BUCKET; role riêng, Logs |
+| Cleanup | Python 3.12, handler.lambda_handler; FILES_TABLE/AUDIT_TABLE/UPLOAD_BUCKET/QUARANTINE_BUCKET; role riêng, Logs |
 | Lịch cleanup | rate(1 hour), mặc định DISABLED; template có Lambda resource permission cho EventBridge |
 
 Upload ZIP không tự sửa env/layer/IAM/runtime/timeout hoặc alias. Publish/trỏ alias đồng bộ nếu môi trường đang dùng version/alias. Không ghi đè bản cloud khác/newer mà chưa đối chiếu.
+
+Cleanup đã dọn cả metadata thư mục hết hạn sau khi xóa hết nội dung của nhóm. Cập nhật ZIP và role cleanup: thêm Query trên files, PutItem trên audit; `AUDIT_TABLE` mặc định `securedrive-audit-log`. Giữ lịch DISABLED đến khi nghiệm thu. Xem [quy trình cleanup và thử lại](../docs/trash-cleanup.md).
 
 Để bật các luồng thư mục và xem xét cách ly trên EC2, cập nhật backend/frontend và
 đối chiếu policy backend với mẫu trong `AWS/IAM`. Thư mục dùng partition

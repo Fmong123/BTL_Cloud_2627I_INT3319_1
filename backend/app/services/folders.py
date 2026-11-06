@@ -5,7 +5,6 @@ tree changes, file moves and uploads into folders across API workers.
 """
 from datetime import datetime, timedelta
 from uuid import uuid4
-from fastapi import HTTPException
 from ..db import call_dynamodb, file_key, serialize_item, utc_timestamp, DynamoDBError
 from .lifecycle import FileLifecycle, state, expired, validate_name, RETENTION_DAYS, notification_put
 
@@ -32,9 +31,18 @@ def path_names(rows, ident):
     return names
 
 
+class FolderError(Exception):
+    """Service failure translated to HTTP at the API boundary, also usable in Lambda."""
+
+    def __init__(self, status_code, detail):
+        self.status_code, self.detail = status_code, detail
+        super().__init__(detail)
+
+
 class Folders:
-    def __init__(self, metadata, owner, audit=None):
+    def __init__(self, metadata, owner, audit=None, *, actor=None):
         self.metadata, self.owner, self.audit = metadata, owner, audit
+        self.actor = actor or owner
         self.partition = f"!folders!{owner}"
         revision = metadata.get_file(self.partition, REVISION_ID)
         self.revision = revision.get("revision") if revision else None
@@ -52,9 +60,9 @@ class Folders:
     def get(self, ident, *, active=True):
         row = self.rows.get(ident)
         if row is None:
-            raise HTTPException(404, "Không tìm thấy thư mục")
+            raise FolderError(404, "Không tìm thấy thư mục")
         if active and state(row) != "active":
-            raise HTTPException(409, "Thư mục đang ở Thùng rác. Hãy khôi phục trước.")
+            raise FolderError(409, "Thư mục đang ở Thùng rác. Hãy khôi phục trước.")
         return row
 
     def parent(self, ident):
@@ -70,12 +78,12 @@ class Folders:
 
     def commit(self, changes, ident, action, *, message=None, folder_id=None):
         if len(changes) > MAX_TREE_CHANGE:
-            raise HTTPException(409, "Thao tác vượt giới hạn 97 tệp/thư mục mỗi lần. Hãy chia nhỏ nội dung trước khi thực hiện.")
+            raise FolderError(409, "Thao tác vượt giới hạn 97 tệp/thư mục mỗi lần. Hãy chia nhỏ nội dung trước khi thực hiện.")
         actions = [self.revision_action(), *changes]
         event, stamp = str(uuid4()), utc_timestamp()
         if self.audit:
             actions.append(self.audit.event_put(self.owner, ident, event, action,
-                                               self.owner, stamp, {"items": len(changes)}))
+                                               self.actor, stamp, {"items": len(changes)}))
         titles = {"folder_created": "Đã tạo thư mục", "folder_renamed": "Đã đổi tên thư mục",
                   "folder_moved": "Đã di chuyển thư mục", "files_moved": "Đã di chuyển tệp",
                   "folder_trashed": "Đã chuyển thư mục và nội dung vào Thùng rác",
@@ -90,7 +98,7 @@ class Folders:
             call_dynamodb(self.metadata.client, "transact_write_items", TransactItems=actions)
         except DynamoDBError as exc:
             if exc.code == "TransactionCanceledException":
-                raise HTTPException(409, "Thư mục hoặc tệp vừa thay đổi. Hãy làm mới rồi thử lại.") from None
+                raise FolderError(409, "Thư mục hoặc tệp vừa thay đổi. Hãy làm mới rồi thử lại.") from None
             raise
 
     def update(self, row, fields, *, guard="", values=None):
@@ -119,10 +127,10 @@ class Folders:
             if len(result) > 120:
                 raise ValueError("Tên thư mục tối đa 120 ký tự")
         except ValueError as exc:
-            raise HTTPException(400, str(exc).replace("Tên tệp", "Tên thư mục")) from None
+            raise FolderError(400, str(exc).replace("Tên tệp", "Tên thư mục")) from None
         if any(r["file_id"] != exclude and state(r) == "active" and r.get("parent_id") == parent
                and r["name"].casefold() == result.casefold() for r in self.rows.values()):
-            raise HTTPException(409, "Đã có thư mục cùng tên tại vị trí này")
+            raise FolderError(409, "Đã có thư mục cùng tên tại vị trí này")
         return result
 
     def create(self, name, parent):
@@ -146,7 +154,7 @@ class Folders:
         seen, current = {ident}, parent
         while current:
             if current in seen:
-                raise HTTPException(409, "Không thể chuyển thư mục vào chính nó hoặc thư mục con")
+                raise FolderError(409, "Không thể chuyển thư mục vào chính nó hoặc thư mục con")
             seen.add(current)
             current = self.get(current).get("parent_id")
         self.name(row["name"], parent, ident)
@@ -159,9 +167,9 @@ class Folders:
         for ident in dict.fromkeys(identifiers):
             row = self.metadata.get_file(self.owner, ident)
             if not row:
-                raise HTTPException(404, "Không tìm thấy tệp thuộc tài khoản của bạn")
+                raise FolderError(404, "Không tìm thấy tệp thuộc tài khoản của bạn")
             if state(row) != "active" or row.get("upload_state") != "uploaded":
-                raise HTTPException(409, "Chỉ di chuyển tệp đã tải lên và không ở Thùng rác")
+                raise FolderError(409, "Chỉ di chuyển tệp đã tải lên và không ở Thùng rác")
             changes.append(self.update(row, {"folder_id": destination, "folder_updated_at": stamp},
                 guard=" AND upload_state = :uploaded", values={":uploaded": "uploaded"}))
         self.commit(changes, str(uuid4()), "files_moved", folder_id=destination,
@@ -173,7 +181,7 @@ class Folders:
         while pending:
             current = pending.pop()
             if current in result:
-                raise HTTPException(409, "Cấu trúc thư mục không hợp lệ")
+                raise FolderError(409, "Cấu trúc thư mục không hợp lệ")
             result.add(current)
             pending.extend(r["file_id"] for r in self.rows.values()
                            if r.get("parent_id") == current and state(r) == "active")
@@ -186,7 +194,7 @@ class Folders:
         ids = self.subtree(ident)
         files = [r for r in self.read_partition(self.owner) if r.get("folder_id") in ids and state(r) == "active"]
         if any(r.get("pipeline_busy") or r.get("upload_state") not in {"uploaded", "failed"} or r.get("status") in {"scanning", "flagged"} for r in files):
-            raise HTTPException(409, "Có tệp đang tải lên, đang quét hoặc chờ cách ly. Hãy chờ xử lý hoàn tất trước khi xóa thư mục.")
+            raise FolderError(409, "Có tệp đang tải lên, đang quét hoặc chờ cách ly. Hãy chờ xử lý hoàn tất trước khi xóa thư mục.")
         stamp = utc_timestamp()
         expiry = utc_timestamp((datetime.fromisoformat(stamp.replace("Z", "+00:00")) + timedelta(days=RETENTION_DAYS)).isoformat())
         fields = {"lifecycle_state": "trashed", "lifecycle_updated_at": stamp,
@@ -203,7 +211,7 @@ class Folders:
     def trash_group(self, ident):
         root = self.get(ident, active=False)
         if state(root) != "trashed" or root.get("trash_root_id") != ident:
-            raise HTTPException(409, "Hãy xử lý thư mục gốc đã đưa vào Thùng rác")
+            raise FolderError(409, "Hãy xử lý thư mục gốc đã đưa vào Thùng rác")
         folders = [r for r in self.rows.values() if r.get("trash_root_id") == ident and state(r) == "trashed"]
         files = [r for r in self.read_partition(self.owner) if r.get("trash_root_id") == ident and state(r) != "active"]
         return root, folders, files
@@ -214,14 +222,14 @@ class Folders:
             return {"id": ident, "restored": True}
         root, folders, files = self.trash_group(ident)
         if root.get("purging") or expired(root) or any(expired(r) or state(r) != "trashed" for r in files):
-            raise HTTPException(409, "Nội dung đã hết hạn khôi phục hoặc đang được xóa")
+            raise FolderError(409, "Nội dung đã hết hạn khôi phục hoặc đang được xóa")
         parent = root.get("parent_id")
         if parent and (parent not in self.rows or state(self.rows[parent]) != "active"):
             parent = None
         name = root["name"]
         try:
             self.name(name, parent, ident)
-        except HTTPException:
+        except FolderError:
             name = self.name(f"{name[:77]} (khôi phục {str(uuid4())[:8]})", parent, ident)
         stamp, changes = utc_timestamp(), []
         for row in [*folders, *files]:
@@ -232,15 +240,64 @@ class Folders:
         self.commit(changes, ident, "folder_restored")
         return {"id": ident, "restored": True, "parent_id": parent}
 
-    def purge(self, ident, storage, settings):
+    def purge(self, ident, storage, settings, *, expired_at=None, should_stop=None):
+        """Erase bytes first, then atomically remove the claimed folder group.
+
+        Scheduled cleanup supplies a fixed expiry cutoff and a time-budget check.
+        A paused/failed group keeps its claim so a later invocation can resume.
+        """
         root, folders, files = self.trash_group(ident)
+        if len(folders) > MAX_TREE_CHANGE:
+            raise FolderError(409, "Nhóm thư mục vượt giới hạn xóa mỗi lần")
+        if expired_at and any(not expired(r, expired_at) for r in [*folders, *files]):
+            raise FolderError(409, "Nhóm thư mục còn nội dung chưa hết hạn")
+        result = {"id": ident, "deleted": False, "files_deleted": 0,
+                  "folders_deleted": 0, "remaining": True}
+        if should_stop and should_stop():
+            return result
         # A claimed group cannot be restored during destructive storage work.
         if not root.get("purging"):
-            self.commit([self.update(root, {"purging": True})], ident, "folder_purge_started")
+            self.commit([self.update(root, {"purging": True, "lifecycle_updated_at": utc_timestamp()})],
+                        ident, "folder_purge_started")
         for row in files:
-            FileLifecycle(self.metadata, storage, settings).purge(row)
-        latest = Folders(self.metadata, self.owner, self.audit)
-        changes = [{"Delete": {"TableName": self.metadata.table_name,
-            "Key": serialize_item(file_key(self.partition, r["file_id"]))}} for r in folders]
+            if should_stop and should_stop():
+                return result
+            current = self.metadata.get_file(self.owner, row["file_id"])
+            if not current:  # Another cleanup worker already erased this file.
+                continue
+            if (current.get("trash_root_id") != ident or state(current) not in {"trashed", "deleting"}
+                    or (expired_at and not expired(current, expired_at))):
+                raise FolderError(409, "Nội dung thư mục vừa thay đổi. Hãy thử lại.")
+            FileLifecycle(self.metadata, storage, settings).purge(current)
+            result["files_deleted"] += 1
+        if should_stop and should_stop():
+            return result
+        latest = Folders(self.metadata, self.owner, self.audit, actor=self.actor)
+        root, folders, remaining_files = latest.trash_group(ident)
+        if not root.get("purging") or remaining_files:
+            raise FolderError(409, "Nội dung thư mục chưa được xóa hết")
+        changes = []
+        for row in folders:
+            # Revision guards API tree writes; row conditions also guard expiry
+            # changes and stale cleanup workers before any metadata is removed.
+            values = {":trashed": "trashed", ":root": ident}
+            condition = "lifecycle_state = :trashed AND trash_root_id = :root"
+            for field in ("lifecycle_updated_at", "trash_expires_at"):
+                if row.get(field) is not None:
+                    values[f":{field}"] = row[field]
+                    condition += f" AND {field} = :{field}"
+                else:
+                    condition += f" AND attribute_not_exists({field})"
+            if expired_at:
+                if not expired(row, expired_at):
+                    raise FolderError(409, "Thư mục chưa hết hạn")
+                values[":cutoff"] = expired_at
+                condition += " AND trash_expires_at <= :cutoff"
+            if row["file_id"] == ident:
+                values[":yes"] = True
+                condition += " AND purging = :yes"
+            changes.append({"Delete": {"TableName": self.metadata.table_name,
+                "Key": serialize_item(file_key(self.partition, row["file_id"])),
+                "ConditionExpression": condition, "ExpressionAttributeValues": serialize_item(values)}})
         latest.commit(changes, ident, "folder_purged")
-        return {"id": ident, "deleted": True}
+        return {**result, "deleted": True, "folders_deleted": len(folders), "remaining": False}
