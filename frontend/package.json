@@ -11,6 +11,7 @@
     "test": "node --test tests/auth-session.test.mjs tests/api-config.test.mjs",
     "test:ui": "node tests/fullstack-auth.browser.mjs",
     "test:ui:dev": "node tests/fullstack-auth.browser.mjs --dev",
+    "test:ui:folders": "node tests/folders.browser.mjs",
     "format": "prettier --write src index.html vite.config.js"
   },
   "dependencies": {

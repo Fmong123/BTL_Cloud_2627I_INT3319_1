@@ -4,11 +4,11 @@ import json
 import logging
 import re
 import unicodedata
-from uuid import uuid4
+from uuid import UUID, uuid4
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from pydantic import ValidationError
 from fastapi.responses import Response, StreamingResponse
 
@@ -26,6 +26,7 @@ from ..services.audit_log import AuditLogRepository
 from ..services.file_metadata import FileMetadataRepository
 from ..services.quota import reserve_upload, usage, QuotaExceeded, QuotaBusy
 from ..services.lifecycle import state as lifecycle_state
+from ..services.quarantine_review import is_restored, quarantine_location
 from ..services.storage import (
     Storage, LocalStorage, StorageFailure, StorageNotFound, StorageTooLarge, StorageUnavailable,
 )
@@ -138,7 +139,7 @@ def public_file(item: dict, owner_id: str) -> FileListItem:
             raise ValueError("Unexpected owner")
         return FileListItem(**{
             **item, **scan_summary_aliases(item),
-            "id": item["file_id"], "scan_status": item["status"],
+            "id": item["file_id"], "scan_status": "restored" if is_restored(item) else item["status"],
             "original_name": item.get("display_name") or item["original_name"],
             # Transitional alias used by the deployed Scan handoff. Canonical wins.
             "status_reason": item.get("status_reason") or item.get("reason"),
@@ -191,6 +192,7 @@ def safe_filename(value: str) -> str:
 })
 def upload_file(
     file: UploadFile = File(...),
+    folder_id: UUID | None = Form(None),
     settings: Settings = Depends(get_settings),
     storage: Storage = Depends(get_storage),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
@@ -213,6 +215,9 @@ def upload_file(
         if not storage.configured:
             raise HTTPException(503, "Dịch vụ lưu trữ chưa được cấu hình hoặc chưa sẵn sàng")
         metadata_enabled = settings.metadata_mode == "dynamodb"
+        target_folder = str(folder_id) if isinstance(folder_id, UUID) else None
+        if target_folder and not metadata_enabled:
+            raise HTTPException(503, "Cần bật metadata để tải tệp vào thư mục")
         if metadata_enabled:
             require_metadata(settings, metadata, audit, writing=True)
         elif storage.mode == "s3":
@@ -232,6 +237,7 @@ def upload_file(
                         upload_bucket=settings.s3_bucket_name if storage.mode == "s3" else None,
                         created_at=timestamp, pipeline_enabled=settings.scan_pipeline_enabled,
                         quota_lease=lease,
+                        **({"folder_id": target_folder} if target_folder else {}),
                     )
                 created = True
                 audit.write_event(
@@ -244,6 +250,8 @@ def upload_file(
             except QuotaBusy:
                 raise HTTPException(429, "Đang giữ chỗ dung lượng cho lượt tải khác — hãy thử lại", headers={"Retry-After": "2"}) from None
             except DynamoDBError as exc:
+                if target_folder and exc.code == "TransactionCanceledException":
+                    raise HTTPException(409, "Thư mục hoặc lượt tải vừa thay đổi. Hãy làm mới và thử lại.") from None
                 if created:
                     record_upload_failure(
                         metadata, audit, owner_id, file_id,
@@ -372,8 +380,10 @@ def get_file_status(
         findings_count=view.findings_count, finding_types=view.finding_types,
         scanned_at=view.scanned_at, quarantined_at=view.quarantined_at,
         rescan_requested_at=view.rescan_requested_at,
+        scan_started_at=view.scan_started_at,
         **{k: getattr(view, k) for k in ("lifecycle_state", "lifecycle_updated_at", "trashed_at",
-            "trash_expires_at", "display_name", "name_updated_at")},
+            "trash_expires_at", "display_name", "name_updated_at", "compression_requested_at",
+            "compression_resolved_at", "compression_resolution", "folder_id", "folder_updated_at", "trash_root_id")},
     )
 
 
@@ -538,12 +548,13 @@ def get_file_content(
 ) -> Response:
     require_metadata(settings, metadata)
     item, view = owned_file(metadata, owner_id, file_id)
-    if view.lifecycle_state != "active" or view.upload_state != "uploaded" or view.scan_status != "safe":
-        raise HTTPException(409, "Tệp chỉ được xem hoặc tải xuống khi đã tải xong và quét an toàn")
+    if view.lifecycle_state != "active" or view.upload_state != "uploaded" or view.scan_status not in {"safe", "restored"}:
+        raise HTTPException(409, "Tệp chưa được phép xem hoặc tải xuống")
     reader = getattr(storage, "read", None)
     if not storage.configured or not callable(reader) or not getattr(storage, "content_readable", True):
         raise HTTPException(503, "Dịch vụ đọc tệp chưa được cấu hình hoặc chưa sẵn sàng")
     key = content_key(item, view, owner_id, settings, storage)
+    restored = quarantine_location(item, settings) if view.scan_status == "restored" else None
     media_type = view.content_type.split(";", 1)[0].strip().lower()
     if media_type in {"", "application/octet-stream"}:
         extension = view.original_name.rsplit(".", 1)[-1].lower()
@@ -556,7 +567,11 @@ def get_file_content(
     if view.size_bytes > limit:
         raise HTTPException(413, "Tệp vượt quá giới hạn dung lượng cho thao tác này")
     try:
-        data = reader(key=key, max_bytes=limit)
+        if restored:
+            data = storage.read_version(bucket=restored["Bucket"], key=restored["Key"],
+                                        version=restored["VersionId"], max_bytes=limit)
+        else:
+            data = reader(key=key, max_bytes=limit)
         if not isinstance(data, bytes):
             raise StorageFailure("Invalid storage read response")
         if len(data) > limit:

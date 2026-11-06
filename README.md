@@ -10,6 +10,7 @@ React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý qu�
 - Danh sách từ API, tìm/lọc/sắp xếp, đánh dấu; xem ảnh/PDF/văn bản và tải xuống khi đủ điều kiện.
 - Báo cáo quét, yêu cầu quét lại, đổi tên, khôi phục/xóa vĩnh viễn; lịch sử upload/thông báo giữ sau reload.
 - Giao diện sáng/tối, sidebar thu gọn, chọn nhiều và panel chi tiết.
+- Thư mục nhiều cấp, đường dẫn, đổi tên/di chuyển; chuyển tệp bằng hộp thoại hoặc kéo thả; xóa và khôi phục cả thư mục trong Thùng rác.
 - Drive/cache riêng theo tài khoản; đồng bộ `securedrive-users`, lịch sử từng tệp và admin đọc cách ly có audit.
 
 Upload thành công chỉ xác nhận đã lưu nội dung. Nội dung chỉ được xem/tải khi đã upload xong, kết quả quét `safe` và không trong rác. Quét hiện phát hiện CCCD và số thẻ, không phải quét mã độc.

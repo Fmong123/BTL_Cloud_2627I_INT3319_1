@@ -27,6 +27,20 @@ Source chưa tự triển khai lên AWS. /health chỉ xác nhận readiness c�
 
 Upload ZIP không tự sửa env/layer/IAM/runtime/timeout hoặc alias. Publish/trỏ alias đồng bộ nếu môi trường đang dùng version/alias. Không ghi đè bản cloud khác/newer mà chưa đối chiếu.
 
+Để bật các luồng thư mục và xem xét cách ly trên EC2, cập nhật backend/frontend và
+đối chiếu policy backend với mẫu trong `AWS/IAM`. Thư mục dùng partition
+`!folders!<owner_id>` trong bảng files hiện có. Chuyển nhóm tệp cần quyền ghi giao dịch
+trên files. Gửi và duyệt yêu cầu cách ly ghi metadata cùng audit trong một giao dịch,
+nên role backend cần quyền UpdateItem trên files và PutItem trên audit.
+Cập nhật ZIP Scan để ghi thời điểm bắt đầu cho lượt quét mới.
+
+Vận hành quét cần `states:DescribeExecution` cho execution của workflow đã cấu hình.
+Các thao tác admin ghi thông báo vào partition `!notifications!<owner_id>`.
+Khôi phục tệp cách ly mở lại quyền xem và tải từ đúng version S3 đã xác minh,
+không tạo một sự kiện upload mới. Role backend cần quyền đọc đúng version cách ly
+và giải mã KMS như khi admin tải bản cách ly. Giữ bản S3 đó trong thời gian tệp còn
+hoạt động. Cập nhật ZIP cleanup để lịch sử giữ được trạng thái đã khôi phục sau khi xóa.
+
 ## Giới hạn quét
 
 Upload dùng 100 MB = 100.000.000 byte; quota 1 GB/owner. Scan mặc định MAX_SCAN_BYTES=52.428.800 byte, OCR ảnh 10 MiB. Ngoài giới hạn/định dạng hỗ trợ phải unscanned/error, không nhận safe.

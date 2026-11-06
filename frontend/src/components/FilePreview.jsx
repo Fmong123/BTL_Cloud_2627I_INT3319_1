@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, FileSearch, RefreshCw } from 'lucide-react';
+import { Download, ExternalLink, FileSearch, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { getFileContent } from '../api/client.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
@@ -19,6 +19,9 @@ export default function FilePreview() {
   });
   const [attempt, setAttempt] = useState(0);
   const [content, setContent] = useState({ phase: 'loading' });
+  const [expanded, setExpanded] = useState(false);
+  const [pdfControls, setPdfControls] = useState(false);
+  const [imageZoom, setImageZoom] = useState('fit');
   const id = file?.id;
   const remoteId = file?.remoteId;
   const kind = info.kind;
@@ -90,7 +93,7 @@ export default function FilePreview() {
       title={file?.name || 'Xem trước tệp'}
       onClose={w.closePreview}
       wide
-      className="file-preview-modal"
+      className={`file-preview-modal${expanded ? ' expanded' : ''}`}
     >
       {file && (
         <div className="preview-toolbar">
@@ -99,19 +102,60 @@ export default function FilePreview() {
             <ScanBadge {...file} />
             <span>{formatBytes(file.size)}</span>
           </div>
-          <button
-            className="button secondary"
-            disabled={Boolean(downloadReason)}
-            title={downloadReason || undefined}
-            onClick={() => w.download(file.id)}
-          >
-            <Download size={16} />
-            {w.downloadingId === file.id ? 'Đang tải xuống…' : 'Tải xuống'}
-          </button>
+          <div className="preview-actions">
+            {ready && kind === 'pdf' && (
+              <button
+                className="button secondary"
+                aria-pressed={pdfControls}
+                onClick={() => setPdfControls(!pdfControls)}
+              >
+                {pdfControls ? 'Ẩn thanh PDF' : 'Hiện thanh PDF'}
+              </button>
+            )}
+            {ready && kind === 'image' && (
+              <select
+                aria-label="Thu phóng ảnh"
+                value={imageZoom}
+                onChange={(event) => setImageZoom(event.target.value)}
+              >
+                <option value="fit">Vừa khung</option>
+                <option value="100">100% chiều rộng</option>
+                <option value="150">150% chiều rộng</option>
+                <option value="200">200% chiều rộng</option>
+              </select>
+            )}
+            {ready && content.url && (
+              <a
+                className="button secondary"
+                href={content.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink size={16} /> Mở tab mới
+              </a>
+            )}
+            <button
+              className="button secondary"
+              aria-pressed={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              {expanded ? 'Thu khung' : 'Mở rộng'}
+            </button>
+            <button
+              className="button secondary"
+              disabled={Boolean(downloadReason)}
+              title={downloadReason || undefined}
+              onClick={() => w.download(file.id)}
+            >
+              <Download size={16} />
+              {w.downloadingId === file.id ? 'Đang tải xuống…' : 'Tải xuống'}
+            </button>
+          </div>
         </div>
       )}
       <div
-        className={`preview-stage ${kind || ''}`}
+        className={`preview-stage ${kind || ''}${kind === 'image' && imageZoom !== 'fit' ? ' zoomed' : ''}`}
         aria-busy={!reason && content.phase === 'loading'}
       >
         {reason ? (
@@ -138,6 +182,7 @@ export default function FilePreview() {
         ) : ready && kind === 'image' ? (
           <img
             src={content.url}
+            style={imageZoom === 'fit' ? undefined : { width: `${imageZoom}%` }}
             alt={`Xem trước ${file.name}`}
             onError={() =>
               setContent({
@@ -147,7 +192,11 @@ export default function FilePreview() {
             }
           />
         ) : ready && kind === 'pdf' ? (
-          <iframe src={content.url} title={`Xem trước PDF ${file.name}`} />
+          <iframe
+            key={String(pdfControls)}
+            src={`${content.url}#toolbar=${Number(pdfControls)}&navpanes=0&view=FitH`}
+            title={`Xem trước PDF ${file.name}`}
+          />
         ) : null}
       </div>
       {kind === 'pdf' && !reason && (

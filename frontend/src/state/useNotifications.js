@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { listNotifications, persistNotification } from '../api/client.js';
 import { NOTIFICATIONS_KEY, readNotificationRecords, writeRecords } from '../utils/persistence.js';
 
+function toastFor(event, now) {
+  return {
+    id: event.id,
+    scope: event.scope,
+    expiresAt: now + (['warning', 'error'].includes(event.tone) ? 10000 : 6000),
+  };
+}
+
 export function useNotifications(scope, { baseUrl, available = false, storageSuffix } = {}) {
   const storageKey = storageSuffix ? `${NOTIFICATIONS_KEY}:${storageSuffix}` : NOTIFICATIONS_KEY;
   const [events, renderEvents] = useState(() => readNotificationRecords(undefined, storageKey));
@@ -27,30 +35,47 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
       if (running || !navigator.onLine || document.hidden) return;
       running = true;
       try {
-        // Upload local offline events first; a read flag only moves false -> true.
-        for (const event of ref.current.filter((item) => item.scope === scope)) {
-          const signature = JSON.stringify(event);
-          if (synced.current.get(`${scope}|${event.id}`) === signature) continue;
-          await persistNotification(baseUrl, event, { signal: controller.signal });
-          synced.current.set(`${scope}|${event.id}`, signature);
+        let writeFailed = false;
+        try {
+          for (const event of ref.current.filter((item) => item.scope === scope)) {
+            const signature = JSON.stringify(event);
+            if (synced.current.get(`${scope}|${event.id}`) === signature) continue;
+            await persistNotification(baseUrl, event, { signal: controller.signal });
+            synced.current.set(`${scope}|${event.id}`, signature);
+          }
+        } catch (error) {
+          if (error.name === 'AbortError' || !alive) return;
+          // A failed local write must not hide new server notifications.
+          writeFailed = true;
         }
         const saved = await listNotifications(baseUrl, {
           signal: controller.signal,
           includeHistory: firstRead,
         });
-        firstRead = false;
         if (!alive) return;
         const merged = new Map(ref.current.map((event) => [`${event.scope}|${event.id}`, event]));
+        const newToasts = [];
         for (const event of saved) {
           const key = `${scope}|${event.id}`,
             prior = merged.get(key);
           const next = { ...prior, ...event, scope, read: event.read || prior?.read || false };
           merged.set(key, next);
+          if (
+            !firstRead &&
+            !prior &&
+            !next.read &&
+            (String(event.kind).startsWith('admin-scan-') || event.kind === 'quarantine-review')
+          ) {
+            newToasts.push(toastFor(next, Date.now()));
+          }
           // A locally-read flag still pending server acknowledgement is retried.
           if (event.read || !prior?.read) synced.current.set(key, JSON.stringify(next));
         }
+        firstRead = false;
         update([...merged.values()].sort((a, b) => b.createdAt - a.createdAt).slice(0, 2000));
-        setStorageError(null);
+        if (newToasts.length)
+          setVisible((current) => [...current, ...newToasts.reverse()].slice(-3));
+        setStorageError(writeFailed ? 'Một số thông báo trên trình duyệt chưa đồng bộ.' : null);
       } catch (error) {
         if (alive && error.name !== 'AbortError')
           setStorageError('Thông báo đang lưu trên trình duyệt; chưa đồng bộ máy chủ.');
@@ -61,11 +86,13 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
     void sync();
     const timer = setInterval(sync, 5000);
     window.addEventListener('online', sync);
+    document.addEventListener('visibilitychange', sync);
     return () => {
       alive = false;
       controller.abort();
       clearInterval(timer);
       window.removeEventListener('online', sync);
+      document.removeEventListener('visibilitychange', sync);
     };
   }, [scope, baseUrl, available]);
   function addEvent(event) {
@@ -105,14 +132,7 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
     };
     update([next, ...ref.current.filter((item) => item.id !== id)].slice(0, 2000));
     setVisible((current) =>
-      [
-        ...current.filter((item) => item.id !== id),
-        {
-          id,
-          scope: eventScope,
-          expiresAt: now + (['warning', 'error'].includes(next.tone) ? 10000 : 6000),
-        },
-      ].slice(-3),
+      [...current.filter((item) => item.id !== id), toastFor(next, now)].slice(-3),
     );
   }
   useEffect(() => {

@@ -96,11 +96,17 @@ class S3Storage:
         return StoredObject(key=stored_key, storage="s3")
 
     def read(self, *, key: str, max_bytes: int) -> bytes:
+        return self._read(max_bytes, Bucket=self.bucket, Key=key)
+
+    def read_version(self, *, bucket: str, key: str, version: str, max_bytes: int) -> bytes:
+        return self._read(max_bytes, Bucket=bucket, Key=key, VersionId=version)
+
+    def _read(self, max_bytes, **location) -> bytes:
         if not self.configured or not callable(getattr(self.client, "get_object", None)):
             raise StorageUnavailable("S3 read dependencies are not configured")
         body = None
         try:
-            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            response = self.client.get_object(**location)
             body = response.get("Body")
             if body is None or not callable(getattr(body, "close", None)):
                 raise StorageFailure("S3 returned an invalid body")
@@ -111,7 +117,7 @@ class S3Storage:
         except (NoCredentialsError, PartialCredentialsError, NoRegionError):
             raise StorageUnavailable("AWS configuration is unavailable") from None
         except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "NotFound", "404"}:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "NoSuchVersion", "NotFound", "404"}:
                 raise StorageNotFound() from None
             raise StorageFailure("S3 read failed") from None
         except (BotoCoreError, OSError):

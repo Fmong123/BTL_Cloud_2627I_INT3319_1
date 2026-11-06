@@ -67,4 +67,18 @@ Test UI cần Python và các gói `backend/requirements-dev.txt`. Mặc định
 
 Tự tìm Python trong backend/.venv theo Windows/Linux; đặt biến `PYTHON` nếu dùng interpreter khác. Mặc định dùng Chromium do Playwright cài. Có thể đặt `CHROME_EXECUTABLE` thành đường dẫn tuyệt đối tới Chrome đang có để dùng trình duyệt đó.
 
-Đã có đăng nhập Cognito/demo, Drive riêng theo sub, lịch sử tệp và quản trị cách ly toàn pool. Chỉ bật đăng nhập một chạm trong môi trường trình diễn có chủ đích. Admin vẫn có Drive riêng; user không được gọi API admin. Chưa có quản lý thư mục/chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Build web không tự triển khai AWS.
+Đã có đăng nhập Cognito/demo, Drive riêng theo sub, thư mục nhiều cấp, lịch sử tệp và quản trị cách ly toàn pool. Chỉ bật đăng nhập một chạm trong môi trường trình diễn có chủ đích. Admin vẫn có Drive riêng; user không được gọi API admin. Chưa có chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Build web không tự triển khai AWS.
+
+## Thư mục
+
+Tệp của tôi mở thư mục gốc, có thẻ thư mục và đường dẫn để đi lên các cấp. Bấm **Thư mục mới** để tạo tại vị trí hiện tại; menu dấu ba chấm hoặc thanh thao tác của thư mục đang mở có **Đổi tên**, **Di chuyển đến…**, **Chuyển vào Thùng rác**. Không cho phép tên trùng trong cùng thư mục hoặc di chuyển một thư mục vào chính nó/thư mục con.
+
+Chọn một hoặc nhiều tệp rồi bấm **Di chuyển đến…**, hoặc dùng menu từng tệp. Hộp thoại cho duyệt cây và tạo thư mục đích. Có thể kéo tệp/thư mục vào thẻ thư mục hoặc đường dẫn. Thả tệp từ máy lên thẻ thư mục sẽ upload vào đó; nút upload tải vào thư mục đang mở. Mỗi lượt upload ghi nhớ đích kể cả khi đổi trang hoặc thử lại. **Xem tất cả tệp** bỏ giới hạn thư mục; tìm/lọc thông thường áp dụng trong vị trí đang xem.
+
+Xóa thư mục đưa cả cây và các tệp đang hoạt động bên trong vào Thùng rác 30 ngày. Phần Thư mục đã xóa cho xem nội dung, khôi phục cả nhóm hoặc xóa vĩnh viễn. Các tệp đã ở rác từ trước giữ nguyên trạng thái riêng. Nếu thư mục cha không còn khi khôi phục, thư mục trở về gốc; tên trùng được thêm hậu tố khôi phục. Tệp khôi phục riêng có thư mục cũ đã xóa vĩnh viễn cũng trở về gốc.
+
+Tệp đang tải, đang quét hoặc flagged chờ cách ly chặn xóa cả thư mục. Thao tác xóa/khôi phục cây giới hạn **98 mục (thư mục + tệp)** mỗi lần để lưu nguyên khối; vượt giới hạn trả 409 và không đổi dữ liệu. Di chuyển tối đa 50 tệp/lượt. Thư mục là metadata, không đổi key S3 hoặc làm thay đổi kết quả quét/quota. Quota chỉ giảm sau khi nội dung được xóa vĩnh viễn thành công. Cleanup hiện có xóa nội dung tệp hết hạn; bản ghi thư mục hết hạn vẫn có thể dọn bằng nút xóa vĩnh viễn và không còn cho khôi phục.
+
+Triển khai backend/frontend cùng phiên bản, restart backend và refresh web. UI thư mục bật khi `/health.capabilities.folders=true`; không mô phỏng thư mục trong chế độ demo/local không metadata. Không cần bảng/GSI mới. Quyền backend phải cho phép giao dịch và đọc/ghi partition `!folders!<owner>` trong bảng files, cùng ghi audit. Mẫu IAM Cognito runtime hiện có đã chứa partition này. Không tự thay IAM hoặc triển khai AWS.
+
+Bộ test local mới: `npm run test:ui:folders` (Chrome trên Windows hoặc đặt `CHROME_EXECUTABLE`); dùng HTTP local/Moto, không truy cập AWS thật.

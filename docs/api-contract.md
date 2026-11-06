@@ -78,7 +78,28 @@ Xóa vĩnh viễn xóa mọi version/delete marker thuộc prefix tệp ở Uplo
 
 Notifications lưu id, kind, title, message, tone, file_id tùy chọn, created_at và read. read chỉ chuyển sang true. Web ghi các sự kiện đã quan sát; đây không phải push nền hoặc audit log đầy đủ.
 
-## Lỗi
+## Thư mục theo chủ sở hữu
+
+Capability `folders` yêu cầu metadata và audit sẵn sàng. Tất cả API thư mục lấy owner từ danh tính đã xác minh; admin dùng cùng API chỉ thao tác Drive của chính mình.
+
+| API | Payload / kết quả |
+| --- | --- |
+| GET /folders | Danh sách toàn bộ thư mục của owner, gồm thư mục ở rác; `items`, `next_cursor=null`. Backend đọc đủ các trang DynamoDB. |
+| POST /folders | `{name, parent_id: UUID hoặc null}`; tạo tại gốc nếu bỏ parent_id. |
+| PATCH /folders/{id} | `{name}`; đổi tên thư mục đang hoạt động. |
+| POST /folders/{id}/move | `{parent_id: UUID hoặc null}`; cấm chu trình và tên trùng tại đích. |
+| POST /folders/move-files | `{file_ids: UUID[1..50], folder_id: UUID hoặc null}`; cập nhật metadata cả nhóm trong giao dịch. |
+| POST /folders/{id}/trash | Đưa cây và tệp active vào rác, giữ key S3/quota/kết quả quét; ghi `trash_root_id`. |
+| POST /folders/{id}/restore | Khôi phục nhóm đã xóa bởi thư mục này; không hồi sinh tệp đã xóa riêng hoặc purged. |
+| DELETE /folders/{id} | Chỉ từ rác; xóa nội dung qua FileLifecycle trước khi bỏ metadata thư mục. Có thể thử lại khi xóa dở. |
+
+Folder có `id`, `name`, `parent_id`, `lifecycle_state`, `trashed_at`, `trash_expires_at`, `trash_root_id`, `purging`. Tên được chuẩn hóa Unicode, tối đa 120 ký tự, dùng quy tắc tên tương tự file. Thư mục cũ không có parent/lifecycle được hiểu là thư mục gốc active.
+
+Upload nhận thêm trường multipart `folder_id` tùy chọn; xác minh thư mục còn hoạt động và lưu vị trí cùng metadata trước khi ghi nội dung. File list/status trả thêm `folder_id`, `folder_updated_at`, `trash_root_id`. Chi tiết admin có đường dẫn thư mục của owner trong `folder_path`.
+
+Cây thư mục dùng partition `!folders!<owner>` trong bảng files. Item `!revision` là token đồng thời nội bộ, không trả như thư mục. Create/rename/move/trash/restore, chuyển tệp và upload vào thư mục dùng cùng revision; tránh chu trình, file vào đích vừa xóa và xóa thiếu file đang chuyển. Giao dịch có điều kiện lifecycle/scan/upload để không ghi đè pipeline. Xóa/khôi phục tối đa 98 thư mục+tệp mỗi giao dịch; vượt giới hạn trả 409 trước khi ghi. Trash chặn khi còn uploading/unknown/scanning/flagged; hạn khôi phục 30 ngày. Purge đặt cờ purging trước khi xóa byte, chặn restore và giữ khả năng retry nếu lỗi.
+
+## Lỗi API
 
 | HTTP | Trường hợp điển hình |
 | --- | --- |

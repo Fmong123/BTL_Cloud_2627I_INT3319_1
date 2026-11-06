@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, FolderOpen, SearchX } from 'lucide-react';
+import { ArrowDown, ArrowUp, CircleAlert, Eye, FolderOpen, SearchX } from 'lucide-react';
 import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
@@ -7,6 +7,7 @@ import { formatBytes } from '../utils/files.js';
 import FileActions from './FileActions.jsx';
 import { previewInfo } from '../utils/content.js';
 import { activityAction, activityTime } from '../utils/activity.js';
+import { needsCompression } from '../utils/processing.js';
 
 function SelectAll({ files, selected, onSelectAll }) {
   const ref = useRef(null);
@@ -46,6 +47,7 @@ export default function FileList({
   showSize = true,
   showDate = true,
   onNameResize,
+  draggableFiles = false,
   ...actions
 }) {
   const tableContainer = useRef(null);
@@ -148,7 +150,7 @@ export default function FileList({
   const statuses = (file) => (
     <div className="file-card-statuses">
       <div>
-        <span>Tải lên</span>
+        <span>Trạng thái</span>
         <StatusBadge {...file} />
       </div>
       <div>
@@ -160,6 +162,19 @@ export default function FileList({
       </div>
     </div>
   );
+  const compressionBadge = (file) =>
+    needsCompression(file) && (
+      <button
+        type="button"
+        className="status-badge warning"
+        title="Quản trị viên yêu cầu nén tệp"
+        aria-label={`Cần xử lý ${file.name}: quản trị viên yêu cầu nén tệp`}
+        onClick={() => actions.onInspect?.(file.id)}
+      >
+        <CircleAlert size={13} />
+        Cần xử lý
+      </button>
+    );
   const resultBadge = (file) =>
     activity && file.lifecycleState === 'purged' ? (
       <span className="status-badge muted">Đã xóa</span>
@@ -278,6 +293,10 @@ export default function FileList({
         <div className={`file-grid density-${density}`}>
           {files.map((file) => (
             <article
+              data-file-id={file.id}
+              draggable={
+                draggableFiles && Boolean(file.remoteId) && file.uploadState === 'uploaded'
+              }
               className={`file-card ${selected?.has(file.id) ? 'selected' : ''}`}
               key={file.id}
             >
@@ -293,6 +312,7 @@ export default function FileList({
               >
                 {file.name}
               </button>
+              {compressionBadge(file)}
               {previewButton(file)}
               <p className="file-meta">
                 {[
@@ -359,7 +379,7 @@ export default function FileList({
             {activity && <th className="metadata-column">Hoạt động gần nhất</th>}
             {!activity && dateVisible && sortHeader('Thời gian thêm', 'oldest', 'newest')}
             {!activity && showSecondary && (
-              <th className="metadata-column file-upload-column">Tải lên</th>
+              <th className="metadata-column file-upload-column">Trạng thái</th>
             )}
             <th className="metadata-column file-scan-column">
               {activity ? 'Kết quả' : 'Quét / cách ly'}
@@ -372,7 +392,14 @@ export default function FileList({
         </thead>
         <tbody>
           {files.map((file) => (
-            <tr key={file.id} className={selected?.has(file.id) ? 'selected' : ''}>
+            <tr
+              key={file.id}
+              data-file-id={file.id}
+              draggable={
+                draggableFiles && Boolean(file.remoteId) && file.uploadState === 'uploaded'
+              }
+              className={selected?.has(file.id) ? 'selected' : ''}
+            >
               {selected && <td className="checkbox-cell">{checkbox(file)}</td>}
               <td>
                 <div className="file-title-cell">
@@ -385,6 +412,7 @@ export default function FileList({
                     >
                       {file.name}
                     </button>
+                    {compressionBadge(file)}
                     {progress(file)}
                     {file.lifecycleState === 'purged' && (
                       <span className="file-error">Đã xóa vĩnh viễn · chỉ còn lịch sử</span>

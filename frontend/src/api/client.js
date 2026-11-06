@@ -102,7 +102,7 @@ function apiError(xhr) {
 // Tải thật qua API: theo dõi tiến độ, hủy và xử lý lỗi.
 export function uploadFile(
   file,
-  { baseUrl, signal, onProgress = () => {}, xhrFactory = () => new XMLHttpRequest() },
+  { baseUrl, folderId, signal, onProgress = () => {}, xhrFactory = () => new XMLHttpRequest() },
 ) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new DOMException('Đã hủy tải lên', 'AbortError'));
@@ -184,6 +184,7 @@ export function uploadFile(
     lease.signal.addEventListener('abort', abort, { once: true });
     const body = new FormData();
     body.append('file', file, file.name);
+    if (folderId) body.append('folder_id', folderId);
     // Let the browser set the multipart boundary; never place AWS credentials in the client.
     xhr.send(body);
   });
@@ -534,6 +535,58 @@ export async function getSecurityOverview(baseUrl, { cursor, ...options } = {}) 
   return data;
 }
 
+export async function listFolders(baseUrl, signal) {
+  const items = [];
+  const cursors = new Set();
+  let cursor;
+  do {
+    const query = new URLSearchParams(cursor ? { cursor } : {});
+    const page = await requestJson(baseUrl, `/folders?${query}`, { signal });
+    items.push(...page.items);
+    cursor = page.next_cursor;
+    if (cursor && cursors.has(cursor)) throw new ApiError('Danh sách thư mục bị lặp');
+    cursors.add(cursor);
+  } while (cursor);
+  return items.sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+}
+
+export function saveFolder(baseUrl, id, name, parentId = null) {
+  return requestJson(baseUrl, id ? `/folders/${encodeURIComponent(id)}` : '/folders', {
+    method: id ? 'PATCH' : 'POST',
+    body: { name, ...(!id && { parent_id: parentId }) },
+  });
+}
+
+export function changeFolder(baseUrl, id, action, parentId = null) {
+  return requestJson(
+    baseUrl,
+    `/folders/${encodeURIComponent(id)}${action === 'purge' ? '' : `/${action}`}`,
+    {
+      method: action === 'purge' ? 'DELETE' : 'POST',
+      body: action === 'move' ? { parent_id: parentId } : undefined,
+      timeout: action === 'purge' ? 60000 : 15000,
+    },
+  );
+}
+
+export function moveFilesToFolder(baseUrl, fileIds, folderId) {
+  return requestJson(baseUrl, '/folders/move-files', {
+    method: 'POST',
+    body: { file_ids: fileIds, folder_id: folderId },
+  });
+}
+
+export async function quarantineReview(baseUrl, id, { ownerId, reason, decision, signal } = {}) {
+  const path = `${ownerId ? '/admin' : ''}/files/${encodeURIComponent(id)}/quarantine-review`;
+  const query = ownerId ? `?${new URLSearchParams({ owner_id: ownerId })}` : '';
+  const data = await requestJson(baseUrl, path + query, {
+    signal,
+    method: reason ? 'POST' : 'GET',
+    body: reason ? { reason, ...(decision && { decision }) } : undefined,
+  });
+  return data.review;
+}
+
 export async function getAdminFileDetail(baseUrl, id, ownerId, options = {}) {
   const query = new URLSearchParams({ owner_id: ownerId });
   const data = await requestJson(
@@ -549,6 +602,19 @@ export async function getAdminFileDetail(baseUrl, id, ownerId, options = {}) {
   )
     throw new ApiError('Chi tiết quản trị không khớp tệp yêu cầu', { code: 'invalid_response' });
   return { ...data, report: parseScanReport(data.report, id) };
+}
+
+export function runAdminScanOperation(baseUrl, item, action) {
+  const query = new URLSearchParams({ owner_id: item.owner_id });
+  return requestJson(
+    baseUrl,
+    `/admin/files/${encodeURIComponent(item.id)}/scan-operation?${query}`,
+    {
+      method: 'POST',
+      body: { action, request_id: crypto.randomUUID() },
+      timeout: 30000,
+    },
+  );
 }
 
 export async function rescanFile(baseUrl, id, requestId, options = {}) {

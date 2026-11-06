@@ -5,10 +5,12 @@ from .files import (
     require_metadata, owned_file, public_file, decode_cursor, encode_cursor, metadata_failure,
 )
 from ..db import DynamoDBError, file_key
-from ..dependencies import get_settings, get_storage, get_file_metadata, get_current_owner_id
+from ..dependencies import get_settings, get_storage, get_file_metadata, get_current_owner_id, get_audit_log
 from ..schemas.file import ErrorResponse, FileListResponse, FileListItem, RenameRequest, NotificationRequest
 from ..services.lifecycle import FileLifecycle, LifecycleConflict, history_page, notification_page, save_notification
 from ..services.storage import StorageFailure, StorageUnavailable
+from ..services.quarantine_review import ReviewRequest, review_view, save_review
+from ..services.scan_operations import resolve_compression
 
 router = APIRouter(responses={
     401: {"model": ErrorResponse, "description": "Missing, invalid or expired access token"},
@@ -59,6 +61,42 @@ def trash_file(file_id: str, settings=Depends(get_settings), storage=Depends(get
 def restore_file(file_id: str, settings=Depends(get_settings), storage=Depends(get_storage),
     metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
     return run_change("restore", file_id, None, settings, storage, metadata, owner)
+
+
+@router.get("/files/{file_id}/quarantine-review")
+def get_review(file_id: str, settings=Depends(get_settings), metadata=Depends(get_file_metadata),
+               owner=Depends(get_current_owner_id)):
+    require_metadata(settings, metadata)
+    item, _ = owned_file(metadata, owner, file_id)
+    return {"review": review_view(item)}
+
+
+@router.post("/files/{file_id}/compression-request/complete", response_model=FileListItem)
+def complete_compression_request(file_id: str, settings=Depends(get_settings),
+                                 metadata=Depends(get_file_metadata), audit=Depends(get_audit_log),
+                                 owner=Depends(get_current_owner_id)):
+    require_metadata(settings, metadata, audit, writing=True)
+    item, view = owned_file(metadata, owner, file_id)
+    if view.lifecycle_state != "active":
+        raise HTTPException(409, "Tệp không còn ở trạng thái có thể xử lý")
+    try:
+        resolve_compression(metadata, audit, item, owner)
+        _, view = owned_file(metadata, owner, file_id)
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+    return view
+
+
+@router.post("/files/{file_id}/quarantine-review")
+def request_review(file_id: str, payload: ReviewRequest, settings=Depends(get_settings),
+                   metadata=Depends(get_file_metadata), audit=Depends(get_audit_log),
+                   owner=Depends(get_current_owner_id)):
+    require_metadata(settings, metadata, audit, writing=True)
+    item, _ = owned_file(metadata, owner, file_id)
+    try:
+        return {"review": save_review(metadata, audit, item, owner, payload)}
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
 
 
 @router.delete("/files/{file_id}")

@@ -115,7 +115,11 @@ export default function Layout() {
   const counts = {
     '/files': w.files.length,
     '/uploads': active.length || null,
-    '/trash': w.trashFiles?.length || null,
+    '/trash':
+      w.folders.trash.length +
+        w.trashFiles.filter(
+          (file) => !w.folders.trash.some((folder) => folder.id === file.trashRootId),
+        ).length || null,
     starred: w.files.filter((file) => file.starred).length || null,
     quarantine: w.files.filter((file) => file.scanStatus === 'quarantined').length || null,
   };
@@ -272,7 +276,7 @@ export default function Layout() {
               aria-labelledby="shortcut-label"
             >
               <span className="nav-label" id="shortcut-label">
-                BỘ LỌC CÁ NHÂN
+                LỐI TẮT
               </span>
               {shortcuts.map(([key, path, label, Icon]) => navItem(path, label, Icon, key))}
               {navItem('/trash', 'Thùng rác', Trash2)}

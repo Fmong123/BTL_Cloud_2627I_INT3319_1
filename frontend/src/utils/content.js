@@ -6,7 +6,7 @@ export function canReadContent(file) {
     file.remoteId &&
     (!file.lifecycleState || file.lifecycleState === 'active') &&
     file.uploadState === 'uploaded' &&
-    file.scanStatus === 'safe',
+    ['safe', 'restored'].includes(file.scanStatus),
   );
 }
 export function downloadBlockReason(file, { contentAvailable = false, downloadingId = null } = {}) {
@@ -14,7 +14,7 @@ export function downloadBlockReason(file, { contentAvailable = false, downloadin
   if (['trashed', 'deleting'].includes(file?.lifecycleState))
     return 'Không thể tải tệp trong Thùng rác';
   if (!contentAvailable) return 'Máy chủ chưa hỗ trợ tải nội dung';
-  if (!canReadContent(file)) return 'Chỉ tải tệp đã lưu và không phát hiện dữ liệu nhạy cảm';
+  if (!canReadContent(file)) return 'Tệp chưa được phép tải xuống';
   if (file.size > DOWNLOAD_LIMIT) return 'Tải xuống tối đa 100 MB mỗi tệp';
   if (downloadingId) return 'Đang chuẩn bị một tệp khác';
   return '';
@@ -25,7 +25,7 @@ export function previewInfo(file) {
   if (!canReadContent(file))
     return {
       kind: null,
-      reason: 'Chỉ mở tệp đã lưu và không phát hiện dữ liệu nhạy cảm',
+      reason: 'Tệp chưa được phép xem trước',
       limit: 0,
     };
   const type = (file.type || '').split(';')[0].toLowerCase();

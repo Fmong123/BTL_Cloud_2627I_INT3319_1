@@ -29,6 +29,12 @@ const labels = {
   admin_quarantine_read_started: 'Quản trị viên bắt đầu đọc bản cách ly',
   admin_quarantine_read_completed: 'Quản trị viên đã đọc bản cách ly',
   admin_quarantine_read_failed: 'Quản trị viên đọc bản cách ly chưa thành công',
+  quarantine_review_requested: 'Đã gửi yêu cầu xem xét cách ly',
+  quarantine_review_decided: 'Quản trị viên đã quyết định về yêu cầu xem xét',
+  admin_scan_compression_requested: 'Quản trị viên đã yêu cầu nén lại tệp',
+  admin_scan_compression_withdrawn: 'Quản trị viên đã thu hồi yêu cầu nén tệp',
+  compression_request_completed: 'Chủ tệp đã đánh dấu xử lý yêu cầu nén',
+  admin_scan_status_reconciled: 'Quản trị viên đã đối chiếu trạng thái lượt quét',
 };
 
 export default function FileHistory({ file, ownerId, refreshKey }) {

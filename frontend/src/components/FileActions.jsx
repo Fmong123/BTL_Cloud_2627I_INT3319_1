@@ -10,6 +10,7 @@ import {
   X,
   Pencil,
   Trash2,
+  FolderInput,
 } from 'lucide-react';
 import { canRetry, isBusy } from '../utils/workspace.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
@@ -28,6 +29,7 @@ export default function FileActions({
   onRename,
   onTrash,
   canManage,
+  onMove,
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({});
@@ -54,7 +56,7 @@ export default function FileActions({
       if (!rect) return;
       setPosition({
         right: Math.max(12, window.innerWidth - rect.right),
-        ...(rect.bottom + 345 > window.innerHeight
+        ...(rect.bottom + 390 > window.innerHeight
           ? { bottom: window.innerHeight - rect.top + 4 }
           : { top: rect.bottom + 4 }),
       });
@@ -162,6 +164,20 @@ export default function FileActions({
               >
                 <Pencil size={16} />
                 Đổi tên
+              </button>
+            )}
+            {onMove && (
+              <button
+                role="menuitem"
+                disabled={
+                  !file.remoteId ||
+                  file.uploadState !== 'uploaded' ||
+                  (file.lifecycleState && file.lifecycleState !== 'active')
+                }
+                onClick={() => run(onMove)}
+              >
+                <FolderInput size={16} />
+                Di chuyển đến…
               </button>
             )}
             {onTrash && (
