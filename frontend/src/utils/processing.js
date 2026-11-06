@@ -207,6 +207,7 @@ function fileEdits(record) {
     if (!['active', 'trashed', 'deleting', 'purged'].includes(record.lifecycle_state))
       throw new Error('Trạng thái Thùng rác chưa hợp lệ');
     result.lifecycleState = record.lifecycle_state;
+    result.trashRootId = record.trash_root_id ?? null;
     result.lifecycleUpdatedAt =
       timestamp(record.lifecycle_updated_at, 'thời gian thay đổi tệp', true) || 0;
     result.trashedAt = timestamp(record.trashed_at, 'thời gian xóa', true);
@@ -334,7 +335,7 @@ export function mergeServerFiles(current, incoming, { replace = false } = {}) {
           };
     const editPatch = {};
     for (const [stamp, keys] of [
-      ['lifecycleUpdatedAt', ['lifecycleState', 'trashedAt', 'trashExpiresAt']],
+      ['lifecycleUpdatedAt', ['lifecycleState', 'trashedAt', 'trashExpiresAt', 'trashRootId']],
       ['nameUpdatedAt', ['name']],
       ['folderUpdatedAt', ['folderId']],
     ]) {

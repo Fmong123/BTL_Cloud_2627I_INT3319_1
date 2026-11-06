@@ -1,0 +1,387 @@
+.folder-browser {
+  padding: 20px 24px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.folder-navigation,
+.folder-section-label,
+.folder-current-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.folder-breadcrumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--font-navigation);
+  line-height: 1.5;
+}
+.folder-breadcrumbs > span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.folder-breadcrumbs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+  text-align: left;
+  font-size: inherit;
+  min-height: 38px;
+}
+.folder-breadcrumbs button:hover {
+  background: var(--hover);
+}
+.folder-breadcrumbs [aria-current='page'] {
+  color: var(--accent);
+  font-weight: 700;
+}
+.folder-navigation > .inline-actions {
+  flex-wrap: wrap;
+}
+.folder-navigation .text-button,
+.folder-current-actions .text-button {
+  font-size: var(--font-label);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.folder-current-actions {
+  justify-content: flex-start;
+  background: var(--hover);
+  border-radius: 10px;
+  padding: 9px 12px;
+  margin-top: 12px;
+}
+.folder-current-actions > strong {
+  margin-right: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.folder-section-label {
+  margin: 18px 0 10px;
+}
+.folder-section-label h3 {
+  font-size: var(--font-navigation);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.folder-section-label h3 span {
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 500;
+}
+.folder-section-label p,
+.folder-status {
+  font-size: var(--font-label);
+  color: var(--muted);
+  margin: 0;
+}
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 225px), 1fr));
+  gap: 10px;
+  padding-bottom: 12px;
+}
+.folder-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  min-width: 0;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.folder-card:hover,
+.folder-card:focus-within {
+  border-color: var(--control-border);
+  background: var(--hover);
+}
+.folder-card-open {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 12px;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+}
+.folder-card-open svg {
+  color: var(--purple);
+  flex-shrink: 0;
+}
+.folder-card-open span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-control);
+  font-weight: 650;
+}
+.folder-menu {
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+.folder-menu summary {
+  list-style: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 32px;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.folder-menu summary::-webkit-details-marker {
+  display: none;
+}
+.folder-menu summary:hover,
+.folder-menu[open] summary {
+  background: var(--border);
+  color: var(--text);
+}
+.folder-menu-items {
+  position: absolute;
+  right: 8px;
+  top: calc(100% - 5px);
+  z-index: 30;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: var(--shadow);
+  min-width: 220px;
+}
+.folder-menu-items button {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: var(--font-label);
+}
+.folder-menu-items button:hover,
+.folder-menu-items button:focus-visible {
+  background: var(--hover);
+}
+.folder-menu-items button:last-child {
+  color: var(--error);
+}
+.folder-empty-create {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px dashed var(--control-border);
+  padding: 15px;
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: var(--font-label);
+  text-align: left;
+}
+.folder-empty-create:hover {
+  color: var(--accent);
+  background: var(--hover);
+}
+.is-drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--info-bg) !important;
+}
+.folder-dialog .modal-body {
+  padding: 20px 24px;
+}
+.folder-dialog .modal-body > p {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+.folder-name-field {
+  display: grid;
+  gap: 9px;
+}
+.folder-name-field input,
+.folder-picker-search,
+.folder-inline-create input {
+  width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: 9px;
+  padding: 11px 12px;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 0;
+  font-size: var(--font-control);
+}
+.folder-name-field > span,
+.folder-dialog-intro,
+.folder-destination {
+  font-size: var(--font-label);
+  color: var(--muted);
+}
+.folder-dialog .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+.folder-picker-search {
+  margin: 12px 0;
+}
+.folder-picker-list {
+  min-height: 130px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.folder-picker-list > button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--border);
+}
+.folder-picker-list > button:hover {
+  background: var(--hover);
+}
+.folder-picker-list > button > span {
+  flex: 1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.folder-picker-list > button > svg:first-child {
+  color: var(--purple);
+  flex-shrink: 0;
+}
+.folder-picker-list > p {
+  padding: 16px;
+  color: var(--muted);
+  font-size: var(--font-label);
+}
+.folder-picker-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: var(--font-label);
+}
+.folder-inline-create {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+.folder-destination {
+  margin-top: 16px !important;
+}
+.folder-trash {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 18px 0;
+  padding: 16px;
+}
+.folder-trash-heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.folder-trash-heading h3 {
+  font-size: 15px;
+  margin: 0;
+}
+.folder-trash-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.folder-trash-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 9px;
+}
+.folder-trash-name {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex: 1;
+  min-width: 160px;
+}
+.folder-trash-name svg {
+  color: var(--purple);
+  flex-shrink: 0;
+}
+.folder-trash-name strong {
+  overflow-wrap: anywhere;
+}
+.folder-trash-name small {
+  display: block;
+  color: var(--muted);
+}
+.folder-trash-contents {
+  margin-top: 6px;
+  font-size: var(--font-label);
+}
+.folder-trash-contents summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+.folder-trash-contents ul {
+  list-style: none;
+  padding: 6px 0;
+  margin: 0;
+}
+.folder-trash-contents li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+@media (max-width: 650px) {
+  .folder-browser {
+    padding: 14px 14px 6px;
+  }
+  .folder-navigation {
+    align-items: flex-start;
+  }
+  .folder-navigation > .inline-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .folder-section-label p {
+    display: none;
+  }
+  .folder-breadcrumbs button {
+    max-width: 170px;
+    font-size: inherit;
+  }
+  .folder-dialog .modal-body,
+  .folder-dialog .modal-actions {
+    padding: 16px;
+  }
+  .folder-trash-list .inline-actions {
+    flex-wrap: wrap;
+  }
+}

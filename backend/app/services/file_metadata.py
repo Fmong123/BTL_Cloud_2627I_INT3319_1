@@ -19,6 +19,7 @@ class FileMetadataRepository:
         upload_bucket: str | None = None, pipeline_enabled: bool = False,
         created_at: str | None = None, record_type: str | None = None,
         quota_lease: dict | None = None,
+        folder_id: str | None = None,
     ) -> dict:
         identity = file_key(owner_id, file_id)
         require_text(original_name, "original_name")
@@ -53,6 +54,13 @@ class FileMetadataRepository:
             record["upload_bucket"] = upload_bucket
         if record_type is not None:
             record["record_type"] = require_text(record_type, "record_type")
+        folder_changes = []
+        if folder_id:
+            from .folders import Folders
+            folders = Folders(self, owner_id)
+            folders.parent(folder_id)
+            record.update(folder_id=folder_id, folder_updated_at=timestamp)
+            folder_changes.append(folders.revision_action())
         put = dict(TableName=self.table_name, Item=serialize_item(record),
                    ConditionExpression="attribute_not_exists(#owner) AND attribute_not_exists(#file)",
                    ExpressionAttributeNames={"#owner": "owner_id", "#file": "file_id"})
@@ -64,8 +72,10 @@ class FileMetadataRepository:
                     "ConditionExpression": "#token = :token AND #expires >= :now",
                     "ExpressionAttributeNames": {"#token": "token", "#expires": "expires"},
                     "ExpressionAttributeValues": serialize_item({":token": quota_lease["token"], ":now": int(time.time())}),
-                }}, {"Put": put},
+                }}, {"Put": put}, *folder_changes,
             ])
+        elif folder_changes:
+            call_dynamodb(self.client, "transact_write_items", TransactItems=[{"Put": put}, *folder_changes])
         else:
             call_dynamodb(self.client, "put_item", **put)
         return record

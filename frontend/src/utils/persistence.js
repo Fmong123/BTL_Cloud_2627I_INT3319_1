@@ -36,6 +36,7 @@ const historyFields = [
   'compressionResolvedAt',
   'folderId',
   'folderUpdatedAt',
+  'trashRootId',
   'lifecycleState',
   'lifecycleUpdatedAt',
   'trashedAt',

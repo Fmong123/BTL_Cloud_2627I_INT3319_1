@@ -4,11 +4,11 @@ import json
 import logging
 import re
 import unicodedata
-from uuid import uuid4
+from uuid import UUID, uuid4
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from pydantic import ValidationError
 from fastapi.responses import Response, StreamingResponse
 
@@ -192,6 +192,7 @@ def safe_filename(value: str) -> str:
 })
 def upload_file(
     file: UploadFile = File(...),
+    folder_id: UUID | None = Form(None),
     settings: Settings = Depends(get_settings),
     storage: Storage = Depends(get_storage),
     metadata: FileMetadataRepository | None = Depends(get_file_metadata),
@@ -214,6 +215,9 @@ def upload_file(
         if not storage.configured:
             raise HTTPException(503, "Dịch vụ lưu trữ chưa được cấu hình hoặc chưa sẵn sàng")
         metadata_enabled = settings.metadata_mode == "dynamodb"
+        target_folder = str(folder_id) if isinstance(folder_id, UUID) else None
+        if target_folder and not metadata_enabled:
+            raise HTTPException(503, "Cần bật metadata để tải tệp vào thư mục")
         if metadata_enabled:
             require_metadata(settings, metadata, audit, writing=True)
         elif storage.mode == "s3":
@@ -233,6 +237,7 @@ def upload_file(
                         upload_bucket=settings.s3_bucket_name if storage.mode == "s3" else None,
                         created_at=timestamp, pipeline_enabled=settings.scan_pipeline_enabled,
                         quota_lease=lease,
+                        **({"folder_id": target_folder} if target_folder else {}),
                     )
                 created = True
                 audit.write_event(
@@ -245,6 +250,8 @@ def upload_file(
             except QuotaBusy:
                 raise HTTPException(429, "Đang giữ chỗ dung lượng cho lượt tải khác — hãy thử lại", headers={"Retry-After": "2"}) from None
             except DynamoDBError as exc:
+                if target_folder and exc.code == "TransactionCanceledException":
+                    raise HTTPException(409, "Thư mục hoặc lượt tải vừa thay đổi. Hãy làm mới và thử lại.") from None
                 if created:
                     record_upload_failure(
                         metadata, audit, owner_id, file_id,
@@ -376,7 +383,7 @@ def get_file_status(
         scan_started_at=view.scan_started_at,
         **{k: getattr(view, k) for k in ("lifecycle_state", "lifecycle_updated_at", "trashed_at",
             "trash_expires_at", "display_name", "name_updated_at", "compression_requested_at",
-            "compression_resolved_at", "compression_resolution")},
+            "compression_resolved_at", "compression_resolution", "folder_id", "folder_updated_at", "trash_root_id")},
     )
 
 

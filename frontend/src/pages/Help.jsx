@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, CloudUpload, Search, ShieldCheck } from 'lucide-react';
+import { ArrowRight, CloudUpload, Folder, Search, ShieldCheck } from 'lucide-react';
 const guides = [
   [
     CloudUpload,
@@ -14,6 +14,13 @@ const guides = [
     'Gõ “bao cao” vẫn tìm được “Báo cáo.pdf”. Lọc loại, trạng thái hoặc tệp đánh dấu; chọn nhiều để thao tác cùng lúc.',
     '/files',
     'Mở danh sách',
+  ],
+  [
+    Folder,
+    'Sắp xếp bằng thư mục',
+    'Tạo thư mục ngay trong Tệp của tôi, bấm để mở và dùng đường dẫn để quay lại. Menu dấu ba chấm cho phép đổi tên, di chuyển và đưa thư mục vào Thùng rác. Chọn tệp rồi bấm “Di chuyển đến…” hoặc kéo tệp lên thư mục. Tệp tải mới nằm trong thư mục đang mở; thư mục đã xóa có thể khôi phục cùng nội dung trong 30 ngày.',
+    '/files',
+    'Mở thư mục',
   ],
   [
     ShieldCheck,

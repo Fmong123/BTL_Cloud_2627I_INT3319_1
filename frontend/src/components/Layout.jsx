@@ -115,7 +115,11 @@ export default function Layout() {
   const counts = {
     '/files': w.files.length,
     '/uploads': active.length || null,
-    '/trash': w.trashFiles?.length || null,
+    '/trash':
+      w.folders.trash.length +
+        w.trashFiles.filter(
+          (file) => !w.folders.trash.some((folder) => folder.id === file.trashRootId),
+        ).length || null,
     starred: w.files.filter((file) => file.starred).length || null,
     quarantine: w.files.filter((file) => file.scanStatus === 'quarantined').length || null,
   };

@@ -10,6 +10,10 @@
     sans-serif;
   font-synthesis: none;
   font-size: 15px;
+  --font-control: 15px;
+  --font-label: 14px;
+  --font-caption: 13px;
+  --font-navigation: 16px;
   font-weight: 500;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -234,7 +238,7 @@ body.has-modal {
   gap: 8px;
   padding: 11px 17px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--font-label);
   font-weight: 700;
   line-height: 1.5;
   white-space: nowrap;
@@ -648,7 +652,7 @@ main {
 }
 .files-heading p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--font-label);
   margin-top: 3px;
 }
 .count-badge {
@@ -668,7 +672,7 @@ main {
   padding: 0 25px 18px;
 }
 .file-toolbar select {
-  font-size: 12px;
+  font-size: var(--font-control);
   padding: 9px;
   flex: 1 0 120px;
 }
@@ -688,7 +692,7 @@ main {
   padding: 10px 0;
   width: 100%;
   background: none;
-  font-size: 12px;
+  font-size: var(--font-control);
 }
 .search-field:focus-within {
   outline: 2px solid var(--focus);
@@ -739,7 +743,7 @@ main {
   padding: 12px 25px;
   background: var(--hover);
   border-top: 1px solid var(--border);
-  font-size: 12px;
+  font-size: var(--font-label);
 }
 .selection-toolbar button {
   display: inline-flex;
@@ -1107,7 +1111,7 @@ progress::-moz-progress-bar {
 .preference-fields label {
   display: grid;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--font-label);
 }
 .mode-option {
   display: flex;
@@ -1135,7 +1139,7 @@ progress::-moz-progress-bar {
 }
 .connection-fields > label {
   display: block;
-  font-size: 13px;
+  font-size: var(--font-label);
   margin-bottom: 8px;
 }
 .connection-input {

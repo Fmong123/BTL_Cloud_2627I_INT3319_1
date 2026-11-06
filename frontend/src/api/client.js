@@ -102,7 +102,7 @@ function apiError(xhr) {
 // Tải thật qua API: theo dõi tiến độ, hủy và xử lý lỗi.
 export function uploadFile(
   file,
-  { baseUrl, signal, onProgress = () => {}, xhrFactory = () => new XMLHttpRequest() },
+  { baseUrl, folderId, signal, onProgress = () => {}, xhrFactory = () => new XMLHttpRequest() },
 ) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new DOMException('Đã hủy tải lên', 'AbortError'));
@@ -184,6 +184,7 @@ export function uploadFile(
     lease.signal.addEventListener('abort', abort, { once: true });
     const body = new FormData();
     body.append('file', file, file.name);
+    if (folderId) body.append('folder_id', folderId);
     // Let the browser set the multipart boundary; never place AWS credentials in the client.
     xhr.send(body);
   });
@@ -549,11 +550,23 @@ export async function listFolders(baseUrl, signal) {
   return items.sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 }
 
-export function saveFolder(baseUrl, id, name) {
+export function saveFolder(baseUrl, id, name, parentId = null) {
   return requestJson(baseUrl, id ? `/folders/${encodeURIComponent(id)}` : '/folders', {
     method: id ? 'PATCH' : 'POST',
-    body: { name },
+    body: { name, ...(!id && { parent_id: parentId }) },
   });
+}
+
+export function changeFolder(baseUrl, id, action, parentId = null) {
+  return requestJson(
+    baseUrl,
+    `/folders/${encodeURIComponent(id)}${action === 'purge' ? '' : `/${action}`}`,
+    {
+      method: action === 'purge' ? 'DELETE' : 'POST',
+      body: action === 'move' ? { parent_id: parentId } : undefined,
+      timeout: action === 'purge' ? 60000 : 15000,
+    },
+  );
 }
 
 export function moveFilesToFolder(baseUrl, fileIds, folderId) {

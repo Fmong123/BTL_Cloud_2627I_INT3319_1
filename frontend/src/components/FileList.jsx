@@ -47,6 +47,7 @@ export default function FileList({
   showSize = true,
   showDate = true,
   onNameResize,
+  draggableFiles = false,
   ...actions
 }) {
   const tableContainer = useRef(null);
@@ -149,7 +150,7 @@ export default function FileList({
   const statuses = (file) => (
     <div className="file-card-statuses">
       <div>
-        <span>Tải lên</span>
+        <span>Trạng thái</span>
         <StatusBadge {...file} />
       </div>
       <div>
@@ -292,6 +293,10 @@ export default function FileList({
         <div className={`file-grid density-${density}`}>
           {files.map((file) => (
             <article
+              data-file-id={file.id}
+              draggable={
+                draggableFiles && Boolean(file.remoteId) && file.uploadState === 'uploaded'
+              }
               className={`file-card ${selected?.has(file.id) ? 'selected' : ''}`}
               key={file.id}
             >
@@ -374,7 +379,7 @@ export default function FileList({
             {activity && <th className="metadata-column">Hoạt động gần nhất</th>}
             {!activity && dateVisible && sortHeader('Thời gian thêm', 'oldest', 'newest')}
             {!activity && showSecondary && (
-              <th className="metadata-column file-upload-column">Tải lên</th>
+              <th className="metadata-column file-upload-column">Trạng thái</th>
             )}
             <th className="metadata-column file-scan-column">
               {activity ? 'Kết quả' : 'Quét / cách ly'}
@@ -387,7 +392,14 @@ export default function FileList({
         </thead>
         <tbody>
           {files.map((file) => (
-            <tr key={file.id} className={selected?.has(file.id) ? 'selected' : ''}>
+            <tr
+              key={file.id}
+              data-file-id={file.id}
+              draggable={
+                draggableFiles && Boolean(file.remoteId) && file.uploadState === 'uploaded'
+              }
+              className={selected?.has(file.id) ? 'selected' : ''}
+            >
               {selected && <td className="checkbox-cell">{checkbox(file)}</td>}
               <td>
                 <div className="file-title-cell">

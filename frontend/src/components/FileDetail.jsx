@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
+import { folderPath } from '../state/useFolders.js';
 import { changeFile } from '../api/client.js';
 import { formatBytes, formatFileType } from '../utils/files.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
@@ -262,7 +263,15 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
             </button>
             <dl className="file-details">
               {copyRow('Tên tệp', file.name)}
-              {row('Tải lên', <StatusBadge {...file} />)}
+              {file.mode === 'api' &&
+                row(
+                  'Thư mục',
+                  [
+                    'Tệp của tôi',
+                    ...folderPath(w.folders.items, file.folderId).map((item) => item.name),
+                  ].join(' / '),
+                )}
+              {row('Trạng thái', <StatusBadge {...file} />)}
               {row('Quét / cách ly', <ScanBadge {...file} />)}
               {row('Kích thước', formatBytes(file.size))}
               {row('Định dạng', formatFileType(file))}
@@ -315,7 +324,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                   {uploadConfirmed ? <Check size={17} /> : <Clock3 size={17} />}
                 </span>
                 <div>
-                  <h3>Tải lên</h3>
+                  <h3>Trạng thái lưu tệp</h3>
                   <StatusBadge {...file} />
                   <p>
                     {file.mode === 'demo'

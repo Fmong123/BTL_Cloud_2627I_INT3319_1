@@ -672,7 +672,7 @@ html:has(.file-preview-modal[open]) {
   font-size: 14px;
 }
 .workspace-page .stat-link {
-  font-size: 13px;
+  font-size: var(--font-label);
 }
 .workspace-page .stat strong {
   font-size: 32px;
@@ -955,7 +955,7 @@ html:has(.file-preview-modal[open]) {
   font-size: 20px;
 }
 .workspace-page .files-heading p {
-  font-size: 13px;
+  font-size: var(--font-label);
 }
 .workspace-page .file-heading-actions {
   flex-wrap: wrap;
@@ -975,7 +975,7 @@ html:has(.file-preview-modal[open]) {
 }
 .library-drop-hint {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-label);
   line-height: 1.5;
 }
 .workspace-page .file-toolbar {
@@ -992,7 +992,7 @@ html:has(.file-preview-modal[open]) {
   padding-inline: 22px;
 }
 .workspace-page .file-area-tabs button {
-  font-size: 14px;
+  font-size: var(--font-control);
 }
 .workspace-page .extra-file-filters,
 .workspace-page .active-filters {
@@ -1001,16 +1001,16 @@ html:has(.file-preview-modal[open]) {
 .workspace-page .extra-file-filters > summary,
 .workspace-page .file-control-popover > summary,
 .workspace-page .files-footer {
-  font-size: 13px;
+  font-size: var(--font-label);
 }
 .workspace-page .selection-toolbar {
   min-height: 52px;
   padding: 10px 22px;
-  font-size: 13px;
+  font-size: var(--font-label);
   gap: 12px;
 }
 .workspace-page .selection-toolbar button {
-  font-size: 13px;
+  font-size: var(--font-label);
 }
 .app-shell .processing-table {
   width: 100%;
@@ -1238,6 +1238,6 @@ button.scan-badge:hover {
     padding-inline: 10px;
   }
   .workspace-page .file-area-tabs button {
-    font-size: 13px;
+    font-size: var(--font-label);
   }
 }

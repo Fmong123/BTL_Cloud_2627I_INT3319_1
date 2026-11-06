@@ -21,6 +21,7 @@ import { useRemoteLibrary } from './useRemoteLibrary.js';
 import { useNotifications } from './useNotifications.js';
 import { usePersistentStars } from './usePersistentStars.js';
 import { useStorageQuota } from './useStorageQuota.js';
+import { useFolders } from './useFolders.js';
 import { useUploadHistory } from './useUploadHistory.js';
 import { HISTORY_KEY, historySnapshot, readHistory, writeRecords } from '../utils/persistence.js';
 import { canReadContent, previewInfo, downloadBlockReason } from '../utils/content.js';
@@ -257,6 +258,11 @@ export function WorkspaceProvider({ children }) {
   );
   const lifecycleAvailable =
     preferences.mode === 'demo' || currentHealth?.capabilities?.file_lifecycle === true;
+  const folders = useFolders({
+    baseUrl: preferences.baseUrl,
+    scope,
+    available: preferences.mode === 'api' && currentHealth?.capabilities?.folders === true,
+  });
   const quotaAvailable =
     preferences.mode === 'api' && currentHealth?.capabilities?.storage_quota === true;
   const storageQuota = useStorageQuota({
@@ -372,6 +378,7 @@ export function WorkspaceProvider({ children }) {
     async run(item, signal) {
       return (item.connection.mode === 'demo' ? demoUpload : uploadFile)(item.original, {
         baseUrl: item.connection.baseUrl,
+        folderId: item.folderId,
         signal,
         onProgress: (progress) => update(item.id, { progress }),
       });
@@ -481,6 +488,7 @@ export function WorkspaceProvider({ children }) {
         type: original.type,
         original,
         connection: { ...connection },
+        folderId: connection.folderId || null,
         scope: targetScope,
         origin: 'local',
         mode: connection.mode,
@@ -501,7 +509,7 @@ export function WorkspaceProvider({ children }) {
       `Đã thêm ${next.length} tệp${next.some((file) => file.validationError) ? ' — có tệp cần kiểm tra' : ''}`,
     );
   }
-  function addFiles(selected) {
+  function addFiles(selected, destination) {
     if (!selected.length) return;
     if (duplicateRef.current) {
       notify('Hãy xử lý các tệp trùng trước khi thêm lượt mới');
@@ -526,10 +534,21 @@ export function WorkspaceProvider({ children }) {
       known.add(key);
     }
     const batch = { id: crypto.randomUUID(), createdAt: Date.now() };
-    if (fresh.length) enqueue(fresh, undefined, limit, batch);
+    // Snapshot the destination per upload; navigation/retry cannot move it.
+    const hashQuery = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    const currentFolder =
+      destination === undefined && window.location.hash.startsWith('#/files')
+        ? hashQuery.get('folder')
+        : destination;
+    const folderId =
+      folders.available && currentFolder && !['root', 'all'].includes(currentFolder)
+        ? currentFolder
+        : null;
+    const connection = { mode: preferences.mode, baseUrl: preferences.baseUrl, folderId };
+    if (fresh.length) enqueue(fresh, connection, limit, batch);
     if (repeated.length) {
       duplicateRef.current = {
-        connection: { mode: preferences.mode, baseUrl: preferences.baseUrl },
+        connection,
         limit,
         batch,
       };
@@ -869,6 +888,7 @@ export function WorkspaceProvider({ children }) {
         activityFiles,
         historyError: archived.error,
         lifecycleAvailable,
+        folders,
         canManage,
         requestFileChange,
         changingFiles,
@@ -925,6 +945,7 @@ export function WorkspaceProvider({ children }) {
         sync: remote.sync,
         statusChecks: remote.statusChecks,
         refreshFiles: () => {
+          folders.refresh();
           setHistoryRevision((value) => value + 1);
           remote.refreshFiles();
         },

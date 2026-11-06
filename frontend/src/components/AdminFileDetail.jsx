@@ -114,6 +114,10 @@ export default function AdminFileDetail({
                   <h3>Thông tin tệp</h3>
                   <dl className="file-details">
                     <div>
+                      <dt>Thư mục của chủ sở hữu</dt>
+                      <dd>{['Tệp của tôi', ...(data.folder_path || [])].join(' / ')}</dd>
+                    </div>
+                    <div>
                       <dt>Trạng thái</dt>
                       <dd>
                         <ScanBadge

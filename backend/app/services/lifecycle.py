@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import unicodedata
 
 from ..db import (
-    DynamoDBConflict, call_dynamodb, deserialize_item, file_key,
+    DynamoDBConflict, DynamoDBError, call_dynamodb, deserialize_item, file_key,
     query_page, query_parameters, serialize_item, utc_timestamp,
 )
 from .storage import LocalStorage, StorageFailure, StorageUnavailable
@@ -16,6 +16,7 @@ HISTORY_FIELDS = (
     "quarantined_at", "starred", "starred_updated_at", "trashed_at", "trash_expires_at",
     "lifecycle_state", "lifecycle_updated_at",
     "rescan_requested_at",
+    "folder_id", "folder_updated_at", "trash_root_id",
 )
 
 
@@ -44,7 +45,7 @@ class FileLifecycle:
     def __init__(self, metadata, storage, settings):
         self.metadata, self.storage, self.settings = metadata, storage, settings
 
-    def change(self, item, fields, *, expected_states, require_idle=False):
+    def change(self, item, fields, *, expected_states, require_idle=False, folder_guard=None):
         names = {"#owner": "owner_id", "#life": "lifecycle_state"}
         values, sets = {}, []
         for index, (name, value) in enumerate(fields.items()):
@@ -68,14 +69,21 @@ class FileLifecycle:
             values.update({":uploaded": "uploaded", ":failed": "failed", ":scanning": "scanning", ":flagged": "flagged"})
             condition += " AND #upload IN (:uploaded, :failed) AND #scan <> :scanning AND #scan <> :flagged"
         try:
-            response = call_dynamodb(self.metadata.client, "update_item",
+            params = dict(
                 TableName=self.metadata.table_name,
                 Key=serialize_item(file_key(item["owner_id"], item["file_id"])),
                 UpdateExpression="SET " + ", ".join(sets), ConditionExpression=condition,
-                ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values),
-                ReturnValues="ALL_NEW")
+                ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values))
+            if folder_guard:
+                call_dynamodb(self.metadata.client, "transact_write_items", TransactItems=[folder_guard, {"Update": params}])
+                return self.metadata.get_file(item["owner_id"], item["file_id"])
+            response = call_dynamodb(self.metadata.client, "update_item", **params, ReturnValues="ALL_NEW")
         except DynamoDBConflict:
             raise LifecycleConflict("Tệp đã đổi trạng thái hoặc đang xử lý — hãy làm mới danh sách") from None
+        except DynamoDBError as exc:
+            if exc.code == "TransactionCanceledException":
+                raise LifecycleConflict("Thư mục hoặc tệp vừa thay đổi — hãy làm mới danh sách") from None
+            raise
         return deserialize_item(response["Attributes"])
 
     def rename(self, item, name):
@@ -97,9 +105,20 @@ class FileLifecycle:
             return item
         if expired(item):
             raise LifecycleConflict("Tệp đã hết thời hạn khôi phục 30 ngày")
+        fields = {"lifecycle_state": "active", "lifecycle_updated_at": utc_timestamp(), "trash_root_id": None}
+        folder_guard = None
+        if item.get("folder_id"):
+            from .folders import Folders
+            folders = Folders(self.metadata, item["owner_id"])
+            folder = folders.rows.get(item["folder_id"])
+            folder_guard = folders.revision_action()
+            if folder and state(folder) != "active":
+                raise LifecycleConflict("Hãy khôi phục thư mục chứa tệp từ Thùng rác trước")
+            if not folder:
+                fields.update(folder_id=None, folder_updated_at=fields["lifecycle_updated_at"])
         # A concurrent deletion changes life to deleting before touching bytes.
-        return self.change(item, {"lifecycle_state": "active", "lifecycle_updated_at": utc_timestamp()},
-                           expected_states=["trashed"])
+        return self.change(item, fields,
+                           expected_states=["trashed"], folder_guard=folder_guard)
 
     def purge(self, item):
         if state(item) not in {"trashed", "deleting"}:

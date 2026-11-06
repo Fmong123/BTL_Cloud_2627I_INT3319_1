@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Star,
   Trash2,
+  FolderInput,
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
@@ -22,7 +23,8 @@ import { canRetry, filterFiles, isBusy, savedFilterValues, sorts } from '../util
 import { formatBytes } from '../utils/files.js';
 import { isAttention, scanStates } from '../utils/processing.js';
 import FileList from './FileList.jsx';
-import FolderControls from './FolderControls.jsx';
+import FolderBrowser, { FILE_DRAG_TYPE } from './FolderBrowser.jsx';
+import FolderDialogs from './FolderDialogs.jsx';
 import LibraryWarnings from './LibraryWarnings.jsx';
 import FileDetail from './FileDetail.jsx';
 import FileSelectionDetail from './FileSelectionDetail.jsx';
@@ -39,7 +41,7 @@ export const sortLabels = {
   'size-desc': 'Lớn nhất trước',
 };
 const statuses = {
-  all: 'Mọi trạng thái tải',
+  all: 'Mọi trạng thái',
   active: 'Đang tải / xử lý',
   success: 'Đã lưu',
   error: 'Lỗi tải lên',
@@ -75,19 +77,23 @@ export default function FileBrowser({ activity = false, overview = false }) {
   const [detailDismissed, setDetailDismissed] = useState(false);
   const [detailTab, setDetailTab] = useState('information');
   const [dragging, setDragging] = useState(false);
+  const [folderAction, setFolderAction] = useState(null);
   const dropHintId = useId();
   const workspaceRef = useRef(null);
   const anchorRef = useRef(null);
   const savedRef = useRef(null);
   const columnsRef = useRef(null);
   const searchRef = useRef(null);
-  const foldersEnabled = !activity && !overview && w.preferences.mode === 'api';
-  const folder = foldersEnabled ? params.get('folder') : null;
+  const foldersEnabled = !activity && !overview && w.folders.available;
+  const folder = foldersEnabled
+    ? params.get('folder') ||
+      (params.has('section') || params.has('scan') || params.has('q') ? 'all' : 'root')
+    : null;
   const source = overview
     ? [...w.files].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5)
     : activity
       ? w.activityFiles || w.files
-      : folder
+      : folder && folder !== 'all'
         ? w.files.filter((file) => (folder === 'root' ? !file.folderId : file.folderId === folder))
         : w.files;
   const sync = w.sync || { phase: 'idle' };
@@ -221,7 +227,8 @@ export default function FileBrowser({ activity = false, overview = false }) {
     setParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (value && (value !== 'all' || (activity && key === 'date'))) next.set(key, value);
+        if (value && (value !== 'all' || key === 'folder' || (activity && key === 'date')))
+          next.set(key, value);
         else next.delete(key);
         if (key === 'date' && value !== 'custom') {
           next.delete('dateFrom');
@@ -251,6 +258,14 @@ export default function FileBrowser({ activity = false, overview = false }) {
       return next;
     });
     anchorRef.current = id;
+  }
+  function navigateFolder(id) {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set('folder', id || 'root');
+      for (const key of ['q', 'page', 'section']) next.delete(key);
+      return next;
+    });
   }
   function saveFilter(event) {
     event.preventDefault();
@@ -370,6 +385,25 @@ export default function FileBrowser({ activity = false, overview = false }) {
       )}
       <div
         className={`file-browser-layout drive-workspace ${panelOpen ? 'has-panel' : ''}`}
+        onDragStartCapture={(event) => {
+          if (!foldersEnabled) return;
+          const element = event.target.closest('[data-file-id]');
+          if (!element) return;
+          const file = pageFiles.find((item) => item.id === element.dataset.fileId);
+          const moving = selected.has(file?.id) ? selectedFiles : [file];
+          if (
+            !moving.length ||
+            moving.some((item) => !item?.remoteId || item.uploadState !== 'uploaded')
+          ) {
+            event.preventDefault();
+            return;
+          }
+          event.dataTransfer.setData(
+            FILE_DRAG_TYPE,
+            JSON.stringify({ scope: w.scope, fileIds: moving.map((item) => item.remoteId) }),
+          );
+          event.dataTransfer.effectAllowed = 'move';
+        }}
         onDragOver={(event) => {
           if (!Array.from(event.dataTransfer.types).includes('Files')) return;
           event.preventDefault();
@@ -380,6 +414,8 @@ export default function FileBrowser({ activity = false, overview = false }) {
           if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false);
         }}
         onDrop={(event) => {
+          if (event.defaultPrevented || !Array.from(event.dataTransfer.types).includes('Files'))
+            return;
           event.preventDefault();
           setDragging(false);
           w.addFiles(Array.from(event.dataTransfer.files));
@@ -436,16 +472,14 @@ export default function FileBrowser({ activity = false, overview = false }) {
             </div>
           )}
           {foldersEnabled && (
-            <FolderControls
+            <FolderBrowser
               key={scope}
-              baseUrl={w.preferences.baseUrl}
               folder={folder}
-              onFolder={(value) => change('folder', value)}
-              selected={selectedFiles}
-              onMoved={() => {
-                setSelected(new Set());
-                w.refreshFiles();
-              }}
+              onFolder={navigateFolder}
+              onAction={setFolderAction}
+              query={q}
+              onDropComplete={() => setSelected(new Set())}
+              onTargetDrag={() => setDragging(false)}
             />
           )}
           <div className="files-heading">
@@ -547,17 +581,17 @@ export default function FileBrowser({ activity = false, overview = false }) {
                   <span className="visually-hidden">Tùy chỉnh hiển thị</span>
                 </summary>
                 <div className="file-control-panel">
-                  <label>
-                    Mật độ
+                  <label className="display-spacing-control">
+                    Khoảng cách dòng
                     <select
-                      aria-label="Mật độ hiển thị"
+                      aria-label="Khoảng cách dòng"
                       value={w.preferences.density || 'comfortable'}
                       onChange={(event) =>
                         w.setPreferences((p) => ({ ...p, density: event.target.value }))
                       }
                     >
-                      <option value="comfortable">Thoải mái</option>
-                      <option value="compact">Gọn</option>
+                      <option value="comfortable">Rộng rãi</option>
+                      <option value="compact">Thu gọn</option>
                     </select>
                   </label>
                   {!activity && (
@@ -716,7 +750,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
           >
             <summary>
               <SlidersHorizontal size={14} />
-              Bộ lọc thêm
+              Bộ lọc
             </summary>
             <div>
               {!activity && (
@@ -740,7 +774,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
                 </label>
               )}
               <label>
-                Tải lên
+                Trạng thái
                 <select
                   aria-label="Trạng thái tệp"
                   value={status}
@@ -887,6 +921,23 @@ export default function FileBrowser({ activity = false, overview = false }) {
                 {selectedFiles.length} đã chọn trên trang ·{' '}
                 {formatBytes(selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0))}
               </strong>
+              {foldersEnabled && (
+                <button
+                  disabled={selectedFiles.some(
+                    (file) => !file.remoteId || file.uploadState !== 'uploaded',
+                  )}
+                  onClick={() =>
+                    setFolderAction({
+                      kind: 'move-files',
+                      files: selectedFiles,
+                      parentId: folder === 'root' || folder === 'all' ? null : folder,
+                    })
+                  }
+                >
+                  <FolderInput size={16} />
+                  Di chuyển đến…
+                </button>
+              )}
               <button
                 disabled={
                   !selectedFiles.some(
@@ -996,6 +1047,17 @@ export default function FileBrowser({ activity = false, overview = false }) {
                 onCancel={(id) => w.cancel([id])}
                 onRename={(id) => w.requestFileChange('name', [id])}
                 onTrash={(id) => w.requestFileChange('trash', [id])}
+                onMove={
+                  foldersEnabled
+                    ? (id) =>
+                        setFolderAction({
+                          kind: 'move-files',
+                          files: [pageFiles.find((file) => file.id === id)],
+                          parentId: folder === 'root' || folder === 'all' ? null : folder,
+                        })
+                    : undefined
+                }
+                draggableFiles={foldersEnabled}
                 canManage={w.canManage}
                 onChoose={() => w.inputRef.current.click()}
                 sort={sort}
@@ -1109,6 +1171,17 @@ export default function FileBrowser({ activity = false, overview = false }) {
           </div>
         )}
       </div>
+      {folderAction && (
+        <FolderDialogs
+          key={`${folderAction.kind}:${folderAction.folder?.id || ''}`}
+          action={folderAction}
+          onClose={() => {
+            setFolderAction(null);
+            setSelected(new Set());
+          }}
+          onNavigate={navigateFolder}
+        />
+      )}
     </>
   );
 }

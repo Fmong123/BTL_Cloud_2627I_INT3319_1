@@ -62,6 +62,7 @@ class FileListItem(UploadResponse, ScanSummary):
     name_updated_at: str | None = None
     folder_id: str | None = None
     folder_updated_at: str | None = None
+    trash_root_id: str | None = None
 
     @field_validator("starred_updated_at")
     @classmethod
@@ -101,6 +102,9 @@ class FileStatusResponse(ScanSummary):
     trash_expires_at: str | None = None
     display_name: str | None = None
     name_updated_at: str | None = None
+    folder_id: str | None = None
+    folder_updated_at: str | None = None
+    trash_root_id: str | None = None
 
 
 class RenameRequest(BaseModel):
@@ -172,3 +176,4 @@ class AdminFileDetail(BaseModel):
     can_read: bool
     quarantine_review: dict[str, str] | None = None
     report: FileScanReport
+    folder_path: list[str] | None = None

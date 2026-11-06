@@ -235,9 +235,16 @@ def file_detail(file_id: UUID, request: Request, response: Response, owner_id: U
     response.headers["Cache-Control"] = "no-store"
     item, view, accounts = admin_file(request, owner_id, file_id, settings, metadata)
     # Only schema-whitelisted metadata and aggregate findings; never raw text or quarantine locations.
+    folder_path = None
+    if item.get("folder_id"):
+        from ..services.folders import Folders, path_names
+        try:
+            folder_path = path_names(Folders(metadata, str(owner_id)).rows, item["folder_id"])
+        except DynamoDBError as exc:
+            raise metadata_failure(exc) from None
     return {"file": view.model_dump(), "owner_name": accounts[str(owner_id)]["name"],
             "report": scan_report(item, view).model_dump(), "can_read": can_read_quarantine(item, settings),
-            "quarantine_review": review_view(item)}
+            "quarantine_review": review_view(item), "folder_path": folder_path}
 
 
 @router.post("/admin/files/{file_id}/quarantine-review")

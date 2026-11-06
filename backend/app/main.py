@@ -232,6 +232,7 @@ def create_app(
                 "storage_quota": bool(metadata_ready or isinstance(selected_storage, LocalStorage)),
                 "scan_report": bool(metadata_ready),
                 "file_lifecycle": bool(metadata_ready),
+                "folders": bool(metadata_ready),
                 "persistent_activity": bool(metadata_ready),
                 "rescan": bool(metadata_ready and settings.scan_pipeline_enabled and app.state.rescanner is not None),
             },
