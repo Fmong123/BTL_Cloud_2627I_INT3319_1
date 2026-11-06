@@ -60,7 +60,7 @@ const scanReasons = {
   execution_result_missing: 'Lượt quét đã kết thúc nhưng MâySec chưa ghi nhận được kết quả.',
   rescan_start_failed: 'Chưa khởi chạy được lượt quét lại.',
   scan_detail_unavailable: 'Máy chủ chưa cung cấp lý do có thể hiển thị.',
-  quota_exceeded: 'Không đủ dung lượng trong gói 1 GB.',
+  quota_exceeded: 'Không đủ dung lượng theo hạn mức tài khoản.',
 };
 export function scanExplanation(file) {
   return (

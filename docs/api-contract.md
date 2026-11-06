@@ -20,7 +20,7 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 | GET | /files/{id}/content | mode=preview hoặc download; mặc định download |
 | GET | /files/{id}/history | Owner-only, limit/cursor, sự kiện audit đã lọc nội dung |
 | GET | /admin/quarantine | Admin-only; limit/cursor, owner_id, status, q; trả items/owners/next_cursor |
-| GET | /admin/overview | Admin-only; cursor, tổng hợp theo từng trang toàn User Pool; counts/users/next_cursor |
+| GET | /admin/overview | Admin-only; cursor, tổng hợp các tài khoản user thuộc User Pool; counts/users/next_cursor |
 | GET | /admin/files/{id} | Admin-only, owner_id bắt buộc; metadata, owner_name, can_read và report tổng hợp |
 | GET | /admin/files/{id}/history | Admin-only, owner_id bắt buộc; limit/cursor, lịch sử có tên người/hệ thống thực hiện |
 | GET | /admin/files/{id}/content | Admin-only, owner_id bắt buộc; version cách ly đúng cấu hình, ghi audit trước khi trả byte |
@@ -34,18 +34,20 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 
 Danh sách trả items/next_cursor. Thứ tự backend theo file_id; frontend đọc đủ trang rồi tìm/lọc/sắp xếp trên metadata. Cursor được kiểm partition/owner; không phải token xác thực. Không có GET /; GET /upload trả 405.
 
-Quản trị cách ly lọc ở server trước khi trả từng trang: `status=all|flagged|quarantined|quarantine_delete_failed`, `owner_id` là sub thuộc pool; `q` tìm tên hiển thị không phân biệt hoa thường/dấu tiếng Việt, tối đa 200 ký tự. Mỗi lượt tối đa 10 Query; trang có thể rỗng nhưng còn next_cursor. Cursor gắn với pool, danh sách owner và bộ lọc; đổi bộ lọc phải bắt đầu lại. Không dùng Scan hoặc yêu cầu GSI mới. Số tệp trên giao diện là số đã tải, không phải tổng toàn hệ thống.
+Toàn bộ API quản trị chỉ xem và xử lý dữ liệu của tài khoản có vai trò `user` trong Cognito. Danh sách, bộ lọc chủ sở hữu và tổng hợp loại cả admin đang đăng nhập, admin khác và tài khoản chưa phân quyền. Gọi trực tiếp owner_id ngoài phạm vi trả 403 trước khi đọc dữ liệu tệp hoặc thay đổi tài khoản đích; owner không tồn tại trả 404. Áp dụng cho tài khoản/quota, thống kê/xuất dữ liệu, chi tiết/lịch sử/nội dung tệp, duyệt cách ly và thao tác quét. Directory được đọc mới mỗi request quản trị; lỗi directory trả 503, không dùng cache quyền cũ để cho phép truy cập. Drive cá nhân của admin vẫn dùng các API owner-only.
+
+Quản trị cách ly lọc ở server trước khi trả từng trang: `status=all|flagged|quarantined|quarantine_delete_failed`, `owner_id` là sub của user thuộc pool; `q` tìm tên hiển thị không phân biệt hoa thường/dấu tiếng Việt, tối đa 200 ký tự. Mỗi lượt tối đa 10 Query; trang có thể rỗng nhưng còn next_cursor. Cursor gắn với pool, danh sách user và bộ lọc; đổi bộ lọc hoặc phạm vi user phải bắt đầu lại. Không dùng Scan hoặc yêu cầu GSI mới. Số tệp trên giao diện là số đã tải, không phải tổng toàn hệ thống.
 
 Lọc cập nhật bằng `updated_from` (bao gồm) và `updated_before` (không bao gồm), ISO datetime có múi giờ. Giao diện chuyển khoảng ngày theo múi giờ trình duyệt sang UTC; cursor cũng gắn với khoảng thời gian này. Thời điểm không đúng cấu trúc trả 503 khi lọc, không tự đoán ngày.
 
-Tổng quan bảo mật chỉ tính tệp active/uploaded của các owner thuộc pool. Backend trả số lượng của tối đa 10 Query/lượt (100 item/Query), không trả danh sách hay nội dung tệp. Frontend cộng counts từ các trang của cùng lượt tổng hợp, chỉ hiển thị số cuối khi next_cursor hết; users là tổng tài khoản pool, không cộng qua từng trang. Nếu lỗi hoặc phạm vi pool đổi, không hiển thị tổng chưa hoàn tất. Đây là lượt đọc nhiều trang, không phải snapshot giao dịch. Không phát sinh action IAM hoặc GSI mới.
+Tổng quan bảo mật chỉ tính tệp active/uploaded của các tài khoản user thuộc pool. Backend trả số lượng của tối đa 10 Query/lượt (100 item/Query), không trả danh sách hay nội dung tệp. Frontend cộng counts từ các trang của cùng lượt tổng hợp, chỉ hiển thị số cuối khi next_cursor hết; users là tổng tài khoản user trong phạm vi quản trị, không cộng qua từng trang. Nếu lỗi hoặc phạm vi user đổi, không hiển thị tổng chưa hoàn tất. Đây là lượt đọc nhiều trang, không phải snapshot giao dịch. Không phát sinh action IAM hoặc GSI mới.
 
 Báo cáo quét của owner và admin dùng cùng schema: bổ sung `detected_format` (text/pdf/png/jpeg/tiff), `extraction_method` (direct_text/pdf_text/textract_image/textract_pdf), `extracted_pages`, `total_pages`, `extraction_duration_ms`. Thuộc tính chưa được bộ quét ghi trả null; không suy ra từ đuôi tệp hoặc kết quả safe. `extraction_complete=false` kèm scan_reason khi chưa đọc đủ; phần đã đọc có phát hiện vẫn giữ flagged. Thời gian là riêng bước trích xuất, không phải tổng thời gian pipeline. Không trả văn bản OCR, giá trị phát hiện hoặc vị trí bí mật.
 
 ## Upload và dung lượng
 
 - Mỗi tệp tối đa 100.000.000 byte = 100 MB; cấu hình thấp hơn có thể giảm trần. Middleware cho thêm 1 MiB overhead multipart.
-- Quota 1.000.000.000 byte/owner. used_bytes tính uploaded kể cả trashed/deleting; uploading/unknown giữ chỗ trong reserved_bytes; failed không tính.
+- Quota mặc định 1.000.000.000 byte/owner, có thể chỉnh riêng qua API quản trị. Không cho giảm thấp hơn used_bytes + reserved_bytes. used_bytes tính uploaded kể cả trashed/deleting; uploading/unknown giữ chỗ trong reserved_bytes; failed không tính.
 - Không cộng partition quota/history/notifications vào dung lượng nội dung. Bản cách ly tính một lần; quota logic không phải tổng byte vật lý của mọi version S3.
 - S3 bắt buộc metadata DynamoDB để kiểm quota; Local có kiểm quota đĩa kể cả metadata disabled.
 - Key: uploads/{owner_id}/{file_id}/{safe_filename}. Trả id, key, storage, original_name, size_bytes, content_type và scan_status; metadata bật có thêm trạng thái/revision.
@@ -117,3 +119,7 @@ Cây thư mục dùng partition `!folders!<owner>` trong bảng files. Item `!re
 Lỗi ứng dụng trả JSON detail. capabilities chỉ báo readiness cấu hình/client. Backend dùng credentials chain của Boto3; frontend không giữ quyền AWS. CORS không thay cho xác thực.
 
 Test/script hỗ trợ chỉ lưu local, không đưa vào Git. Khi có bộ test, chạy pytest trong backend và npm test/test:ui trong frontend; npm run build không cần bộ test. Cài/chạy theo [api-guide.md](api-guide.md); cập nhật AWS theo [handoff](AWS-HANDOFF-QUICKSTART-2026-10-31.md).
+
+## Báo cáo, tài khoản và quota của admin
+
+Các endpoint `/admin/reports`, `/admin/reports/owners`, `/admin/reports/export`, `/admin/accounts`, `/admin/accounts/{sub}/quota`, `/admin/accounts/{sub}/access`, `/admin/accounts/{sub}/history` được mô tả cùng bộ lọc, request/revision và quy tắc phân quyền tại [hướng dẫn quản trị](admin-reports-accounts.md).

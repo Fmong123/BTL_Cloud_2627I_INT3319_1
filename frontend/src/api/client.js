@@ -207,7 +207,14 @@ function uploadError(xhr, message, uncertain = false) {
 async function requestJson(
   baseUrl,
   path,
-  { signal, timeout = 10000, fetcher = globalThis.fetch, method = 'GET', body } = {},
+  {
+    signal,
+    timeout = 10000,
+    fetcher = globalThis.fetch,
+    method = 'GET',
+    body,
+    responseType = 'json',
+  } = {},
 ) {
   const base = validateApiBaseUrl(baseUrl);
   const lease = apiLease(base);
@@ -226,13 +233,34 @@ async function requestJson(
       method,
       cache: 'no-store',
       headers: {
-        Accept: 'application/json',
+        Accept: responseType === 'blob' ? 'application/x-ndjson' : 'application/json',
         ...lease.headers,
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     lease.response(response.status);
+    if (response.ok && responseType === 'blob') {
+      let blob;
+      if ((response.headers.get('Content-Type') || '').startsWith('application/x-ndjson')) {
+        const reader = response.body?.getReader();
+        if (!reader) throw new ApiError('Trình duyệt chưa hỗ trợ tải báo cáo');
+        try {
+          blob = await readBrowserContent(reader, {
+            id: 'admin-report',
+            mode: 'report',
+            signal: controller.signal,
+          });
+        } finally {
+          reader.releaseLock();
+        }
+      } else {
+        blob = await response.blob();
+      }
+      lease.assertCurrent();
+      if (blob.size > 10_000_000) throw new ApiError('Báo cáo vượt giới hạn tải 10 MB');
+      return blob;
+    }
     let data;
     try {
       data = await response.json();
@@ -252,13 +280,14 @@ async function requestJson(
       );
     return data;
   } catch (error) {
-    if (signal?.aborted || lease.signal.aborted || error.name === 'AbortError')
+    if (signal?.aborted || lease.signal.aborted)
       throw new DOMException('Đã hủy yêu cầu', 'AbortError');
     if (controller.signal.aborted)
       throw new ApiError('Máy chủ chưa phản hồi — hãy kiểm tra lại kết nối', {
         status: 0,
         code: 'timeout',
       });
+    if (error.name === 'AbortError') throw error;
     if (error instanceof ApiError) throw error;
     throw new ApiError('Không kết nối được máy chủ — kiểm tra mạng và CORS', {
       status: 0,
@@ -397,7 +426,6 @@ export async function getStorageUsage(baseUrl, options = {}) {
     ['limit_bytes', 'used_bytes', 'reserved_bytes', 'available_bytes'].some(
       (key) => !Number.isSafeInteger(data[key]) || data[key] < 0,
     ) ||
-    data.limit_bytes !== 1_000_000_000 ||
     data.available_bytes !== Math.max(0, data.limit_bytes - data.used_bytes - data.reserved_bytes)
   )
     throw new ApiError('Dung lượng trả về chưa hợp lệ', { code: 'invalid_response' });
@@ -407,6 +435,58 @@ export async function getStorageUsage(baseUrl, options = {}) {
     reserved: data.reserved_bytes,
     available: data.available_bytes,
   };
+}
+
+export function getAdminAccounts(baseUrl, filters = {}, options = {}) {
+  return requestJson(
+    baseUrl,
+    `/admin/accounts?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v != null && v !== ''))}`,
+    { timeout: 30000, ...options },
+  );
+}
+
+export function updateAdminAccount(baseUrl, id, kind, body, options = {}) {
+  if (!['quota', 'access'].includes(kind)) throw new Error('Thao tác không hợp lệ');
+  return requestJson(baseUrl, `/admin/accounts/${encodeURIComponent(id)}/${kind}`, {
+    method: 'PATCH',
+    body,
+    timeout: 60000,
+    ...options,
+  });
+}
+
+export function getAdminAccountHistory(baseUrl, id, options = {}) {
+  return requestJson(baseUrl, `/admin/accounts/${encodeURIComponent(id)}/history`, options);
+}
+
+export function getAdminAccountSuggestions(baseUrl, q, options = {}) {
+  return requestJson(baseUrl, `/admin/accounts/suggestions?${new URLSearchParams({ q })}`, {
+    timeout: 30000,
+    ...options,
+  });
+}
+
+export function getAdminReport(baseUrl, filters, options = {}) {
+  return requestJson(baseUrl, `/admin/reports?${new URLSearchParams(filters)}`, {
+    timeout: 60000,
+    ...options,
+  });
+}
+
+export function getAdminReportOwners(baseUrl, options = {}) {
+  return requestJson(baseUrl, '/admin/reports/owners', { timeout: 30000, ...options });
+}
+
+export async function downloadAdminReport(baseUrl, filters, format, options = {}) {
+  if (!['csv', 'pdf'].includes(format)) throw new Error('Định dạng báo cáo không hợp lệ');
+  const blob = await requestJson(
+    baseUrl,
+    `/admin/reports/export?${new URLSearchParams({ ...filters, format })}`,
+    { timeout: 60000, responseType: 'blob', ...options },
+  );
+  if (!(format === 'pdf' ? blob.type === 'application/pdf' : blob.type.startsWith('text/csv')))
+    throw new ApiError('Máy chủ chưa trả đúng định dạng báo cáo');
+  return blob;
 }
 
 function parseScanReport(data, id) {
@@ -669,7 +749,7 @@ async function readBrowserContent(reader, { id, mode, signal }) {
     ended = false,
     length = 0,
     wireLength = 0;
-  let limit = mode === 'download' ? DOWNLOAD_LIMIT : 20 * MB;
+  let limit = mode === 'report' ? 10 * MB : mode === 'download' ? DOWNLOAD_LIMIT : 20 * MB;
   const maxLine = 96 * 1024;
   function consume(line) {
     if (line.length > maxLine) throw tooLarge();
@@ -691,7 +771,12 @@ async function readBrowserContent(reader, { id, mode, signal }) {
       )
         throw invalid();
       const type = frame.content_type.split(';')[0].trim().toLowerCase();
-      limit = mode === 'download' ? DOWNLOAD_LIMIT : previewByteLimits[type] || 0;
+      limit =
+        mode === 'report'
+          ? 10 * MB
+          : mode === 'download'
+            ? DOWNLOAD_LIMIT
+            : previewByteLimits[type] || 0;
       if (!limit) throw new ApiError('Định dạng chưa hỗ trợ xem trước', { status: 415 });
       if (frame.size_bytes > limit) throw tooLarge();
       metadata = {

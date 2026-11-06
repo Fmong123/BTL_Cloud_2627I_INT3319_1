@@ -32,12 +32,14 @@ export function useStorageQuota({ scope, baseUrl, available, files }) {
     void refresh();
     const timer = setInterval(refresh, 30000);
     window.addEventListener('online', refresh);
+    window.addEventListener('maysec:quota-changed', refresh);
     document.addEventListener('visibilitychange', refresh);
     return () => {
       alive = false;
       active?.abort();
       clearInterval(timer);
       window.removeEventListener('online', refresh);
+      window.removeEventListener('maysec:quota-changed', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [scope, baseUrl, available, revision]);

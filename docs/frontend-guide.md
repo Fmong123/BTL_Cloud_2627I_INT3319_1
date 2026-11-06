@@ -67,7 +67,7 @@ Test UI cần Python và các gói `backend/requirements-dev.txt`. Mặc định
 
 Tự tìm Python trong backend/.venv theo Windows/Linux; đặt biến `PYTHON` nếu dùng interpreter khác. Mặc định dùng Chromium do Playwright cài. Có thể đặt `CHROME_EXECUTABLE` thành đường dẫn tuyệt đối tới Chrome đang có để dùng trình duyệt đó.
 
-Đã có đăng nhập Cognito/demo, Drive riêng theo sub, thư mục nhiều cấp, lịch sử tệp và quản trị cách ly toàn pool. Chỉ bật đăng nhập một chạm trong môi trường trình diễn có chủ đích. Admin vẫn có Drive riêng; user không được gọi API admin. Chưa có chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Build web không tự triển khai AWS.
+Đã có đăng nhập Cognito/demo, Drive riêng theo sub, thư mục nhiều cấp, lịch sử tệp và quản trị cách ly các tài khoản user thuộc pool. Tổng quan bảo mật, cách ly, tài khoản và thống kê dùng chung phạm vi user; không hiển thị/xử lý dữ liệu admin qua API quản trị. Chỉ bật đăng nhập một chạm trong môi trường trình diễn có chủ đích. Admin vẫn có Drive riêng; user không được gọi API admin. Chưa có chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Build web không tự triển khai AWS.
 
 ## Thư mục
 

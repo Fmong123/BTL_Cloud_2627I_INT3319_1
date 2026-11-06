@@ -1,4 +1,4 @@
-"""Admin-only quarantine access for identities in the configured Cognito pool.
+"""Admin-only quarantine access for user accounts in the configured Cognito pool.
 
 The regular /files routes remain owner-only. Every read of quarantine bytes is
 audited before release; metadata, directory or audit failures never grant access.
@@ -22,6 +22,7 @@ from ..auth import require_admin
 from ..db import DynamoDBError, utc_timestamp, file_key
 from ..dependencies import get_settings, get_file_metadata, get_audit_log, get_storage, get_rescanner
 from ..services.cognito_auth import AuthError, AuthUser
+from ..services.admin_scope import user_scope, user_account
 from ..services.storage import read_bounded, StorageTooLarge, StorageFailure
 from .files import (owned_file, public_file, require_metadata, metadata_failure,
                     safe_filename, scan_report, history_response, content_key)
@@ -53,7 +54,7 @@ def can_read_quarantine(item, settings):
     return type(item.get("size_bytes")) is int and 0 < item["size_bytes"] <= settings.max_file_size_bytes
 
 
-def pool_accounts(request):
+def pool_accounts(request, *, fresh=False):
     directory = request.app.state.cognito_directory
     try:
         if directory is None:
@@ -68,8 +69,8 @@ def pool_accounts(request):
             with boto3.client("cognito-idp", region_name=settings.cognito_user_pool_id.split("_")[0],
                               config=Config(connect_timeout=3, read_timeout=5, retries={"total_max_attempts": 2})) as client:
                 directory = DemoAccounts(client, settings.cognito_user_pool_id)
-                return {account["id"]: account for account in directory.accounts()}
-        return {account["id"]: account for account in directory.accounts()}
+                return {account["id"]: account for account in directory.accounts(fresh=fresh)}
+        return {account["id"]: account for account in directory.accounts(fresh=fresh)}
     except AuthError as exc:
         raise HTTPException(exc.status_code, exc.message) from None
     except BotoCoreError:
@@ -86,11 +87,12 @@ def quarantine_list(request: Request, response: Response,
                     metadata=Depends(get_file_metadata)):
     response.headers["Cache-Control"] = "no-store"
     require_metadata(settings, metadata)
-    accounts = pool_accounts(request)
+    accounts = pool_accounts(request, fresh=True)
     if updated_from and updated_before and updated_from >= updated_before:
         raise HTTPException(400, "Khoảng thời gian cập nhật không hợp lệ")
-    if owner_id is not None and str(owner_id) not in accounts:
-        raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
+    if owner_id is not None:
+        user_account(accounts, str(owner_id))
+    accounts = user_scope(accounts)
     owners = [str(owner_id)] if owner_id else sorted(accounts)
     def normalized(value):
         return "".join(c for c in unicodedata.normalize("NFD", value.casefold().replace("đ", "d")) if not unicodedata.combining(c))
@@ -152,7 +154,7 @@ def security_overview(request: Request, response: Response, cursor: str | None =
     """Bounded aggregation pages, no Scan/index or client-provided totals."""
     response.headers["Cache-Control"] = "no-store"
     require_metadata(settings, metadata)
-    accounts = pool_accounts(request)
+    accounts = user_scope(pool_accounts(request, fresh=True))
     owners = sorted(accounts)
     scope = hashlib.sha256(json.dumps(["overview", settings.cognito_user_pool_id, owners]).encode()).hexdigest()[:24]
     index, start = 0, None
@@ -220,10 +222,9 @@ def security_overview(request: Request, response: Response, cursor: str | None =
 
 def admin_file(request, owner_id, file_id, settings, metadata):
     require_metadata(settings, metadata)
-    accounts = pool_accounts(request)
+    accounts = pool_accounts(request, fresh=True)
     owner = str(owner_id)
-    if owner not in accounts:
-        raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
+    user_account(accounts, owner)
     item, view = owned_file(metadata, owner, str(file_id))
     return item, view, accounts
 
@@ -328,9 +329,7 @@ def quarantine_content(file_id: UUID, request: Request, owner_id: UUID = Query(.
                        metadata=Depends(get_file_metadata), audit=Depends(get_audit_log), storage=Depends(get_storage)):
     require_metadata(settings, metadata, audit, writing=True)
     owner, ident = str(owner_id), str(file_id)
-    if owner not in pool_accounts(request):
-        raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
-    item, view = owned_file(metadata, owner, ident)
+    item, view, _ = admin_file(request, owner_id, file_id, settings, metadata)
     if (lifecycle_state(item) != "active" or item.get("upload_state") != "uploaded" or is_restored(item)
             or item.get("status") not in {"quarantined", "quarantine_delete_failed"}):
         raise HTTPException(409, "Tệp chưa có bản cách ly sẵn sàng để đọc")

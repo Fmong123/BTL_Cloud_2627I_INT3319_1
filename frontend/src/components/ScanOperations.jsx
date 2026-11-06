@@ -22,28 +22,6 @@ const methods = {
   textract_image: 'OCR ảnh',
 };
 
-function exportReport(counts, durations) {
-  const rows = [
-    ['Chỉ số', 'Số tệp', 'Trích xuất trung bình (ms)'],
-    ...Object.entries(counts).map(([status, count]) => [scanStates[status].label, count, '']),
-    ...Object.entries(durations).map(([method, data]) => [
-      methods[method],
-      data.count,
-      Math.round(data.total_ms / data.count),
-    ]),
-  ];
-  const url = URL.createObjectURL(
-    new Blob(['\uFEFF', rows.map((row) => row.join(',')).join('\r\n')], {
-      type: 'text/csv;charset=utf-8',
-    }),
-  );
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'maysec-bao-cao-van-hanh.csv';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 export default function ScanOperations({ baseUrl, counts, durations, operations, onChange }) {
   const [filter, setFilter] = useState('all');
   const [limit, setLimit] = useState(25);
@@ -197,9 +175,9 @@ export default function ScanOperations({ baseUrl, counts, durations, operations,
               bước trích xuất.
             </p>
           </div>
-          <button className="button secondary" onClick={() => exportReport(counts, durations)}>
-            Xuất CSV
-          </button>
+          <Link className="button secondary" to="/admin/reports">
+            Mở thống kê
+          </Link>
         </div>
         <ul className="operation-list">
           <li>

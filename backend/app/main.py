@@ -13,6 +13,8 @@ from .config import Settings
 from .db import DynamoDBError, build_dynamodb_client
 from .routers.auth import router as auth_router
 from .routers.admin import router as admin_router
+from .routers.admin_accounts import router as accounts_router
+from .routers.admin_reports import router as reports_router
 from .routers.files import router
 from .routers.lifecycle import router as lifecycle_router
 from .routers.folders import router as folder_router
@@ -100,7 +102,7 @@ def create_app(
         owns_metadata_client = False
         demo_client = None
         try:
-            if settings.demo_login_enabled and app.state.cognito_directory is None:
+            if settings.cognito_user_pool_id and app.state.cognito_directory is None:
                 import boto3
                 from botocore.config import Config
                 from botocore.exceptions import BotoCoreError
@@ -113,7 +115,7 @@ def create_app(
                     if settings.demo_login_enabled:
                         app.state.demo_accounts = app.state.cognito_directory
                 except BotoCoreError:
-                    logger.warning("Cognito demo client unavailable")
+                    logger.warning("Cognito directory client unavailable")
             if settings.rescan_state_machine_arn and app.state.rescanner is None:
                 import boto3
                 from botocore.config import Config
@@ -243,6 +245,8 @@ def create_app(
     app.include_router(folder_router, tags=["Folders"])
     app.include_router(auth_router, tags=["Auth"])
     app.include_router(admin_router, tags=["Administration"])
+    app.include_router(accounts_router, tags=["Administration"])
+    app.include_router(reports_router, tags=["Administration"])
     return app
 
 app = create_app(s3_uploader=upload_to_s3)

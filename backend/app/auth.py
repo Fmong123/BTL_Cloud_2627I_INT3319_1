@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .services.cognito_auth import ROLE_ADMIN, ROLE_USER, AuthError, AuthUser
 from .services.demo_accounts import is_demo_token
+from .db import DynamoDBError
 
 # auto_error=False để tự trả 401 (HTTPBearer mặc định trả 403 khi thiếu header).
 _bearer = HTTPBearer(auto_error=False)
@@ -36,13 +37,37 @@ def get_current_user(
             directory = request.app.state.demo_accounts
             if directory is None:
                 raise AuthError(503, "Chưa kết nối được Cognito cho demo")
-            return directory.verify(credentials.credentials)
+            return managed_access(request, directory.verify(credentials.credentials))
         if verifier is None:
             raise AuthError(503, "Dịch vụ xác thực chưa được cấu hình")
-        return verifier.verify(credentials.credentials)
+        return managed_access(request, verifier.verify(credentials.credentials))
     except AuthError as exc:
         headers = _UNAUTHORIZED_HEADERS if exc.status_code == 401 else None
         raise HTTPException(exc.status_code, exc.message, headers=headers) from None
+
+
+def managed_access(request, user):
+    """Apply confirmed management changes to already-issued Cognito access tokens."""
+    profiles = request.app.state.user_profiles
+    if request.app.state.settings.metadata_mode != "dynamodb":
+        return user
+    if profiles is None:
+        raise HTTPException(503, "Chưa kiểm tra được trạng thái tài khoản")
+    try:
+        profile = profiles.get(user.owner_id)
+    except DynamoDBError:
+        raise HTTPException(503, "Chưa kiểm tra được trạng thái tài khoản") from None
+    if profile.get("management_pending"):
+        raise HTTPException(403, "Tài khoản đang chờ đối chiếu thay đổi quản trị")
+    if profile.get("access_disabled"):
+        raise HTTPException(401, "Tài khoản đã bị tạm khóa", headers=_UNAUTHORIZED_HEADERS)
+    policy_role = profile.get("managed_role", user.role)
+    if policy_role not in {ROLE_USER, ROLE_ADMIN}:
+        raise HTTPException(403, "Tài khoản chưa được gán quyền truy cập")
+    # A stored policy may restrict an old JWT, but never grant privileges absent
+    # from a newly verified Cognito token. Promotions need refreshed group claims.
+    role = ROLE_USER if policy_role == ROLE_USER else user.role
+    return AuthUser(owner_id=user.owner_id, username=user.username, role=role)
 
 
 def require_role(*roles: str):

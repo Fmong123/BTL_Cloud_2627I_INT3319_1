@@ -221,7 +221,7 @@ def upload_file(
         if metadata_enabled:
             require_metadata(settings, metadata, audit, writing=True)
         elif storage.mode == "s3":
-            raise HTTPException(503, "Cần bật metadata để kiểm tra hạn mức 1 GB trước khi tải lên S3")
+            raise HTTPException(503, "Cần bật metadata để kiểm tra hạn mức tài khoản trước khi tải lên S3")
         file_id = str(uuid4())
         key = f"uploads/{owner_id}/{file_id}/{safe_filename(file.filename)}"
         content_type = file.content_type or "application/octet-stream"
@@ -246,7 +246,7 @@ def upload_file(
                     details={"storage": storage.mode, "key": key, "size_bytes": size},
                 )
             except QuotaExceeded:
-                raise HTTPException(413, "Không đủ dung lượng trong gói miễn phí 1 GB") from None
+                raise HTTPException(413, "Không đủ dung lượng theo hạn mức hiện tại của tài khoản") from None
             except QuotaBusy:
                 raise HTTPException(429, "Đang giữ chỗ dung lượng cho lượt tải khác — hãy thử lại", headers={"Retry-After": "2"}) from None
             except DynamoDBError as exc:

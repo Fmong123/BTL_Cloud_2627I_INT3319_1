@@ -24,6 +24,8 @@ import {
   Sun,
   X,
   Trash2,
+  ChartNoAxesCombined,
+  UsersRound,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { useAuth } from '../auth/Auth.jsx';
@@ -75,6 +77,8 @@ export default function Layout() {
     '/settings',
     '/admin/quarantine',
     '/admin/overview',
+    '/admin/reports',
+    '/admin/accounts',
   ].includes(location.pathname);
   const searchValue = filesPage || adminPage ? searchParams.get('q') || '' : '';
   const [themeOpen, setThemeOpen] = useState(false);
@@ -104,6 +108,8 @@ export default function Layout() {
     navigation.find(([path]) => path === location.pathname)?.[1] ||
     (location.pathname === '/admin/quarantine' ? 'Quản trị cách ly' : null) ||
     (location.pathname === '/admin/overview' ? 'Tổng quan bảo mật' : null) ||
+    (location.pathname === '/admin/reports' ? 'Thống kê' : null) ||
+    (location.pathname === '/admin/accounts' ? 'Quản trị tài khoản' : null) ||
     'Không tìm thấy trang';
   const activity = w.activityFiles || w.files;
   const active = activity.filter(isBusy);
@@ -292,6 +298,8 @@ export default function Layout() {
                 </span>
                 {navItem('/admin/overview', 'Tổng quan bảo mật', ShieldAlert)}
                 {navItem('/admin/quarantine', 'Quản trị cách ly', ShieldCheck)}
+                {navItem('/admin/reports', 'Thống kê', ChartNoAxesCombined)}
+                {navItem('/admin/accounts', 'Quản trị tài khoản', UsersRound)}
               </div>
             )}
             <SidebarStorage collapsed={collapsed} />

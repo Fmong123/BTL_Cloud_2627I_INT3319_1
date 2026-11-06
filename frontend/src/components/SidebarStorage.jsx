@@ -22,10 +22,12 @@ export default function SidebarStorage({ collapsed }) {
       Boolean(w.sync?.skippedItems?.length) ||
       w.files.some((file) => file.uploadState === 'unknown'));
   const usage = formatStorageUsage(used);
+  const limit = authoritative ? serverQuota.limit : FREE_STORAGE_BYTES;
+  const limitLabel = formatStorageUsage(limit);
   const pending = phase === 'error' ? 'Chưa đọc được dung lượng' : 'Đang tính dung lượng';
   const summary = known
-    ? `Đã sử dụng ${usage} trong tổng số 1 GB`
-    : `${pending} trong tổng số 1 GB`;
+    ? `Đã sử dụng ${usage} trong tổng số ${limitLabel}`
+    : `${pending} trong tổng số ${limitLabel}`;
   const note = demo
     ? 'Dữ liệu trải nghiệm'
     : serverQuota?.error
@@ -36,12 +38,12 @@ export default function SidebarStorage({ collapsed }) {
           ? phase === 'error'
             ? 'Chưa đồng bộ đầy đủ'
             : 'Dung lượng tạm tính'
-          : used >= FREE_STORAGE_BYTES
-            ? 'Đã dùng hết dung lượng miễn phí'
-            : 'Gói miễn phí';
+          : used >= limit
+            ? 'Đã dùng hết dung lượng'
+            : 'Hạn mức tài khoản';
   return (
     <section
-      className={`sidebar-storage ${used >= FREE_STORAGE_BYTES * 0.9 ? 'storage-near-limit' : ''}`}
+      className={`sidebar-storage ${used >= limit * 0.9 ? 'storage-near-limit' : ''}`}
       aria-label={`Bộ nhớ cá nhân · ${summary}`}
       title={collapsed ? `${summary} · ${note}` : undefined}
     >
@@ -52,18 +54,20 @@ export default function SidebarStorage({ collapsed }) {
       <div className="sidebar-storage-details">
         <progress
           aria-label="Dung lượng đã sử dụng"
-          aria-valuetext={known ? `${usage} / 1 GB${partial ? ' · tạm tính' : ''}` : 'Đang tính'}
-          max={FREE_STORAGE_BYTES}
-          value={known ? Math.min(used, FREE_STORAGE_BYTES) : undefined}
+          aria-valuetext={
+            known ? `${usage} / ${limitLabel}${partial ? ' · tạm tính' : ''}` : 'Đang tính'
+          }
+          max={Math.max(1, limit)}
+          value={known ? Math.min(used, Math.max(1, limit)) : undefined}
         />
         <p aria-live="polite">
           {known ? (
             <>
-              Đã sử dụng <strong>{usage}</strong> trong tổng số <strong>1 GB</strong>
+              Đã sử dụng <strong>{usage}</strong> trong tổng số <strong>{limitLabel}</strong>
             </>
           ) : (
             <>
-              {pending} trong tổng số <strong>1 GB</strong>
+              {pending} trong tổng số <strong>{limitLabel}</strong>
             </>
           )}
         </p>

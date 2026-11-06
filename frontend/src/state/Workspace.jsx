@@ -992,7 +992,7 @@ export function WorkspaceProvider({ children }) {
               <p>
                 {fileDialog.targets.length} tệp được chọn.{' '}
                 {fileDialog.action === 'trash'
-                  ? 'Có thể khôi phục trong 30 ngày. Tệp vẫn tính vào dung lượng 1 GB.'
+                  ? 'Có thể khôi phục trong 30 ngày. Tệp vẫn tính vào hạn mức dung lượng tài khoản.'
                   : fileDialog.action === 'restore'
                     ? 'Giữ nguyên kết quả quét và trạng thái cách ly.'
                     : 'Xóa toàn bộ nội dung và các phiên bản đã lưu. Không thể hoàn tác.'}

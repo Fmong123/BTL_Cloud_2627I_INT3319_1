@@ -75,7 +75,7 @@ export default function AdminOverview() {
         <div className="stat blue">
           <span className="stat-label">
             <UsersRound size={20} />
-            Tài khoản trong hệ thống
+            Người dùng trong phạm vi quản trị
           </span>
           <strong>{state.users ?? '—'}</strong>
           <span className="stat-link">Phạm vi quản trị của bạn</span>
