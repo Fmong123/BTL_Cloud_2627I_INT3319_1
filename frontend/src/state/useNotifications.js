@@ -10,7 +10,10 @@ function toastFor(event, now) {
   };
 }
 
-export function useNotifications(scope, { baseUrl, available = false, storageSuffix } = {}) {
+export function useNotifications(
+  scope,
+  { baseUrl, available = false, storageSuffix, admin = false } = {},
+) {
   const storageKey = storageSuffix ? `${NOTIFICATIONS_KEY}:${storageSuffix}` : NOTIFICATIONS_KEY;
   const [events, renderEvents] = useState(() => readNotificationRecords(undefined, storageKey));
   const ref = useRef(events);
@@ -38,6 +41,8 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
         let writeFailed = false;
         try {
           for (const event of ref.current.filter((item) => item.scope === scope)) {
+            if (event.kind === 'admin-review-request' && !admin) continue;
+            if (event.serverEvent && !event.read) continue;
             const signature = JSON.stringify(event);
             if (synced.current.get(`${scope}|${event.id}`) === signature) continue;
             await persistNotification(baseUrl, event, { signal: controller.signal });
@@ -51,9 +56,17 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
         const saved = await listNotifications(baseUrl, {
           signal: controller.signal,
           includeHistory: firstRead,
+          admin,
         });
         if (!alive) return;
-        const merged = new Map(ref.current.map((event) => [`${event.scope}|${event.id}`, event]));
+        const allowedAdmin = new Set(
+          saved.filter((event) => event.kind === 'admin-review-request').map((event) => event.id),
+        );
+        const merged = new Map(
+          ref.current
+            .filter((event) => event.kind !== 'admin-review-request' || allowedAdmin.has(event.id))
+            .map((event) => [`${event.scope}|${event.id}`, event]),
+        );
         const newToasts = [];
         for (const event of saved) {
           const key = `${scope}|${event.id}`,
@@ -64,7 +77,9 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
             !firstRead &&
             !prior &&
             !next.read &&
-            (String(event.kind).startsWith('admin-scan-') || event.kind === 'quarantine-review')
+            (event.serverEvent ||
+              String(event.kind).startsWith('admin-scan-') ||
+              event.kind === 'quarantine-review')
           ) {
             newToasts.push(toastFor(next, Date.now()));
           }
@@ -77,6 +92,10 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
           setVisible((current) => [...current, ...newToasts.reverse()].slice(-3));
         setStorageError(writeFailed ? 'Một số thông báo trên trình duyệt chưa đồng bộ.' : null);
       } catch (error) {
+        if (alive && error.adminScopeDenied) {
+          update(ref.current.filter((event) => event.kind !== 'admin-review-request'));
+          setVisible([]);
+        }
         if (alive && error.name !== 'AbortError')
           setStorageError('Thông báo đang lưu trên trình duyệt; chưa đồng bộ máy chủ.');
       } finally {
@@ -87,14 +106,16 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
     const timer = setInterval(sync, 5000);
     window.addEventListener('online', sync);
     document.addEventListener('visibilitychange', sync);
+    window.addEventListener('maysec:notifications-changed', sync);
     return () => {
       alive = false;
       controller.abort();
       clearInterval(timer);
       window.removeEventListener('online', sync);
       document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('maysec:notifications-changed', sync);
     };
-  }, [scope, baseUrl, available]);
+  }, [scope, baseUrl, available, admin]);
   function addEvent(event) {
     const now = Date.now();
     const eventScope = event.scope ?? scopeRef.current;
@@ -149,19 +170,23 @@ export function useNotifications(scope, { baseUrl, available = false, storageSuf
   return {
     storageError,
     addEvent,
-    notifications: events.filter((item) => item.scope === scope),
+    notifications: events.filter(
+      (item) => item.scope === scope && (admin || item.kind !== 'admin-review-request'),
+    ),
     toasts: visible
       .filter((item) => item.scope === scope)
       .map((item) => events.find((event) => event.id === item.id))
-      .filter(Boolean),
+      .filter((item) => item && (admin || item.kind !== 'admin-review-request')),
     dismissToast: (id) => setVisible((current) => current.filter((item) => item.id !== id)),
-    markRead: (id) =>
+    markRead: (id) => {
       update(
         ref.current.map((item) =>
           item.scope === scopeRef.current && (!id || item.id === id)
             ? { ...item, read: true }
             : item,
         ),
-      ),
+      );
+      window.dispatchEvent(new Event('maysec:notifications-changed'));
+    },
   };
 }

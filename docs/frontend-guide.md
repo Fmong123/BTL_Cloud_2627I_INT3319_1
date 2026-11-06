@@ -44,7 +44,7 @@ localStorage:
 
 Các dữ liệu cá nhân trong trình duyệt được tách theo API + sub; đổi tài khoản hủy request cũ và tạo lại workspace. Không lưu File/blob, byte nội dung, URL blob hoặc credentials. Tệp tải dở không tự gửi lại sau reload; phải chọn lại bản gốc. API đồng bộ thông báo và snapshot lịch sử đã xóa khi capability persistent_activity sẵn sàng. Các đợt upload được nhớ trên trình duyệt tạo chúng, không phải lịch sử batch toàn tài khoản.
 
-Thông báo là sự kiện web đã quan sát, không thay audit log/push nền. Storage trình duyệt bị chặn vẫn cho dùng trong phiên và báo chưa lưu. Quota server là nguồn chuẩn khi có capability; fallback thư viện có nhãn tạm tính.
+Thông báo gồm sự kiện máy chủ (kết quả quét/cách ly, quota, thư mục và yêu cầu xem xét tới admin) cùng thao tác web, không thay audit log/push hệ điều hành. Xem [luồng thông báo](notifications.md). Storage trình duyệt bị chặn vẫn cho dùng trong phiên và báo chưa lưu. Quota server là nguồn chuẩn khi có capability; fallback thư viện có nhãn tạm tính.
 
 ## Chạy và kiểm tra
 
@@ -69,6 +69,10 @@ Tự tìm Python trong backend/.venv theo Windows/Linux; đặt biến `PYTHON` 
 
 Đã có đăng nhập Cognito/demo, Drive riêng theo sub, thư mục nhiều cấp, lịch sử tệp và quản trị cách ly các tài khoản user thuộc pool. Tổng quan bảo mật, cách ly, tài khoản và thống kê dùng chung phạm vi user; không hiển thị/xử lý dữ liệu admin qua API quản trị. Chỉ bật đăng nhập một chạm trong môi trường trình diễn có chủ đích. Admin vẫn có Drive riêng; user không được gọi API admin. Chưa có chia sẻ, lịch sử version giao diện hoặc tải nhiều tệp thành ZIP. Build web không tự triển khai AWS.
 
+## Xử lý riêng bước pipeline
+
+Admin có phần **Xử lý cách ly và thông báo** trong tab Kết quả kiểm tra của chi tiết tệp. Danh sách Vận hành quét tập hợp cả tệp cần thử lại cách ly và thông báo SNS failed/sending/unknown. Nút kiểm tra đối chiếu execution và metadata; admin có thể xác nhận thủ công theo bằng chứng hoặc gửi lại SNS/email với xác nhận nguy cơ trùng. Giao diện không còn thao tác webhook; các sự kiện cũ hiển thị là kênh đã ngừng. Xem [hướng dẫn và triển khai đồng bộ](pipeline-recovery.md).
+
 ## Thư mục
 
 Tệp của tôi mở thư mục gốc, có thẻ thư mục và đường dẫn để đi lên các cấp. Bấm **Thư mục mới** để tạo tại vị trí hiện tại; menu dấu ba chấm hoặc thanh thao tác của thư mục đang mở có **Đổi tên**, **Di chuyển đến…**, **Chuyển vào Thùng rác**. Không cho phép tên trùng trong cùng thư mục hoặc di chuyển một thư mục vào chính nó/thư mục con.
@@ -77,7 +81,7 @@ Chọn một hoặc nhiều tệp rồi bấm **Di chuyển đến…**, hoặc 
 
 Xóa thư mục đưa cả cây và các tệp đang hoạt động bên trong vào Thùng rác 30 ngày. Phần Thư mục đã xóa cho xem nội dung, khôi phục cả nhóm hoặc xóa vĩnh viễn. Các tệp đã ở rác từ trước giữ nguyên trạng thái riêng. Nếu thư mục cha không còn khi khôi phục, thư mục trở về gốc; tên trùng được thêm hậu tố khôi phục. Tệp khôi phục riêng có thư mục cũ đã xóa vĩnh viễn cũng trở về gốc.
 
-Tệp đang tải, đang quét hoặc flagged chờ cách ly chặn xóa cả thư mục. Thao tác xóa/khôi phục cây giới hạn **98 mục (thư mục + tệp)** mỗi lần để lưu nguyên khối; vượt giới hạn trả 409 và không đổi dữ liệu. Di chuyển tối đa 50 tệp/lượt. Thư mục là metadata, không đổi key S3 hoặc làm thay đổi kết quả quét/quota. Quota chỉ giảm sau khi nội dung được xóa vĩnh viễn thành công. Cleanup hiện có xóa nội dung tệp hết hạn; bản ghi thư mục hết hạn vẫn có thể dọn bằng nút xóa vĩnh viễn và không còn cho khôi phục.
+Tệp đang tải, đang quét hoặc flagged chờ cách ly chặn xóa cả thư mục. Thao tác xóa/khôi phục cây giới hạn **97 mục (thư mục + tệp)** mỗi lần để lưu nguyên khối; vượt giới hạn trả 409 và không đổi dữ liệu. Di chuyển tối đa 50 tệp/lượt. Thư mục là metadata, không đổi key S3 hoặc làm thay đổi kết quả quét/quota. Quota chỉ giảm sau khi nội dung được xóa vĩnh viễn thành công. Cleanup hiện có xóa nội dung tệp hết hạn; bản ghi thư mục hết hạn vẫn có thể dọn bằng nút xóa vĩnh viễn và không còn cho khôi phục.
 
 Triển khai backend/frontend cùng phiên bản, restart backend và refresh web. UI thư mục bật khi `/health.capabilities.folders=true`; không mô phỏng thư mục trong chế độ demo/local không metadata. Không cần bảng/GSI mới. Quyền backend phải cho phép giao dịch và đọc/ghi partition `!folders!<owner>` trong bảng files, cùng ghi audit. Mẫu IAM Cognito runtime hiện có đã chứa partition này. Không tự thay IAM hoặc triển khai AWS.
 

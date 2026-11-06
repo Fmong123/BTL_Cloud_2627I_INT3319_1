@@ -13,7 +13,7 @@
   border-radius: 8px;
   color: var(--button-text);
   background: var(--button-bg);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 17px;
   font-weight: 700;
   border: 1px solid var(--surface);
@@ -29,6 +29,8 @@
   border-radius: 14px;
   box-shadow: var(--shadow);
   overflow: hidden;
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
 }
 .notification-heading {
   display: flex;
@@ -44,7 +46,7 @@
   outline: none;
 }
 .notification-heading p {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--muted);
   margin-top: 3px;
 }
@@ -60,7 +62,7 @@
   padding: 7px 10px;
   flex: 1;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--muted);
 }
 .notification-tabs button[aria-pressed='true'] {
@@ -75,10 +77,10 @@
   gap: 10px;
   padding: 13px 20px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 14px;
 }
 .notification-actions .text-button {
-  font-size: 10px;
+  font-size: 14px;
 }
 .notification-events {
   overflow-y: auto;
@@ -117,24 +119,26 @@
   align-items: center;
   text-align: left;
   padding: 0;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 .notification-event-title:hover {
   color: var(--accent);
 }
 .notification-event p {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
   margin: 5px 0 6px;
 }
 .notification-event time {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
 .notification-mark {
   color: var(--accent);
-  font-size: 10px;
+  font-size: 14px;
   margin-left: 12px;
   padding: 0;
 }
@@ -150,20 +154,20 @@
   margin-bottom: 14px;
 }
 .notification-empty strong {
-  font-size: 13px;
+  font-size: 15px;
 }
 .notification-empty p {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   margin-top: 7px;
 }
 .notification-footnote {
   padding: 12px 20px;
   border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 13px;
 }
-.event-toast {
+.toast.event-toast {
   border-left: 3px solid var(--accent);
 }
 .event-toast.success {
@@ -181,17 +185,19 @@
 }
 .event-toast strong {
   display: block;
-  font-size: 12px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
 }
 .event-toast span {
   display: block;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 14px;
   margin-top: 3px;
   overflow-wrap: anywhere;
 }
-.event-toast .text-button {
+.toast.event-toast .text-button {
   white-space: nowrap;
+  font-size: 14px;
 }
 .dock-running-files {
   display: grid;
@@ -256,8 +262,8 @@
 }
 @media (max-width: 1000px) {
   .notification-panel {
-    right: -70px;
-    width: min(390px, calc(100vw - 230px));
+    right: 0;
+    width: min(420px, calc(100vw - 40px));
   }
   .notification-actions {
     flex-wrap: wrap;
@@ -873,6 +879,43 @@ html:has(.file-preview-modal[open]) {
   font-size: 13px;
 }
 @media (max-width: 600px) {
+  .app-shell .toast-stack {
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    bottom: 20px;
+  }
+  .toast.event-toast {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px;
+  }
+  .event-toast > div {
+    grid-column: 1;
+  }
+  .event-toast > .icon-button {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+  }
+  .event-toast > .text-button {
+    grid-column: 1;
+    justify-self: start;
+  }
+  .notification-panel {
+    position: fixed;
+    top: 76px;
+    right: 12px;
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 88px);
+  }
+  .notification-heading,
+  .notification-event,
+  .notification-actions,
+  .notification-footnote {
+    padding-inline: 14px;
+  }
   .user-trigger {
     padding: 7px;
   }

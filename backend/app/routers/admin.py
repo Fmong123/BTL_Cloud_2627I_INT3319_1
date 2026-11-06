@@ -32,6 +32,7 @@ from ..services.quarantine_review import (
     ReviewDecision, is_restored, quarantine_location, review_view, save_review, verify_restorable,
 )
 from ..services.scan_operations import operations_for, request_compression, resolve_compression, check_execution, compression_pending
+from ..services.pipeline_recovery import RecoveryRequest, recovery_view, needs_recovery, operate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -194,7 +195,7 @@ def security_overview(request: Request, response: Response, cursor: str | None =
                     review = review_view(item)
                     review_pending = bool(review and review["status"] in {"pending", "recommend_release"})
                     if (view.scan_status in {"scanning", "error", "unscanned", "quarantine_delete_failed"}
-                            or review_pending or compression_pending(item)):
+                            or review_pending or compression_pending(item) or needs_recovery(item)):
                         since = view.scan_started_at or view.rescan_requested_at or view.created_at
                         try:
                             age = max(0, int((now - datetime.fromisoformat(since.replace("Z", "+00:00"))).total_seconds()))
@@ -209,6 +210,8 @@ def security_overview(request: Request, response: Response, cursor: str | None =
                             "actions": operations_for(item),
                             "compression_requested": bool(item.get("compression_requested_at")),
                             "compression_resolution": item.get("compression_resolution"),
+                            "pipeline_attention": needs_recovery(item),
+                            "pipeline_busy": bool(item.get("pipeline_busy")),
                         })
             start = page.next_key
             if start is None:
@@ -232,7 +235,7 @@ def admin_file(request, owner_id, file_id, settings, metadata):
 @router.get("/admin/files/{file_id}", response_model=AdminFileDetail)
 def file_detail(file_id: UUID, request: Request, response: Response, owner_id: UUID = Query(...),
                 user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
-                metadata=Depends(get_file_metadata)):
+                metadata=Depends(get_file_metadata), rescanner=Depends(get_rescanner)):
     response.headers["Cache-Control"] = "no-store"
     item, view, accounts = admin_file(request, owner_id, file_id, settings, metadata)
     # Only schema-whitelisted metadata and aggregate findings; never raw text or quarantine locations.
@@ -245,7 +248,31 @@ def file_detail(file_id: UUID, request: Request, response: Response, owner_id: U
             raise metadata_failure(exc) from None
     return {"file": view.model_dump(), "owner_name": accounts[str(owner_id)]["name"],
             "report": scan_report(item, view).model_dump(), "can_read": can_read_quarantine(item, settings),
-            "quarantine_review": review_view(item), "folder_path": folder_path}
+            "quarantine_review": review_view(item), "folder_path": folder_path,
+            "pipeline": recovery_view(item, configured=bool(settings.scan_pipeline_enabled and rescanner))}
+
+
+@router.get("/admin/files/{file_id}/pipeline")
+def pipeline_state(file_id: UUID, request: Request, response: Response, owner_id: UUID = Query(...),
+                   user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                   metadata=Depends(get_file_metadata), rescanner=Depends(get_rescanner)):
+    response.headers["Cache-Control"] = "no-store"
+    item, _, _ = admin_file(request, owner_id, file_id, settings, metadata)
+    return recovery_view(item, configured=bool(settings.scan_pipeline_enabled and rescanner))
+
+
+@router.post("/admin/files/{file_id}/pipeline")
+def pipeline_operation(file_id: UUID, payload: RecoveryRequest, request: Request, owner_id: UUID = Query(...),
+                       user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                       metadata=Depends(get_file_metadata), audit=Depends(get_audit_log), rescanner=Depends(get_rescanner)):
+    require_metadata(settings, metadata, audit, writing=True)
+    item, _, _ = admin_file(request, owner_id, file_id, settings, metadata)
+    try:
+        message = operate(metadata, audit, item, user.owner_id, rescanner, settings, payload)
+        return {"message": message, "pipeline": recovery_view(metadata.get_file(str(owner_id), str(file_id)),
+            configured=bool(settings.scan_pipeline_enabled and rescanner))}
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
 
 
 @router.post("/admin/files/{file_id}/quarantine-review")
@@ -311,7 +338,7 @@ def file_history(file_id: UUID, request: Request, response: Response, owner_id: 
     response.headers["Cache-Control"] = "no-store"
     _, _, accounts = admin_file(request, owner_id, file_id, settings, metadata)
     require_metadata(settings, metadata, audit, writing=True)
-    result = history_response(str(file_id), str(owner_id), audit, limit, cursor)
+    result = history_response(str(file_id), str(owner_id), audit, limit, cursor, admin_details=True)
     for event in result["items"]:
         actor = event.get("actor")
         event["actor_name"] = accounts.get(actor, {}).get("name") or {

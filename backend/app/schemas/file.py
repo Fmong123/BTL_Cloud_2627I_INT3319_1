@@ -177,3 +177,4 @@ class AdminFileDetail(BaseModel):
     quarantine_review: dict[str, str] | None = None
     report: FileScanReport
     folder_path: list[str] | None = None
+    pipeline: dict | None = None

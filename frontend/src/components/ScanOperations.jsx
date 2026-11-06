@@ -45,7 +45,10 @@ export default function ScanOperations({ baseUrl, counts, durations, operations,
     if (filter === 'review') return item.review_pending;
     if (filter === 'slow') return item.status === 'scanning' && item.age_seconds >= 300;
     if (filter === 'errors')
-      return ['error', 'unscanned', 'quarantine_delete_failed'].includes(item.status);
+      return (
+        item.pipeline_attention ||
+        ['error', 'unscanned', 'quarantine_delete_failed'].includes(item.status)
+      );
     return true;
   });
   return (
@@ -54,7 +57,7 @@ export default function ScanOperations({ baseUrl, counts, durations, operations,
         <div className="files-heading">
           <div>
             <h2>Vận hành quét</h2>
-            <p>Lượt đang chờ, đang quét, lỗi và yêu cầu xem xét cách ly.</p>
+            <p>Lượt quét, bước cách ly, thông báo cần đối soát và yêu cầu xem xét.</p>
           </div>
           <select
             className="admin-filter-select"
@@ -120,6 +123,13 @@ export default function ScanOperations({ baseUrl, counts, durations, operations,
                     )}
                     {item.age_seconds != null && (
                       <p>Đã qua {Math.floor(item.age_seconds / 60)} phút</p>
+                    )}
+                    {item.pipeline_attention && (
+                      <p>
+                        {item.pipeline_busy
+                          ? 'Đang xử lý lại bước pipeline · cần kiểm tra kết quả'
+                          : 'Có bước cách ly hoặc thông báo cần xử lý'}
+                      </p>
                     )}
                   </div>
                   <div className="inline-actions">

@@ -24,8 +24,8 @@ const labels = {
   notify_failed: 'Gửi thông báo gặp lỗi',
   notify_safe_sns: 'Đã gửi thông báo an toàn qua SNS',
   notify_quarantined_sns: 'Đã gửi thông báo cách ly qua SNS',
-  notify_safe_webhook: 'Đã gửi thông báo an toàn qua kênh tích hợp',
-  notify_quarantined_webhook: 'Đã gửi thông báo cách ly qua kênh tích hợp',
+  notify_safe_webhook: 'Đã gửi thông báo an toàn qua kênh cũ (đã ngừng)',
+  notify_quarantined_webhook: 'Đã gửi thông báo cách ly qua kênh cũ (đã ngừng)',
   admin_quarantine_read_started: 'Quản trị viên bắt đầu đọc bản cách ly',
   admin_quarantine_read_completed: 'Quản trị viên đã đọc bản cách ly',
   admin_quarantine_read_failed: 'Quản trị viên đọc bản cách ly chưa thành công',
@@ -35,6 +35,9 @@ const labels = {
   admin_scan_compression_withdrawn: 'Quản trị viên đã thu hồi yêu cầu nén tệp',
   compression_request_completed: 'Chủ tệp đã đánh dấu xử lý yêu cầu nén',
   admin_scan_status_reconciled: 'Quản trị viên đã đối chiếu trạng thái lượt quét',
+  admin_pipeline_requested: 'Quản trị viên yêu cầu xử lý lại bước pipeline',
+  admin_pipeline_checked: 'Đã đối chiếu kết quả xử lý lại',
+  admin_notification_confirmed: 'Quản trị viên xác nhận gửi theo bằng chứng',
 };
 
 export default function FileHistory({ file, ownerId, refreshKey }) {
@@ -103,6 +106,25 @@ export default function FileHistory({ file, ownerId, refreshKey }) {
             <div>
               <strong>{labels[item.action] || item.action}</strong>
               <p>{new Date(item.occurred_at).toLocaleString('vi-VN')}</p>
+              {ownerId && item.details?.reason && <p>Lý do: {item.details.reason}</p>}
+              {ownerId && item.details?.channel && (
+                <p>Kênh: {item.details.channel === 'sns' ? 'SNS / Email' : 'Kênh cũ (đã ngừng)'}</p>
+              )}
+              {ownerId && item.details?.result && (
+                <p>
+                  Kết quả:{' '}
+                  {{
+                    succeeded: 'Đã xác nhận hoàn tất',
+                    failed: 'Cần xử lý tiếp',
+                    retired: 'Đã kết thúc yêu cầu kênh cũ',
+                    safe: 'Không phát hiện',
+                    quarantined: 'Đã cách ly',
+                  }[item.details.result] || item.details.result}
+                </p>
+              )}
+              {ownerId && item.details?.evidence && (
+                <p>Bằng chứng đối soát: {item.details.evidence}</p>
+              )}
               {ownerId && (
                 <p className="muted">
                   Thực hiện bởi: {item.actor_name || item.actor || 'Hệ thống'}

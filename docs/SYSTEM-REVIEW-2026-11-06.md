@@ -6,6 +6,8 @@ Phạm vi: mã nguồn và bộ công cụ local tại `G:/code/BTL_Cloud_2627I_
 
 ## Kết luận
 
+> Cập nhật tiếp theo: phần còn thiếu ở mục 4 đã được bổ sung trong mã nguồn, gồm thử lại riêng cách ly, gửi đúng kênh và xác nhận thủ công theo bằng chứng, có audit và chặn xung đột. Bốn ZIP local ở mục 3 đã được build lại và kiểm tra khớp source. Xem [hướng dẫn xử lý pipeline](pipeline-recovery.md) để cập nhật đồng bộ workflow/Lambda/backend/frontend; chưa triển khai hoặc nghiệm thu AWS thật. Nội dung phát hiện bên dưới giữ lại để đối chiếu thời điểm rà soát.
+
 Các chức năng chính đã kết nối frontend–backend và vượt qua kiểm thử cục bộ: đăng nhập, dữ liệu riêng theo tài khoản, upload, thư mục, Thùng rác, quản trị tài khoản/quota và thống kê/xuất CSV/PDF. Tuy nhiên, hệ thống **chưa thống nhất hoàn toàn**. Cần ưu tiên đồng nhất phạm vi admin, xử lý quota Local + DynamoDB và cập nhật gói Lambda trước khi bàn giao/triển khai.
 
 Không thấy file mã nguồn frontend đứng riêng ngoài đồ thị import; không có cơ sở để xóa component chỉ vì tên gần giống nhau. Phần có thể dọn chủ yếu là kết quả sinh tự động, tài liệu lịch sử và bản frontend tuần 1 riêng biệt.
@@ -73,7 +75,7 @@ Hướng xử lý: hoàn tất sửa source, build lại và kiểm tra cả b�
 
 ### 4. Phần còn thiếu: thao tác vận hành cho lỗi cách ly/thông báo
 
-Hiện có kiểm tra execution, thử quét lại trong các trạng thái cho phép, yêu cầu nén và duyệt yêu cầu cách ly. Chưa có API/UI hoàn chỉnh để chạy lại riêng bước copy/delete cách ly hoặc đối soát rồi xử lý lần gửi SNS/webhook chưa rõ kết quả.
+Tại thời điểm rà soát ban đầu: có kiểm tra execution, thử quét lại trong các trạng thái cho phép, yêu cầu nén và duyệt yêu cầu cách ly; chưa có API/UI hoàn chỉnh để chạy lại riêng bước copy/delete cách ly hoặc đối soát thông báo chưa rõ kết quả. Cập nhật sau rà soát: đã bổ sung [xử lý riêng bước cách ly và đối soát SNS/email](pipeline-recovery.md). Webhook đã ngừng theo yêu cầu; lịch sử cũ được giữ và yêu cầu cũ không được gửi lại.
 
 Notify cố ý giữ `sending/unknown` và từ chối tự gửi lại để tránh gửi trùng; đây là nguyên tắc an toàn đang có. Phần thiếu là công cụ cho admin xem bằng chứng giao nhận, xác nhận kết quả và thực hiện bước tiếp theo có audit. Không nên thêm nút retry mù quáng hoặc gọi “Quét lại” thay cho xử lý riêng bước cách ly.
 
@@ -126,6 +128,6 @@ Nên lấy API contract, hướng dẫn Cognito và admin-reports-accounts hiệ
 2. Build/đối chiếu lại Lambda ZIP, hợp nhất hướng dẫn cấu hình/IAM và gom đủ file mới khi bàn giao.
 3. Hoàn thiện thao tác riêng cho lỗi cách ly/thông báo và cleanup metadata thư mục nếu cần vận hành lâu dài.
 4. Dọn đầu ra sinh tự động, lưu trữ frontend/tài liệu cũ; quyết định cách bàn giao bộ test/builder hiện chỉ có local.
-5. Sau đó nghiệm thu cloud thật với tài khoản/tệp thử: quyền IAM/KMS, S3 versioning, OCR, EventBridge/Step Functions, SNS/webhook và lịch cleanup. Kết quả local chưa thay thế bước này.
+5. Sau đó nghiệm thu cloud thật với tài khoản/tệp thử: quyền IAM/KMS, S3 versioning, OCR, EventBridge/Step Functions, SNS/email và lịch cleanup. Kết quả local chưa thay thế bước này.
 
 Các tính năng mở rộng như chia sẻ tệp, lịch sử phiên bản trên giao diện, tải nhóm thành ZIP và phát hiện mật khẩu/API key chưa được triển khai đầy đủ; đây là phạm vi chức năng mở rộng, cần tách khỏi các lỗi đồng bộ đã xác nhận ở trên.

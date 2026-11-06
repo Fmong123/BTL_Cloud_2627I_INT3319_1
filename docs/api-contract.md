@@ -24,13 +24,15 @@ Cập nhật 03/11/2026. Schema chính xác của API đang chạy nằm tại /
 | GET | /admin/files/{id} | Admin-only, owner_id bắt buộc; metadata, owner_name, can_read và report tổng hợp |
 | GET | /admin/files/{id}/history | Admin-only, owner_id bắt buộc; limit/cursor, lịch sử có tên người/hệ thống thực hiện |
 | GET | /admin/files/{id}/content | Admin-only, owner_id bắt buộc; version cách ly đúng cấu hình, ghi audit trước khi trả byte |
+| GET / POST | /admin/files/{id}/pipeline | Admin đúng phạm vi user; xem bằng chứng, thử lại cách ly/gửi SNS và đối soát có audit; thông báo chỉ nhận channel=sns; xem [hướng dẫn](pipeline-recovery.md) |
 | PATCH | /files/{id}/preferences | JSON starred boolean |
 | PATCH | /files/{id}/name | JSON name; chỉ đổi tên hiển thị |
 | POST | /files/{id}/trash | Xóa mềm, giữ 30 ngày |
 | POST | /files/{id}/restore | Khôi phục khi còn hạn, chưa bắt đầu xóa |
 | DELETE | /files/{id} | Xóa vĩnh viễn tệp trong rác/chờ xóa |
 | GET | /upload-history | Snapshot tệp đã xóa, phân trang limit/cursor |
-| GET / POST | /notifications | Đọc phân trang hoặc lưu sự kiện/thao tác đã đọc |
+| GET / POST | /notifications | Đọc phân trang/lưu sự kiện cá nhân; sự kiện máy chủ chỉ cho đánh dấu đã đọc |
+| GET | /admin/notifications | Hộp thư admin, chỉ sự kiện của chủ tệp role=user; biên nhận đọc riêng từng admin |
 
 Danh sách trả items/next_cursor. Thứ tự backend theo file_id; frontend đọc đủ trang rồi tìm/lọc/sắp xếp trên metadata. Cursor được kiểm partition/owner; không phải token xác thực. Không có GET /; GET /upload trả 405.
 
@@ -78,7 +80,7 @@ lifecycle_state: active, trashed, deleting, purged. Đổi tên và vòng đời
 
 Xóa vĩnh viễn xóa mọi version/delete marker thuộc prefix tệp ở Upload/Quarantine, rồi transaction lưu snapshot lịch sử và xóa metadata sống. Lỗi một phần giữ deleting và quota; retry được. DELETE lặp lại sau thành công có snapshot purged vẫn xác nhận deleted=true. ID không hợp lệ trả 400.
 
-Notifications lưu id, kind, title, message, tone, file_id tùy chọn, created_at và read. read chỉ chuyển sang true. Web ghi các sự kiện đã quan sát; đây không phải push nền hoặc audit log đầy đủ.
+Notifications lưu id, kind, title, message, tone, file_id tùy chọn, created_at và read. read chỉ chuyển sang true. Scan/Quarantine ghi kết quả từ máy chủ; quota/thư mục/xem xét cách ly ghi cùng transaction. Browser chỉ sửa trạng thái đã đọc của sự kiện máy chủ. Xem [hợp đồng thông báo](notifications.md); đây không phải push hệ điều hành hoặc audit log đầy đủ.
 
 ## Thư mục theo chủ sở hữu
 
@@ -99,7 +101,7 @@ Folder có `id`, `name`, `parent_id`, `lifecycle_state`, `trashed_at`, `trash_ex
 
 Upload nhận thêm trường multipart `folder_id` tùy chọn; xác minh thư mục còn hoạt động và lưu vị trí cùng metadata trước khi ghi nội dung. File list/status trả thêm `folder_id`, `folder_updated_at`, `trash_root_id`. Chi tiết admin có đường dẫn thư mục của owner trong `folder_path`.
 
-Cây thư mục dùng partition `!folders!<owner>` trong bảng files. Item `!revision` là token đồng thời nội bộ, không trả như thư mục. Create/rename/move/trash/restore, chuyển tệp và upload vào thư mục dùng cùng revision; tránh chu trình, file vào đích vừa xóa và xóa thiếu file đang chuyển. Giao dịch có điều kiện lifecycle/scan/upload để không ghi đè pipeline. Xóa/khôi phục tối đa 98 thư mục+tệp mỗi giao dịch; vượt giới hạn trả 409 trước khi ghi. Trash chặn khi còn uploading/unknown/scanning/flagged; hạn khôi phục 30 ngày. Purge đặt cờ purging trước khi xóa byte, chặn restore và giữ khả năng retry nếu lỗi.
+Cây thư mục dùng partition `!folders!<owner>` trong bảng files. Item `!revision` là token đồng thời nội bộ, không trả như thư mục. Create/rename/move/trash/restore, chuyển tệp và upload vào thư mục dùng cùng revision; tránh chu trình, file vào đích vừa xóa và xóa thiếu file đang chuyển. Giao dịch có điều kiện lifecycle/scan/upload để không ghi đè pipeline. Xóa/khôi phục tối đa 97 thư mục+tệp mỗi giao dịch; vượt giới hạn trả 409 trước khi ghi. Trash chặn khi còn uploading/unknown/scanning/flagged; hạn khôi phục 30 ngày. Purge đặt cờ purging trước khi xóa byte, chặn restore và giữ khả năng retry nếu lỗi.
 
 ## Lỗi API
 

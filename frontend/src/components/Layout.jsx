@@ -34,6 +34,7 @@ import { needsTracking } from '../utils/processing.js';
 import Modal from './Modal.jsx';
 import ConnectionMenu from './ConnectionMenu.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
+import { notificationTarget } from '../utils/notifications.js';
 import FileDetail from './FileDetail.jsx';
 import FilePreview from './FilePreview.jsx';
 import SidebarStorage from './SidebarStorage.jsx';
@@ -531,17 +532,24 @@ export default function Layout() {
                 <strong>{event.title}</strong>
                 <span>{event.message}</span>
               </div>
-              {event.fileId && (
+              {(event.fileId || event.destination || event.folderId) && (
                 <button
                   className="text-button"
                   onClick={() => {
-                    navigate('/files');
-                    w.inspect(event.fileId);
+                    const target = notificationTarget(event, w.allFiles || w.files);
+                    navigate(target.to, { state: target.state });
+                    w.inspect(target.inspect || null);
                     w.markRead(event.id);
                     w.dismissToast(event.id);
                   }}
                 >
-                  Xem tệp
+                  {event.destination === 'admin/quarantine'
+                    ? 'Xem yêu cầu'
+                    : event.fileId
+                      ? 'Xem tệp'
+                      : event.folderId
+                        ? 'Mở thư mục'
+                        : 'Xem chi tiết'}
                 </button>
               )}
               <button

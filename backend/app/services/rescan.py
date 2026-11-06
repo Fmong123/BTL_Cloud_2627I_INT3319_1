@@ -27,6 +27,8 @@ class Rescanner:
         if machine.get("type") != "STANDARD":
             raise HTTPException(503, "Quét lại cần workflow STANDARD")
         if not same_request:
+            if item.get("pipeline_busy"):
+                raise HTTPException(409, "Đang xử lý riêng một bước pipeline. Hãy kiểm tra kết quả trước khi quét lại.")
             if item.get("upload_state") != "uploaded" or item.get("status") not in ALLOWED_RESCAN:
                 raise HTTPException(409, "Chỉ quét lại tệp đã tải xong, không đang xử lý hoặc cách ly")
             previous = item.get("rescan_requested_at")

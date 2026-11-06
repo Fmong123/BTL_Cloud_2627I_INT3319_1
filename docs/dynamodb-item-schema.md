@@ -186,10 +186,10 @@ notify_safe và notify_quarantined giữ đúng HANDOFF_DB. Các action khác l�
 |---|---|
 | Scan | findings_count, finding_types; lý do nếu không quét được |
 | Quarantine | quarantine_bucket, quarantine_key, kms_key, findings_count, finding_types, quarantined_at; nguồn/version khi có |
-| Notify | sns_message_id; kết quả hoặc tên kênh webhook đã lọc |
+| Notify | sns_message_id; channel=sns, receipt và trạng thái giao nhận |
 | Lỗi | Mã lỗi và lý do đã lọc để đối chiếu |
 
-Tên và kiểu webhook cần chốt với bên AWS; không lưu URL webhook chứa secret. SNS trả message ID chỉ xác nhận Publish được chấp nhận, chưa chứng minh email đã đến hộp thư.
+Notify chỉ gửi SNS/email. Các trường giao nhận và audit của kênh cũ được giữ để tra cứu, không dùng để gửi lại. SNS trả message ID chỉ xác nhận Publish được chấp nhận, chưa chứng minh email đã đến hộp thư.
 
 ### 3.4. Retry và tính bất biến
 

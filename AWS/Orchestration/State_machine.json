@@ -1,8 +1,40 @@
 {
-  "Comment": "MaySec: existing metadata, version-pinned scan/quarantine, owner audit, per-channel notification delivery",
+  "Comment": "MaySec: existing metadata, version-pinned scan/quarantine, owner audit, SNS notification delivery",
   "QueryLanguage": "JSONata",
-  "StartAt": "ScanFilePII",
+  "StartAt": "RouteOperation",
   "States": {
+    "RouteOperation": {
+      "Type": "Choice",
+      "Choices": [
+        {"Condition": "{% $states.input.recovery.action = 'retry_quarantine' %}", "Next": "RecoveryQuarantine"},
+        {"Condition": "{% $states.input.recovery.action = 'retry_notification' %}", "Next": "RecoveryNotify"},
+        {"Condition": "{% $exists($states.input.recovery) %}", "Next": "InvalidRecovery"}
+      ],
+      "Default": "ScanFilePII"
+    },
+    "RecoveryQuarantine": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "TimeoutSeconds": 1000,
+      "Arguments": {
+        "FunctionName": "securedrive-quarantine-file",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}}]) %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "End": true
+    },
+    "RecoveryNotify": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "TimeoutSeconds": 1000,
+      "Arguments": {
+        "FunctionName": "securedrive-notify",
+        "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}}]) %}"
+      },
+      "Output": "{% $states.result.Payload %}",
+      "End": true
+    },
+    "InvalidRecovery": {"Type": "Fail", "Error": "InvalidRecoveryOperation"},
     "ScanFilePII": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",

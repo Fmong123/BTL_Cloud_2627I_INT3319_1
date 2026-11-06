@@ -71,7 +71,7 @@ def verify_restorable(item, settings, storage):
 
 def save_review(metadata, audit, item, actor, payload):
     if (item.get("status") != "quarantined" or item.get("upload_state") != "uploaded"
-            or item.get("lifecycle_state", "active") != "active" or not item.get("quarantine_version_id")):
+            or item.get("pipeline_busy") or item.get("lifecycle_state", "active") != "active" or not item.get("quarantine_version_id")):
         raise HTTPException(409, "Tệp chưa có bản cách ly có thể xem xét")
     previous = review_view(item)
     deciding = isinstance(payload, ReviewDecision)
@@ -88,9 +88,10 @@ def save_review(metadata, audit, item, actor, payload):
                    "id": str(uuid4()), "status": "pending", "reason": payload.reason, "requested_at": timestamp,
                })
     condition = ("#status = :quarantined AND upload_state = :uploaded AND quarantine_version_id = :version "
-                 "AND (attribute_not_exists(lifecycle_state) OR lifecycle_state = :active)")
+                 "AND (attribute_not_exists(lifecycle_state) OR lifecycle_state = :active) "
+                 "AND (attribute_not_exists(pipeline_busy) OR pipeline_busy = :pipeline_idle)")
     values = {":quarantined": "quarantined", ":uploaded": "uploaded", ":version": version,
-              ":active": "active", ":review": {**review, "version": version}}
+              ":active": "active", ":review": {**review, "version": version}, ":pipeline_idle": False}
     names = {"#status": "status"}
     if deciding:
         condition += " AND quarantine_review.#id = :id AND quarantine_review.#status = :pending"
@@ -125,6 +126,10 @@ def save_review(metadata, audit, item, actor, payload):
             "Tệp đã được khôi phục" if restored else "Quyết định giữ cách ly",
             f"{name}. Lý do: {payload.reason}", "success" if restored else "warning",
         ))
+    else:
+        from .notifications import review_notification
+        changes.append(review_notification(metadata, owner, ident, review, timestamp,
+                                           item.get("display_name") or item["original_name"]))
     try:
         call_dynamodb(metadata.client, "transact_write_items", TransactItems=changes)
     except DynamoDBError as exc:

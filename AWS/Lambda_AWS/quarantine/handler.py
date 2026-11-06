@@ -51,10 +51,13 @@ def record_failure(source, ctx, reason, *, deletion=False, location=None):
         return row
     deletion = deletion or row["status"] == "quarantine_delete_failed"
     status = "quarantine_delete_failed" if deletion else "flagged"
+    notice_at = (row.get("quarantine_failure_at") if row.get("quarantine_failure_execution") == ctx.get("execution", "")
+                 and row.get("quarantine_reason") == ("quarantine_delete_failed" if deletion else reason) else None) or utc(ctx.get("entered_at"))
     fields = {**status_fields(status, source["file_id"]),
               "quarantine_status": "delete_failed" if deletion else "copy_failed",
               "status_reason": "quarantine_delete_failed" if deletion else reason,
-              "quarantine_reason": "quarantine_delete_failed" if deletion else reason}
+              "quarantine_reason": "quarantine_delete_failed" if deletion else reason,
+              "quarantine_failure_at": notice_at, "quarantine_failure_execution": ctx.get("execution", "")}
     fields.update(location or {})
     saved = update_file(_table(FILES_TABLE), source, fields,
                         statuses=["flagged", "quarantine_delete_failed"], execution=ctx.get("execution"))
@@ -62,6 +65,10 @@ def record_failure(source, ctx, reason, *, deletion=False, location=None):
               "quarantine_delete_failed" if deletion else "quarantine_failed", status,
               {"reason": fields["status_reason"]}, utc(ctx.get("entered_at")),
               execution_id=row.get("execution_id"), suffix=ctx.get("execution", "") + "|" + fields["status_reason"])
+    from pipeline_common import put_notification
+    put_notification(_table(FILES_TABLE), source, saved,
+                     "quarantine_failed_" + fields["status_reason"], status, notice_at,
+                     execution_id=saved.get("execution_id"))
     return saved
 
 def finish(source, row, location, ctx):
@@ -81,6 +88,9 @@ def finish(source, row, location, ctx):
                             remove=remove, execution=ctx.get("execution"))
     put_audit(_table(AUDIT_TABLE), source, "quarantine_completed", "quarantined",
               {**location, **summary(saved)}, timestamp, execution_id=saved.get("execution_id"))
+    from pipeline_common import put_notification
+    put_notification(_table(FILES_TABLE), source, saved, "quarantine_completed", "quarantined", timestamp,
+                     execution_id=saved.get("execution_id"))
     return {"status": "quarantined", **location, **summary(saved),
             "owner_id": source["owner_id"], "file_id": source["file_id"], "quarantined_at": timestamp}
 
@@ -90,6 +100,8 @@ def lambda_handler(event, context):
     row = read_file(_table(FILES_TABLE), source)
     from pipeline_common import verify_rescan_execution
     verify_rescan_execution(row, event)
+    from pipeline_common import verify_recovery
+    recovery = verify_recovery(row, event, "retry_quarantine")
     if row["status"] not in {"flagged", "quarantine_delete_failed", "quarantined"}:
         raise PipelineConflict("file_not_flagged")
     if event.get("operation") == "record_failure":
@@ -98,6 +110,12 @@ def lambda_handler(event, context):
         raise QuarantineError("quarantine_configuration_incomplete")
     if (event.get("scan") or {}).get("status") != "flagged":
         raise PipelineConflict("scan_not_flagged")
+    if recovery and row["status"] != "quarantined":
+        # A duplicate invocation must never race another worker's copy/delete.
+        update_file(_table(FILES_TABLE), source, {"pipeline_worker": recovery["request_id"]},
+                    statuses=["flagged", "quarantine_delete_failed"], execution=ctx.get("execution"),
+                    extra_condition="attribute_not_exists(pipeline_worker) AND pipeline_recovery.request_id = :request",
+                    extra_values={":request": recovery["request_id"]})
     if row["status"] != "quarantined":
         update_file(_table(FILES_TABLE), source, {"quarantine_status": row.get("quarantine_status", "pending")},
                     statuses=[row["status"]], execution=ctx.get("execution"))

@@ -94,7 +94,6 @@ export default function FolderBrowser({
       } else await changeFolder(w.preferences.baseUrl, data.folderId, 'move', target);
       w.refreshFiles();
       onDropComplete();
-      w.notify('Đã di chuyển vào thư mục');
     } catch (err) {
       setMessage(err.message);
     } finally {

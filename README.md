@@ -12,6 +12,7 @@ React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý qu�
 - Giao diện sáng/tối, sidebar thu gọn, chọn nhiều và panel chi tiết.
 - Thư mục nhiều cấp, đường dẫn, đổi tên/di chuyển; chuyển tệp bằng hộp thoại hoặc kéo thả; xóa và khôi phục cả thư mục trong Thùng rác.
 - Drive/cache riêng theo tài khoản; đồng bộ `securedrive-users`, lịch sử từng tệp và admin đọc cách ly có audit.
+- Admin [thử lại riêng cách ly, gửi lại và đối soát thông báo SNS/email](docs/pipeline-recovery.md), dùng chung quyền user-only, workflow và audit hiện có.
 
 Upload thành công chỉ xác nhận đã lưu nội dung. Nội dung chỉ được xem/tải khi đã upload xong, kết quả quét `safe` và không trong rác. Quét hiện phát hiện CCCD và số thẻ, không phải quét mã độc.
 

@@ -629,7 +629,7 @@ def file_history(
     return history_response(file_id, owner_id, audit, limit, cursor)
 
 
-def history_response(file_id, owner_id, audit, limit, cursor):
+def history_response(file_id, owner_id, audit, limit, cursor, *, admin_details=False):
     """Authorize the file before calling; whitelist fields shared by owner/admin."""
     start = None
     if cursor:
@@ -650,5 +650,13 @@ def history_response(file_id, owner_id, audit, limit, cursor):
         raise HTTPException(503, "Lịch sử tệp có dữ liệu không khớp chủ sở hữu")
     allowed = ("event_key", "occurred_at", "action", "actor", "from_status", "to_status")
     next_cursor = base64.urlsafe_b64encode(json.dumps(page.next_key).encode()).decode().rstrip("=") if page.next_key else None
-    return {"id": file_id, "items": [{k: item[k] for k in allowed if k in item} for item in page.items],
+    items = []
+    for item in page.items:
+        event = {k: item[k] for k in allowed if k in item}
+        if admin_details and item.get("action") in {"admin_pipeline_requested", "admin_pipeline_checked", "admin_notification_confirmed"}:
+            event["details"] = {k: v for k, v in item.get("details", {}).items()
+                if k in {"action", "channel", "reason", "allow_duplicate", "execution_status", "result", "receipt", "evidence", "confirmation"}
+                and (isinstance(v, str) and len(v) <= 500 or type(v) is bool)}
+        items.append(event)
+    return {"id": file_id, "items": items,
             "next_cursor": next_cursor}

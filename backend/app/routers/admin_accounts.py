@@ -15,6 +15,7 @@ from ..db import DynamoDBError, call_dynamodb, serialize_item, utc_timestamp
 from ..services.cognito_auth import AuthError
 from ..services.admin_scope import user_scope, user_account, require_user_account
 from ..services.quota import quota_lock, quota_config, usage, lease_check, QuotaBusy
+from ..services.lifecycle import notification_put
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 # All role/state edits share one lease so two administrators cannot remove each other.
@@ -149,6 +150,11 @@ def edit_quota(owner_id: UUID, payload: QuotaEdit, request: Request, user=Depend
                 audit.event_put(owner, owner, str(payload.request_id), "account_quota_changed", user.owner_id, now,
                                 {"before_bytes": current["limit_bytes"], "after_bytes": payload.limit_bytes,
                                  "reason": payload.reason.strip()}),
+                notification_put(
+                    metadata, owner, None, "quota-" + str(payload.request_id), now, "account-quota",
+                    "Hạn mức dung lượng đã thay đổi",
+                    f"Hạn mức mới: {payload.limit_bytes:,} byte. Lý do: {payload.reason.strip()}", "info",
+                    destination="settings"),
             ])
         return view(metadata, profiles, item)
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, ChevronRight, CircleAlert, Inbox, X } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
+import { notificationTarget } from '../utils/notifications.js';
 
 export default function NotificationCenter() {
   const w = useWorkspace();
@@ -44,22 +45,12 @@ export default function NotificationCenter() {
   function show(event) {
     w.markRead(event.id);
     setOpen(false);
-    if (event.fileId) {
-      const file = [...(w.allFiles || w.files), ...(w.activityFiles || [])].find(
-        (item) => item.id === event.fileId || item.remoteId === event.fileId,
-      );
-      navigate(
-        file?.lifecycleState === 'purged'
-          ? '/uploads'
-          : ['trashed', 'deleting'].includes(file?.lifecycleState)
-            ? '/trash'
-            : '/files',
-      );
-      w.inspect(event.fileId);
-    } else {
-      // A grouped upload event represents several files rather than one detail drawer.
-      navigate(event.kind === 'sync-error' ? '/settings' : '/uploads');
-    }
+    const target = notificationTarget(event, [
+      ...(w.allFiles || w.files),
+      ...(w.activityFiles || []),
+    ]);
+    w.inspect(target.inspect || null);
+    navigate(target.to, { state: target.state });
   }
 
   return (
@@ -179,7 +170,8 @@ export default function NotificationCenter() {
             )}
           </div>
           <p className="notification-footnote">
-            Đây là các sự kiện web đã quan sát, không phải lịch sử kiểm toán đầy đủ.
+            Lưu các sự kiện xử lý và thao tác của bạn. Nhật ký kiểm toán được xem riêng trong lịch
+            sử.
           </p>
         </section>
       )}

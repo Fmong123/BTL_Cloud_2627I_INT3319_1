@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from uuid import uuid4
 from fastapi import HTTPException
 from ..db import call_dynamodb, file_key, serialize_item, utc_timestamp, DynamoDBError
-from .lifecycle import FileLifecycle, state, expired, validate_name, RETENTION_DAYS
+from .lifecycle import FileLifecycle, state, expired, validate_name, RETENTION_DAYS, notification_put
 
-MAX_TREE_CHANGE = 98  # 100 DynamoDB actions minus revision and audit.
+MAX_TREE_CHANGE = 97  # 100 DynamoDB actions minus revision, audit and durable notice.
 REVISION_ID = "!revision"
 
 
@@ -68,13 +68,24 @@ class Folders:
             "ConditionExpression": "revision = :old" if self.revision else "attribute_not_exists(revision)",
             "ExpressionAttributeValues": serialize_item({":next": str(uuid4()), **({":old": self.revision} if self.revision else {})})}}
 
-    def commit(self, changes, ident, action):
+    def commit(self, changes, ident, action, *, message=None, folder_id=None):
         if len(changes) > MAX_TREE_CHANGE:
-            raise HTTPException(409, "Thao tác vượt giới hạn 98 tệp/thư mục mỗi lần. Hãy chia nhỏ nội dung trước khi thực hiện.")
+            raise HTTPException(409, "Thao tác vượt giới hạn 97 tệp/thư mục mỗi lần. Hãy chia nhỏ nội dung trước khi thực hiện.")
         actions = [self.revision_action(), *changes]
+        event, stamp = str(uuid4()), utc_timestamp()
         if self.audit:
-            actions.append(self.audit.event_put(self.owner, ident, str(uuid4()), action,
-                                               self.owner, utc_timestamp(), {"items": len(changes)}))
+            actions.append(self.audit.event_put(self.owner, ident, event, action,
+                                               self.owner, stamp, {"items": len(changes)}))
+        titles = {"folder_created": "Đã tạo thư mục", "folder_renamed": "Đã đổi tên thư mục",
+                  "folder_moved": "Đã di chuyển thư mục", "files_moved": "Đã di chuyển tệp",
+                  "folder_trashed": "Đã chuyển thư mục và nội dung vào Thùng rác",
+                  "folder_restored": "Đã khôi phục thư mục và nội dung", "folder_purged": "Đã xóa vĩnh viễn thư mục"}
+        if action in titles:
+            actions.append(notification_put(self.metadata, self.owner, None, "folder-" + event, stamp,
+                action.replace("_", "-"), titles[action],
+                message or self.rows.get(ident, {}).get("name", "Thư mục của bạn"), "success",
+                folder_id=folder_id if action == "files_moved" else (None if action == "folder_purged" else ident),
+                destination="trash" if action in {"folder_trashed", "folder_purged"} else "files"))
         try:
             call_dynamodb(self.metadata.client, "transact_write_items", TransactItems=actions)
         except DynamoDBError as exc:
@@ -120,13 +131,13 @@ class Folders:
                "parent_id": parent, "created_at": utc_timestamp()}
         put = {"Put": {"TableName": self.metadata.table_name, "Item": serialize_item(row),
                        "ConditionExpression": "attribute_not_exists(file_id)"}}
-        self.commit([put], row["file_id"], "folder_created")
+        self.commit([put], row["file_id"], "folder_created", message=row["name"])
         return folder_view(row)
 
     def rename(self, ident, name):
         row = self.get(ident)
         fields = {"name": self.name(name, row.get("parent_id"), ident)}
-        self.commit([self.update(row, fields)], ident, "folder_renamed")
+        self.commit([self.update(row, fields)], ident, "folder_renamed", message=fields["name"])
         return folder_view({**row, **fields})
 
     def move(self, ident, parent):
@@ -153,7 +164,8 @@ class Folders:
                 raise HTTPException(409, "Chỉ di chuyển tệp đã tải lên và không ở Thùng rác")
             changes.append(self.update(row, {"folder_id": destination, "folder_updated_at": stamp},
                 guard=" AND upload_state = :uploaded", values={":uploaded": "uploaded"}))
-        self.commit(changes, str(uuid4()), "files_moved")
+        self.commit(changes, str(uuid4()), "files_moved", folder_id=destination,
+                    message=f"{len(changes)} tệp → {self.rows[destination]['name'] if destination else 'Tệp của tôi'}")
         return {"folder_id": destination, "moved": len(changes)}
 
     def subtree(self, ident):
@@ -173,7 +185,7 @@ class Folders:
             return {"id": ident, "trashed": True}
         ids = self.subtree(ident)
         files = [r for r in self.read_partition(self.owner) if r.get("folder_id") in ids and state(r) == "active"]
-        if any(r.get("upload_state") not in {"uploaded", "failed"} or r.get("status") in {"scanning", "flagged"} for r in files):
+        if any(r.get("pipeline_busy") or r.get("upload_state") not in {"uploaded", "failed"} or r.get("status") in {"scanning", "flagged"} for r in files):
             raise HTTPException(409, "Có tệp đang tải lên, đang quét hoặc chờ cách ly. Hãy chờ xử lý hoàn tất trước khi xóa thư mục.")
         stamp = utc_timestamp()
         expiry = utc_timestamp((datetime.fromisoformat(stamp.replace("Z", "+00:00")) + timedelta(days=RETENTION_DAYS)).isoformat())
@@ -182,8 +194,8 @@ class Folders:
         changes = [self.update(self.rows[i], fields) for i in ids]
         for row in files:
             changes.append(self.update(row, fields,
-                guard=" AND upload_state IN (:uploaded, :failed) AND #scan <> :scanning AND #scan <> :flagged",
-                values={":uploaded": "uploaded", ":failed": "failed", ":scanning": "scanning", ":flagged": "flagged"}))
+                guard=" AND upload_state IN (:uploaded, :failed) AND #scan <> :scanning AND #scan <> :flagged AND (attribute_not_exists(pipeline_busy) OR pipeline_busy = :pipeline_idle)",
+                values={":uploaded": "uploaded", ":failed": "failed", ":scanning": "scanning", ":flagged": "flagged", ":pipeline_idle": False}))
             changes[-1]["Update"]["ExpressionAttributeNames"]["#scan"] = "status"
         self.commit(changes, ident, "folder_trashed")
         return {"id": ident, "trashed": True, "files": len(files), "folders": len(ids)}

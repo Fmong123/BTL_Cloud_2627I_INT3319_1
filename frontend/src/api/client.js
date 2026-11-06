@@ -361,12 +361,14 @@ export async function listNotifications(baseUrl, options = {}) {
   const records = [],
     seen = new Set();
   let cursor;
+  let pages = 0;
   do {
     const query = new URLSearchParams({ limit: '100' });
     if (cursor) query.set('cursor', cursor);
     const data = await requestJson(baseUrl, `/notifications?${query}`, options);
     if (!Array.isArray(data?.items)) throw new ApiError('Thông báo chưa đúng định dạng');
     records.push(...data.items);
+    pages++;
     cursor = data.next_cursor;
     if (
       cursor != null &&
@@ -374,8 +376,42 @@ export async function listNotifications(baseUrl, options = {}) {
     )
       throw new ApiError('Cursor thông báo chưa hợp lệ');
     if (cursor) seen.add(cursor);
-  } while (options.includeHistory && cursor && records.length < 2000);
-  return records
+  } while (options.includeHistory && cursor && records.length < 2000 && pages < 20);
+  let adminRecords = [];
+  if (options.admin) {
+    let next;
+    let adminPages = 0;
+    const cursors = new Set();
+    do {
+      const query = new URLSearchParams({ limit: '100' });
+      if (next) query.set('cursor', next);
+      let data;
+      try {
+        data = await requestJson(baseUrl, `/admin/notifications?${query}`, options);
+      } catch (error) {
+        if (error.status === 403) error.adminScopeDenied = true;
+        throw error;
+      }
+      if (!Array.isArray(data?.items)) throw new ApiError('Thông báo quản trị chưa đúng định dạng');
+      adminRecords.push(...data.items);
+      adminPages++;
+      next = data.next_cursor;
+      if (
+        next != null &&
+        (typeof next !== 'string' || !next.length || next.length > 2048 || cursors.has(next))
+      )
+        throw new ApiError('Cursor thông báo quản trị chưa hợp lệ');
+      if (next) cursors.add(next);
+    } while (next && adminRecords.length < 2000 && adminPages < 20);
+  }
+  const reads = new Map(records.map((item) => [item.id, item.read === true]));
+  // The admin endpoint is authoritative for current target access and content.
+  const combined = [
+    ...records.filter((item) => item.kind !== 'admin-review-request'),
+    ...adminRecords.map((item) => ({ ...item, read: reads.get(item.id) || false })),
+  ];
+  return combined
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
     .slice(0, 2000)
     .map((item) => ({
       id: item.id,
@@ -386,6 +422,10 @@ export async function listNotifications(baseUrl, options = {}) {
       fileId: item.file_id,
       createdAt: Date.parse(item.created_at),
       read: item.read === true,
+      serverEvent: item.server_event === true,
+      targetOwnerId: item.target_owner_id,
+      folderId: item.folder_id,
+      destination: item.destination,
     }))
     .filter((item) => typeof item.id === 'string' && Number.isFinite(item.createdAt));
 }
@@ -692,6 +732,18 @@ export function runAdminScanOperation(baseUrl, item, action) {
     {
       method: 'POST',
       body: { action, request_id: crypto.randomUUID() },
+      timeout: 30000,
+    },
+  );
+}
+
+export function runPipelineOperation(baseUrl, id, ownerId, body) {
+  return requestJson(
+    baseUrl,
+    `/admin/files/${encodeURIComponent(id)}/pipeline?${new URLSearchParams({ owner_id: ownerId })}`,
+    {
+      method: 'POST',
+      body,
       timeout: 30000,
     },
   );

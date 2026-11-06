@@ -72,17 +72,6 @@ export default function FolderDialogs({ action, onClose, onNavigate }) {
         );
       else result = await changeFolder(base, action.folder.id, action.kind);
       w.refreshFiles();
-      w.notify(
-        {
-          create: 'Đã tạo thư mục',
-          rename: 'Đã đổi tên thư mục',
-          trash: 'Đã chuyển thư mục và nội dung vào Thùng rác',
-          restore: 'Đã khôi phục thư mục và nội dung',
-          purge: 'Đã xóa vĩnh viễn thư mục',
-          'move-files': 'Đã di chuyển tệp',
-          'move-folder': 'Đã di chuyển thư mục',
-        }[action.kind],
-      );
       if (action.kind === 'trash' && action.leaveFolder)
         onNavigate?.(action.folder.parent_id || 'root');
       if (action.kind === 'create' && action.openCreated) onNavigate?.(result.id);
