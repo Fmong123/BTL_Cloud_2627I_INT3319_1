@@ -15,6 +15,7 @@ from .routers.auth import router as auth_router
 from .routers.admin import router as admin_router
 from .routers.admin_accounts import router as accounts_router
 from .routers.admin_reports import router as reports_router
+from .routers.admin_history import router as history_router
 from .routers.files import router
 from .routers.lifecycle import router as lifecycle_router
 from .routers.folders import router as folder_router
@@ -252,6 +253,7 @@ def create_app(
     app.include_router(admin_router, tags=["Administration"])
     app.include_router(accounts_router, tags=["Administration"])
     app.include_router(reports_router, tags=["Administration"])
+    app.include_router(history_router, tags=["Administration"])
     return app
 
 app = create_app(s3_uploader=upload_to_s3)

@@ -14,6 +14,7 @@ const AdminQuarantine = lazy(() => import('./pages/AdminQuarantine.jsx'));
 const AdminOverview = lazy(() => import('./pages/AdminOverview.jsx'));
 const AdminReports = lazy(() => import('./pages/AdminReports.jsx'));
 const AdminAccounts = lazy(() => import('./pages/AdminAccounts.jsx'));
+const AdminHistory = lazy(() => import('./pages/AdminHistory.jsx'));
 
 function AdminAccess() {
   const { session } = useAuth();
@@ -58,6 +59,7 @@ function SignedInApp() {
               <Route path="admin/quarantine" element={<AdminQuarantine />} />
               <Route path="admin/reports" element={<AdminReports />} />
               <Route path="admin/accounts" element={<AdminAccounts />} />
+              <Route path="admin/history" element={<AdminHistory />} />
             </Route>
             <Route path="settings" element={<Settings />} />
             <Route path="help" element={<Help />} />

@@ -116,7 +116,9 @@ def save_review(metadata, audit, item, actor, payload):
                 "ExpressionAttributeValues": serialize_item(values),
             }},
             audit.event_put(owner, ident, f"{review['id']}:{action}", action, actor, timestamp,
-                            {"review_status": review["status"], "quarantine_version_id": version}),
+                            {"review_status": review["status"], "quarantine_version_id": version,
+                             "before_review_status": previous.get("status") if previous else None,
+                             "reason": payload.reason}),
     ]
     if deciding:
         name = item.get("display_name") or item["original_name"]

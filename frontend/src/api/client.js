@@ -495,10 +495,6 @@ export function updateAdminAccount(baseUrl, id, kind, body, options = {}) {
   });
 }
 
-export function getAdminAccountHistory(baseUrl, id, options = {}) {
-  return requestJson(baseUrl, `/admin/accounts/${encodeURIComponent(id)}/history`, options);
-}
-
 export function getAdminAccountSuggestions(baseUrl, q, options = {}) {
   return requestJson(baseUrl, `/admin/accounts/suggestions?${new URLSearchParams({ q })}`, {
     timeout: 30000,
@@ -515,6 +511,20 @@ export function getAdminReport(baseUrl, filters, options = {}) {
 
 export function getAdminReportOwners(baseUrl, options = {}) {
   return requestJson(baseUrl, '/admin/reports/owners', { timeout: 30000, ...options });
+}
+
+export function getAdminHistory(baseUrl, filters = {}, options = {}) {
+  return requestJson(baseUrl, `/admin/history?${new URLSearchParams(filters)}`, {
+    timeout: 60000,
+    ...options,
+  });
+}
+
+export function getAdminHistoryEvent(baseUrl, id, options = {}) {
+  return requestJson(baseUrl, `/admin/history/${encodeURIComponent(id)}`, {
+    timeout: 30000,
+    ...options,
+  });
 }
 
 export async function downloadAdminReport(baseUrl, filters, format, options = {}) {

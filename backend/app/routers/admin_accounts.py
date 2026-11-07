@@ -189,7 +189,9 @@ def edit_access(owner_id: UUID, payload: AccessEdit, request: Request, user=Depe
             profile = profiles.get(owner)
             pending = profile.get("management_pending")
             desired = {"role": payload.role, "enabled": payload.enabled, "request_id": str(payload.request_id),
-                       "actor": user.owner_id, "reason": payload.reason.strip()}
+                       "actor": user.owner_id, "reason": payload.reason.strip(),
+                       "before_role": pending.get("before_role") if pending else target["role"],
+                       "before_enabled": pending.get("before_enabled") if pending else target["enabled"]}
             if profile.get("management_request_id") == str(payload.request_id) and not pending:
                 if (profile.get("managed_role") != payload.role or profile.get("access_disabled") != (not payload.enabled)
                         or profile.get("management_actor") != user.owner_id):
@@ -219,7 +221,9 @@ def edit_access(owner_id: UUID, payload: AccessEdit, request: Request, user=Depe
                     "ExpressionAttributeValues": serialize_item({":role": payload.role, ":disabled": not payload.enabled,
                         ":revision": profile.get("management_revision", 0) + 1, ":request": str(payload.request_id), ":actor": user.owner_id})}},
                 audit.event_put(owner, owner, str(payload.request_id), "account_access_changed", user.owner_id,
-                                utc_timestamp(), {"role": payload.role, "enabled": payload.enabled, "reason": payload.reason.strip()})])
+                                utc_timestamp(), {"role": payload.role, "enabled": payload.enabled,
+                                    "before_role": desired["before_role"], "before_enabled": desired["before_enabled"],
+                                    "reason": payload.reason.strip()})])
         return view(metadata, profiles, target)
 
 

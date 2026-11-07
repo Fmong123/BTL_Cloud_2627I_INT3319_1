@@ -1,0 +1,320 @@
+.history-panel {
+  overflow: hidden;
+}
+.history-filters {
+  align-items: end;
+}
+.history-filters .history-search {
+  flex: 1 1 300px;
+  min-width: 230px;
+}
+.history-search > span {
+  position: relative;
+  display: block;
+}
+.history-search > span > svg {
+  position: absolute;
+  top: 13px;
+  left: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.admin-management .history-filters .history-search input[type='search'] {
+  padding-left: 39px;
+}
+.history-filter-actions {
+  padding-bottom: 1px;
+}
+.history-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.history-list-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  margin: 0;
+}
+.history-list-heading p {
+  font-size: var(--font-label);
+  color: var(--muted);
+  margin: 0;
+}
+.history-table {
+  table-layout: fixed;
+  min-width: 1060px;
+}
+.history-table th:nth-child(1) {
+  width: 13%;
+}
+.history-table th:nth-child(2) {
+  width: 15%;
+}
+.history-table th:nth-child(3) {
+  width: 23%;
+}
+.history-table th:nth-child(4) {
+  width: 21%;
+}
+.history-table th:nth-child(5) {
+  width: 18%;
+}
+.history-table th:nth-child(6) {
+  width: 10%;
+}
+.history-table th,
+.history-table td {
+  padding-inline: 16px;
+}
+.history-table .history-center {
+  text-align: center;
+}
+.history-table td {
+  overflow-wrap: anywhere;
+}
+.history-table tr.history-selected td {
+  background: var(--info-bg);
+}
+.history-table .history-view .button {
+  padding-inline: 12px;
+}
+.admin-management .history-result {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 0;
+  white-space: normal;
+  text-align: center;
+}
+.history-result svg {
+  flex-shrink: 0;
+}
+.history-result.success {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.history-result.failed {
+  color: var(--error);
+  background: var(--error-bg);
+}
+.history-result.pending,
+.history-result.unknown {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+.history-result.closed {
+  color: var(--muted);
+  background: var(--surface-soft, var(--bg));
+}
+.history-error {
+  padding: 0 22px 20px;
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+}
+.history-error .banner {
+  margin: 0;
+  width: 100%;
+}
+.history-detail .admin-panel-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.history-detail-body {
+  padding: 0 22px 22px;
+}
+.history-detail-title {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.history-detail-title h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.history-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 28px;
+  margin: 0 0 22px;
+}
+.history-facts dt,
+.history-change span {
+  color: var(--muted);
+  font-size: var(--font-label);
+  margin-bottom: 6px;
+}
+.history-facts dd {
+  margin: 0;
+  font-size: var(--font-control);
+  overflow-wrap: anywhere;
+}
+.history-facts dd small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--font-label);
+}
+.history-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px 22px;
+  padding: 18px;
+  background: var(--surface-soft, var(--bg));
+  border-radius: 12px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+.history-change h4 {
+  grid-column: 1 / -1;
+  font-size: var(--font-control);
+  margin: 0;
+}
+.history-change span,
+.history-change strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.history-change strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.history-change > div:last-child strong {
+  color: var(--accent);
+}
+.history-reason {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+.history-reason h4 {
+  font-size: var(--font-label);
+  color: var(--muted);
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+.history-reason p {
+  font-size: var(--font-control);
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.history-detail-links {
+  margin-top: 20px;
+}
+@media (max-width: 900px) {
+  .history-table-wrap {
+    overflow: visible;
+    max-height: none;
+  }
+  .history-table {
+    min-width: 0;
+    display: block;
+  }
+  .history-table thead {
+    display: none;
+  }
+  .history-table tbody {
+    display: block;
+  }
+  .history-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 18px 22px;
+    gap: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .history-table td {
+    display: block;
+    border: 0;
+    padding: 0;
+  }
+  .history-table tr.history-selected {
+    background: var(--info-bg);
+  }
+  .history-table tr.history-selected td {
+    background: transparent;
+  }
+  .history-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--font-label);
+    color: var(--muted);
+    margin-bottom: 7px;
+  }
+  .history-table .history-center {
+    text-align: left;
+  }
+  .history-table td:nth-child(3),
+  .history-table td:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+  .history-table td:nth-child(3) {
+    grid-row: 1;
+  }
+  .history-table td:nth-child(4) {
+    grid-row: 2;
+  }
+  .history-table td:nth-child(1),
+  .history-table td:nth-child(2) {
+    grid-row: 3;
+  }
+  .history-table .history-view {
+    display: flex;
+    align-items: end;
+    justify-content: end;
+  }
+  .history-table .history-view::before {
+    display: none;
+  }
+  .history-table .admin-date .cell-date,
+  .history-table .admin-date .cell-time {
+    display: block;
+    margin-inline-end: 0;
+  }
+  .history-table .admin-date {
+    white-space: normal;
+  }
+}
+@media (max-width: 540px) {
+  .history-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .history-filters label,
+  .history-filters .history-search {
+    min-width: 0;
+    grid-column: 1 / -1;
+  }
+  .history-filters .history-search,
+  .history-filter-actions {
+    grid-column: 1 / -1;
+  }
+  .history-filters input,
+  .history-filters select {
+    font-size: 16px;
+  }
+  .history-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .history-change {
+    gap: 10px;
+    padding: 14px;
+  }
+  .history-change strong {
+    font-size: 17px;
+  }
+  .history-table tr {
+    padding-inline: 16px;
+  }
+}

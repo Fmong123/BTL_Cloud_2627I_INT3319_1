@@ -13,10 +13,16 @@ export default function AdminDate({ value, inline = false }) {
       dateTime={date.toISOString()}
       className={`admin-date ${inline ? 'admin-date-inline' : ''}`}
     >
-      <span className="cell-date">{date.toLocaleDateString('vi-VN')}</span>
+      <span className="cell-date">
+        {date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}
+      </span>
       {inline && <span aria-hidden="true"> · </span>}
       <span className="cell-time">
-        {date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+        {date.toLocaleTimeString('vi-VN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Asia/Ho_Chi_Minh',
+        })}
       </span>
     </time>
   );

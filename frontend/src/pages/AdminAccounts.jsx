@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   RefreshCw,
   Settings2,
@@ -15,14 +15,12 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../auth/Auth.jsx';
-import { getAdminAccounts, getAdminAccountHistory, updateAdminAccount } from '../api/client.js';
+import { getAdminAccounts, updateAdminAccount } from '../api/client.js';
 import { formatStorageUsage as size } from '../utils/storageUsage.js';
 import Modal from '../components/Modal.jsx';
 import AccountSearch from '../components/AccountSearch.jsx';
 import AdminDate from '../components/AdminDate.jsx';
 import '../admin-management.css';
-
-const roles = { admin: 'Quản trị viên', user: 'Người dùng' };
 
 function AccountEditor({ item, baseUrl, onClose, onSaved }) {
   const [kind, setKind] = useState(item.pending ? 'access' : 'quota');
@@ -178,75 +176,22 @@ function AccountEditor({ item, baseUrl, onClose, onSaved }) {
   );
 }
 
-const actions = {
-  account_quota_changed: 'Đổi hạn mức dung lượng',
-  account_access_requested: 'Yêu cầu đổi quyền truy cập',
-  account_access_changed: 'Đã đổi quyền truy cập',
-  admin_report_exported: 'Xuất báo cáo quản trị',
-};
-function AccountHistory({ item, baseUrl, onClose }) {
-  const [state, setState] = useState({ loading: true });
-  useEffect(() => {
-    const controller = new AbortController();
-    getAdminAccountHistory(baseUrl, item.id, { signal: controller.signal })
-      .then((data) => setState(data))
-      .catch((e) => {
-        if (!controller.signal.aborted) setState({ error: e.message });
-      });
-    return () => controller.abort();
-  }, [baseUrl, item.id]);
-  return (
-    <Modal title={`Nhật ký · ${item.name}`} onClose={onClose} wide>
-      <div className="admin-history">
-        {state.loading && <p role="status">Đang đọc nhật ký…</p>}
-        {state.error && (
-          <p className="banner warning" role="alert">
-            {state.error}
-          </p>
-        )}
-        {state.items?.length === 0 && <p>Chưa có thay đổi quản trị.</p>}
-        {state.items?.map((event) => (
-          <article key={event.event_key}>
-            <strong>{actions[event.action] || event.action}</strong>
-            <p>
-              <AdminDate value={event.occurred_at} inline />
-            </p>
-            {event.details?.before_bytes != null && (
-              <p>
-                {size(event.details.before_bytes)} → {size(event.details.after_bytes)}
-              </p>
-            )}
-            {event.details?.role && (
-              <p>
-                {roles[event.details.role]} ·{' '}
-                {event.details.enabled ? 'Cho phép đăng nhập' : 'Tạm khóa'}
-              </p>
-            )}
-            {event.details?.format && (
-              <p>
-                Định dạng {event.details.format.toUpperCase()} · {event.details.files} tệp
-              </p>
-            )}
-            {event.details?.reason && <p>Lý do: {event.details.reason}</p>}
-            <p className="admin-muted admin-id">Người thực hiện: {event.actor}</p>
-          </article>
-        ))}
-        <p className="admin-muted">{state.note}</p>
-      </div>
-    </Modal>
-  );
-}
-
 export default function AdminAccounts() {
   const { session } = useAuth();
-  const [draft, setDraft] = useState({ q: '', state: 'all', owner_id: '' });
+  const [params, setParams] = useSearchParams();
+  const owner = params.get('owner_id') || '';
+  const [draft, setDraft] = useState({ q: '', state: 'all', owner_id: owner });
   const [filters, setFilters] = useState(draft);
   const [cursor, setCursor] = useState(null);
   const [revision, refresh] = useState(0);
   const [state, setState] = useState({ loading: true });
   const [edit, setEdit] = useState(null);
-  const [history, setHistory] = useState(null);
   const [message, setMessage] = useState('');
+  useEffect(() => {
+    setDraft((prior) => ({ ...prior, owner_id: owner }));
+    setFilters((prior) => ({ ...prior, owner_id: owner }));
+    setCursor(null);
+  }, [owner]);
   useEffect(() => {
     const controller = new AbortController();
     setState({ loading: true });
@@ -333,6 +278,7 @@ export default function AdminAccounts() {
             disabled={state.loading}
             onClick={() => {
               const next = { q: '', state: 'all', owner_id: '' };
+              setParams({}, { replace: true });
               setDraft(next);
               setFilters(next);
               setCursor(null);
@@ -445,14 +391,14 @@ export default function AdminAccounts() {
                               <Settings2 size={15} />
                               Quản lý
                             </button>
-                            <button
+                            <Link
                               className="icon-button admin-action-box"
-                              title="Nhật ký"
-                              aria-label={`Nhật ký ${item.name}`}
-                              onClick={() => setHistory(item)}
+                              title="Lịch sử quản trị"
+                              aria-label={`Lịch sử quản trị ${item.name}`}
+                              to={`/admin/history?owner_id=${item.id}`}
                             >
                               <History size={18} />
-                            </button>
+                            </Link>
                             <Link
                               className="icon-button admin-action-box"
                               title="Thống kê"
@@ -507,9 +453,6 @@ export default function AdminAccounts() {
             reload();
           }}
         />
-      )}
-      {history && (
-        <AccountHistory item={history} baseUrl={session.baseUrl} onClose={() => setHistory(null)} />
       )}
     </section>
   );

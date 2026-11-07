@@ -82,8 +82,11 @@ class Folders:
         actions = [self.revision_action(), *changes]
         event, stamp = str(uuid4()), utc_timestamp()
         if self.audit:
+            details = {"items": len(changes)}
+            if action in {"folder_purge_started", "folder_purged"}:
+                details["folder_name"] = self.rows.get(ident, {}).get("name")
             actions.append(self.audit.event_put(self.owner, ident, event, action,
-                                               self.actor, stamp, {"items": len(changes)}))
+                                               self.actor, stamp, details))
         titles = {"folder_created": "Đã tạo thư mục", "folder_renamed": "Đã đổi tên thư mục",
                   "folder_moved": "Đã di chuyển thư mục", "files_moved": "Đã di chuyển tệp",
                   "folder_trashed": "Đã chuyển thư mục và nội dung vào Thùng rác",
