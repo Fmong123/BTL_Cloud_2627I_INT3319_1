@@ -8,7 +8,7 @@ Resources:
   CleanupSchedule:
     Type: AWS::Events::Rule
     Properties:
-      Description: Erase MaySec files after their thirty-day trash retention.
+      Description: Erase MaySec files and folder metadata after their thirty-day trash retention.
       ScheduleExpression: rate(1 hour)
       State: DISABLED
       Targets:

@@ -16,7 +16,7 @@ class QuotaBusy(Exception):
     pass
 
 
-def usage(metadata, owner_id):
+def usage(metadata, owner_id, *, config=None):
     used = reserved = 0
     cursor = None
     while True:
@@ -34,13 +34,21 @@ def usage(metadata, owner_id):
         cursor = page.next_key
         if not cursor:
             break
-    return quota_view(used, reserved)
+    config = quota_config(metadata, owner_id) if config is None else config
+    return quota_view(used, reserved, config.get("limit_bytes", FREE_STORAGE_BYTES))
 
 
-def quota_view(used, reserved=0):
-    return {"limit_bytes": FREE_STORAGE_BYTES, "used_bytes": used,
+def quota_view(used, reserved=0, limit=FREE_STORAGE_BYTES):
+    return {"limit_bytes": limit, "used_bytes": used,
             "reserved_bytes": reserved,
-            "available_bytes": max(0, FREE_STORAGE_BYTES - used - reserved)}
+            "available_bytes": max(0, limit - used - reserved)}
+
+
+def quota_config(metadata, owner_id):
+    item = metadata.get_file(f"!quota!{owner_id}", "settings") or {}
+    if "limit_bytes" in item and (type(item["limit_bytes"]) is not int or item["limit_bytes"] < 0):
+        raise DynamoDBError("quota", "InvalidQuota")
+    return item
 
 
 def lock_key(owner_id):
@@ -49,14 +57,14 @@ def lock_key(owner_id):
 
 
 @contextmanager
-def reserve_upload(metadata, owner_id, size):
+def quota_lock(metadata, owner_id, *, seconds=60):
     token = uuid4().hex
     key = serialize_item(lock_key(owner_id))
     deadline = time.monotonic() + 4
     while True:
         try:
             call_dynamodb(metadata.client, "put_item", TableName=metadata.table_name,
-                          Item={**key, **serialize_item({"token": token, "expires": int(time.time()) + 60})},
+                          Item={**key, **serialize_item({"token": token, "expires": int(time.time()) + seconds})},
                           ConditionExpression="attribute_not_exists(#token) OR #expires < :now",
                           ExpressionAttributeNames={"#token": "token", "#expires": "expires"},
                           ExpressionAttributeValues=serialize_item({":now": int(time.time())}))
@@ -66,8 +74,6 @@ def reserve_upload(metadata, owner_id, size):
                 raise QuotaBusy() from None
             time.sleep(0.05)
     try:
-        if size > usage(metadata, owner_id)["available_bytes"]:
-            raise QuotaExceeded()
         # create_upload_record checks this fencing token in the SAME transaction
         # as its Put. An expired/replaced lock can never admit a stale upload.
         yield {"key": key, "token": token}
@@ -80,3 +86,20 @@ def reserve_upload(metadata, owner_id, size):
         except DynamoDBError:
             # The lease will expire; never hide an ambiguous reservation write.
             pass
+
+
+@contextmanager
+def reserve_upload(metadata, owner_id, size):
+    with quota_lock(metadata, owner_id) as lease:
+        if size > usage(metadata, owner_id)["available_bytes"]:
+            raise QuotaExceeded()
+        yield lease
+
+
+def lease_check(metadata, lease):
+    return {"ConditionCheck": {
+        "TableName": metadata.table_name, "Key": lease["key"],
+        "ConditionExpression": "#token=:token AND expires >= :now",
+        "ExpressionAttributeNames": {"#token": "token"},
+        "ExpressionAttributeValues": serialize_item({":token": lease["token"], ":now": int(time.time())}),
+    }}

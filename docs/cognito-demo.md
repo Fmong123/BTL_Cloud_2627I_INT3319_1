@@ -39,15 +39,15 @@
 | GET /me | Token hợp lệ; trả id/role như contract cũ và đồng bộ hồ sơ |
 | GET /files/{id}/history | Chủ sở hữu; phân trang cursor, không trả raw findings hoặc nội dung nhạy cảm |
 | GET /admin/quarantine | Chỉ admin; tệp cần chú ý của các user thuộc User Pool, phân trang |
-| GET /admin/files/{id}?owner_id=UUID | Chỉ admin; metadata và báo cáo quét/trích xuất của tệp thuộc pool |
+| GET /admin/files/{id}?owner_id=UUID | Chỉ admin; metadata và báo cáo quét/trích xuất của tệp thuộc tài khoản user trong pool |
 | GET /admin/files/{id}/history?owner_id=UUID | Chỉ admin; lịch sử phân trang, tên người/hệ thống thực hiện |
 | GET /admin/files/{id}/content?owner_id=UUID | Chỉ admin; đọc đúng version của bản cách ly, ghi audit trước khi trả byte |
 
-Drive cá nhân của admin vẫn chỉ chứa file của admin. Menu **Quản trị cách ly** là khu vực riêng cho tất cả user trong pool theo phạm vi đã thống nhất. User thường không thấy menu và gọi API trực tiếp bị 403. Không cho admin xóa/đổi chủ/khôi phục file của người khác qua các API này.
+Drive cá nhân của admin vẫn chỉ chứa file của admin. Toàn bộ khu quản trị (tổng quan, cách ly, tài khoản và thống kê) chỉ xử lý dữ liệu của tài khoản có vai trò `user` trong pool; loại cả admin đang đăng nhập và admin khác. API kiểm tra nhóm mới mỗi request, kể cả gọi trực tiếp UUID để đọc nội dung, lịch sử, duyệt cách ly hoặc thao tác quét; tài khoản ngoài phạm vi trả 403. User thường không thấy menu và gọi API admin bị 403. Admin có thể duyệt yêu cầu mở lại quyền xem/tải của tệp user theo luồng xem xét cách ly có audit; không xóa/đổi chủ hoặc khôi phục Thùng rác của người khác qua API cá nhân.
 
 Trang quản trị dùng khung nội dung chung với Tệp của tôi/Thùng rác; có tìm tên, lọc chủ sở hữu và trạng thái ở server. Chọn tên tệp hoặc **Chi tiết** để xem kết quả, lý do, thống kê trích xuất và lịch sử. Tải bản cách ly xong sẽ cập nhật lịch sử; dữ liệu cũ chưa có thống kê hiển thị rõ là chưa có, không tự tạo kết quả.
 
-Điều hướng chia hai nhóm: **Không gian cá nhân** (Tổng quan, Tệp của tôi, Hoạt động xử lý, bộ lọc cá nhân, Thùng rác) và **Quản trị hệ thống** chỉ dành cho admin (Tổng quan bảo mật, Quản trị cách ly). Chọn tài khoản demo admin sẽ mở Tổng quan bảo mật; user mở Tệp của tôi. Admin vẫn có Drive/quota riêng; bộ lọc **Tệp cách ly** chỉ chứa tệp của chính admin. Không bổ sung quản lý tài khoản hoặc giải phóng bản cách ly trên web.
+Điều hướng chia hai nhóm: **Không gian cá nhân** (Tổng quan, Tệp của tôi, Hoạt động xử lý, bộ lọc cá nhân, Thùng rác) và **Quản trị hệ thống** chỉ dành cho admin (Tổng quan bảo mật, Quản trị cách ly, Thống kê, Quản trị tài khoản). Chọn tài khoản demo admin sẽ mở Tổng quan bảo mật; user mở Tệp của tôi. Admin vẫn có Drive/quota riêng; bộ lọc **Tệp cách ly** chỉ chứa tệp của chính admin. Quản lý tài khoản và quota, báo cáo CSV/PDF: xem [hướng dẫn quản trị](admin-reports-accounts.md).
 
 Trang cách ly có tab Tất cả/Chờ cách ly/Đã cách ly/Cách ly lỗi, lọc chủ sở hữu và ngày cập nhật. Nút tải bản cách ly đặt trong Chi tiết. Chi tiết tệp cá nhân và quản trị dùng chung ba tab **Thông tin / Kết quả kiểm tra / Lịch sử**. Tổng quan bảo mật dùng API `/admin/overview`, không lấy số tệp đã tải trên giao diện làm tổng hệ thống. Trình duyệt user mở URL admin trực tiếp bị chặn ở giao diện; API tiếp tục kiểm require_admin.
 

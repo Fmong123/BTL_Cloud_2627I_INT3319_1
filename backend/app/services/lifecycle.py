@@ -65,6 +65,8 @@ class FileLifecycle:
         else:
             condition += " AND attribute_not_exists(#life_at)"
         if require_idle:
+            condition += " AND (attribute_not_exists(pipeline_busy) OR pipeline_busy = :pipeline_idle)"
+            values[":pipeline_idle"] = False
             names.update({"#upload": "upload_state", "#scan": "status"})
             values.update({":uploaded": "uploaded", ":failed": "failed", ":scanning": "scanning", ":flagged": "flagged"})
             condition += " AND #upload IN (:uploaded, :failed) AND #scan <> :scanning AND #scan <> :flagged"
@@ -176,11 +178,12 @@ def history_page(metadata, owner, *, limit, start_key):
     return page
 
 
-def notification_put(metadata, owner, ident, event_id, timestamp, kind, title, message, tone):
+def notification_put(metadata, owner, ident, event_id, timestamp, kind, title, message, tone, **target):
     record = {
         **file_key(f"!notifications!{owner}", f"{timestamp}#{event_id}"),
         "target_file_id": ident, "id": event_id, "created_at": timestamp,
         "kind": kind, "title": title, "message": message, "tone": tone, "read": False,
+        "server_event": True, **target,
     }
     return {"Put": {
         "TableName": metadata.table_name, "Item": serialize_item(record),
@@ -191,6 +194,16 @@ def notification_put(metadata, owner, ident, event_id, timestamp, kind, title, m
 def save_notification(metadata, owner, data):
     # Separate partition: user notifications can never enter quota/file lists.
     key = file_key(f"!notifications!{owner}", f"{data['created_at']}#{data['id']}")
+    existing = metadata.get_file(key["owner_id"], key["file_id"])
+    if existing and existing.get("server_event"):
+        # Clients can acknowledge delivery records, never rewrite their source/target.
+        if data.get("read"):
+            call_dynamodb(metadata.client, "update_item", TableName=metadata.table_name,
+                Key=serialize_item(key), UpdateExpression="SET #read = :yes",
+                ConditionExpression="attribute_exists(file_id)", ExpressionAttributeNames={"#read": "read"},
+                ExpressionAttributeValues=serialize_item({":yes": True}))
+        row = {**existing, "read": bool(existing.get("read") or data.get("read"))}
+        return {k: v for k, v in row.items() if k not in {"owner_id", "file_id", "target_file_id"}} | {"file_id": row.get("target_file_id")}
     names, values, sets = {}, {}, []
     for index, (name, value) in enumerate(data.items()):
         if name == "read" and value is False:
@@ -200,6 +213,7 @@ def save_notification(metadata, owner, data):
                     else f":v{index}"))
     response = call_dynamodb(metadata.client, "update_item", TableName=metadata.table_name,
         Key=serialize_item(key), UpdateExpression="SET " + ", ".join(sets),
+        ConditionExpression="attribute_not_exists(server_event)",
         ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values),
         ReturnValues="ALL_NEW")
     row = deserialize_item(response["Attributes"])

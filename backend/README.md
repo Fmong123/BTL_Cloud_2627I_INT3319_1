@@ -4,6 +4,8 @@ FastAPI nhận upload, quản lý metadata/quota, phục vụ nội dung đủ �
 
 Hướng dẫn cài/chạy: [api-guide.md](../docs/api-guide.md). Endpoint và giới hạn: [api-contract.md](../docs/api-contract.md). AWS: [handoff](../docs/AWS-HANDOFF-QUICKSTART-2026-10-31.md).
 
+Báo cáo CSV/PDF, quản lý tài khoản Cognito và quota riêng: [hướng dẫn quản trị](../docs/admin-reports-accounts.md). Cần cập nhật quyền IAM và cài lại requirements trước khi chạy bản backend mới.
+
 ## Chạy nhanh từ backend/
 
 ```powershell

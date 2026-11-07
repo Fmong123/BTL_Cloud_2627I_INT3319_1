@@ -453,3 +453,17 @@
   margin: 4px 0;
   color: var(--muted);
 }
+.pipeline-recovery { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); font-size: 15px; }
+.pipeline-heading, .pipeline-channel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.pipeline-heading h3, .pipeline-channel h4, .pipeline-form h4 { margin: 0 0 8px; }
+.pipeline-channel { border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 12px 0; }
+.pipeline-channel > div { min-width: 0; }
+.pipeline-channel p, .pipeline-job { margin: 8px 0; overflow-wrap: anywhere; }
+.pipeline-recovery .muted { font-size: 14px; line-height: 1.6; }
+.pipeline-form { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; margin-top: 16px; }
+.pipeline-form label { display: grid; gap: 8px; font-size: 15px; }
+.pipeline-form input:not([type="checkbox"]), .pipeline-form textarea { width: 100%; min-width: 0; font: inherit; }
+.pipeline-form .pipeline-confirm { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
+.pipeline-confirm input { flex: 0 0 auto; margin-top: 5px; }
+.pipeline-receipt { overflow-wrap: anywhere; }
+.pipeline-recovery .status-badge { font-size: 14px; max-width: 100%; white-space: normal; }

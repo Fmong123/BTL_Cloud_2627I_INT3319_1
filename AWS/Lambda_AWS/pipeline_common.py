@@ -13,8 +13,24 @@ class PipelineConflict(Exception):
 
 
 def verify_rescan_execution(row, event):
-    if row.get("scan_request_id") and row.get("execution_id") != (event.get("ctx") or {}).get("execution"):
+    if (row.get("scan_request_id") or row.get("pipeline_request_id")) and row.get("execution_id") != (event.get("ctx") or {}).get("execution"):
         raise PipelineConflict("stale_rescan_execution")
+
+
+def verify_recovery(row, event, action):
+    recovery = event.get("recovery")
+    if not recovery:
+        if row.get("pipeline_busy"):
+            raise PipelineConflict("missing_recovery_authorization")
+        return None
+    job = row.get("pipeline_recovery") or {}
+    if (not row.get("pipeline_busy") or recovery.get("request_id") != job.get("request_id")
+            or recovery.get("action") != action or job.get("action") != action
+            or job.get("execution") != (event.get("ctx") or {}).get("execution")
+            or job.get("state") not in {"pending", "started", "unknown"}
+            or recovery.get("channel") != job.get("channel")):
+        raise PipelineConflict("invalid_recovery_authorization")
+    return recovery
 
 
 def utc(value=None):
@@ -157,3 +173,29 @@ def put_audit(table, source, action, status, details, occurred_at, *, execution_
         # execution_id can differ for a replay of the same logical result.
         if not old or any(old.get(k) != item.get(k) for k in ("owner_id", "file_id", "action", "status", "details")):
             raise PipelineConflict("audit_replay_conflict") from exc
+
+
+def put_notification(table, source, row, action, status, timestamp, *, execution_id=None):
+    """A durable web event, independent of SNS and of an open browser. Replay-safe."""
+    labels = {"safe": ("Không phát hiện", "success"), "flagged": ("Chờ cách ly", "warning"),
+              "quarantined": ("Đã cách ly", "warning"), "quarantine_delete_failed": ("Cách ly lỗi", "error"),
+              "error": ("Quét lỗi", "error"), "unscanned": ("Chưa thể quét", "warning")}
+    if status not in labels:
+        raise PipelineConflict("invalid_notification_status")
+    timestamp = utc(timestamp)
+    logical = "|".join((source["file_id"], source.get("version") or "unversioned", execution_id or "", action))
+    ident = "server-" + hashlib.sha256(logical.encode()).hexdigest()
+    title, tone = labels[status]
+    item = {"owner_id": "!notifications!" + source["owner_id"], "file_id": f"{timestamp}#{ident}",
+            "id": ident, "created_at": timestamp, "target_file_id": source["file_id"],
+            "kind": "scan-result" if action.startswith("scan_") else "quarantine-result",
+            "title": title, "message": row.get("display_name") or row["original_name"],
+            "tone": tone, "read": False, "server_event": True}
+    try:
+        table.put_item(Item=item, ConditionExpression="attribute_not_exists(file_id)")
+    except ClientError as exc:
+        if not conditional_failure(exc):
+            raise
+        old = table.get_item(Key={k: item[k] for k in ("owner_id", "file_id")}, ConsistentRead=True).get("Item")
+        if not old or any(old.get(k) != item[k] for k in ("id", "kind", "title", "target_file_id", "server_event")):
+            raise PipelineConflict("notification_replay_conflict") from exc

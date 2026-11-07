@@ -1,5 +1,7 @@
 """Owned file management and durable user activity; no raw scan content."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from ..auth import get_current_user, require_admin
+from ..services.notifications import ADMIN_OWNER, ADMIN_KIND, admin_visible, public_notice, acknowledge_admin
 
 from .files import (
     require_metadata, owned_file, public_file, decode_cursor, encode_cursor, metadata_failure,
@@ -134,23 +136,56 @@ def upload_history(limit: int = Query(100, ge=1, le=100), cursor: str | None = Q
 
 @router.get("/notifications")
 def notifications(limit: int = Query(100, ge=1, le=100), cursor: str | None = Query(None, max_length=2048),
-    settings=Depends(get_settings), metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
+    *, request: Request, response: Response, settings=Depends(get_settings), metadata=Depends(get_file_metadata), user=Depends(get_current_user)):
     require_metadata(settings, metadata)
+    response.headers["Cache-Control"] = "no-store"
+    owner = user.owner_id
     start = decode_cursor(cursor, f"!notifications!{owner}")
     try:
         page = notification_page(metadata, owner, limit=limit, start_key=start)
-        items = [{k: v for k, v in r.items() if k not in {"owner_id", "file_id", "target_file_id"}}
-                 | {"file_id": r.get("target_file_id"), "read": r.get("read", False)} for r in page.items]
+        accounts = {}
+        if user.role == "admin" and any(r.get("kind") == ADMIN_KIND for r in page.items):
+            from .admin import pool_accounts
+            accounts = pool_accounts(request, fresh=True)
+        items = [public_notice(r) for r in page.items
+                 if r.get("kind") != ADMIN_KIND or admin_visible(r, accounts, owner)]
         return {"items": items, "next_cursor": encode_cursor(page.next_key)}
     except DynamoDBError as exc:
         raise metadata_failure(exc) from None
 
 
 @router.post("/notifications")
-def persist_notification(payload: NotificationRequest, settings=Depends(get_settings),
-    metadata=Depends(get_file_metadata), owner=Depends(get_current_owner_id)):
+def persist_notification(payload: NotificationRequest, request: Request, settings=Depends(get_settings),
+    metadata=Depends(get_file_metadata), user=Depends(get_current_user)):
     require_metadata(settings, metadata)
     try:
-        return save_notification(metadata, owner, payload.model_dump())
+        if payload.kind == ADMIN_KIND:
+            if user.role != "admin":
+                raise HTTPException(403, "Thông báo này dành cho quản trị viên")
+            from .admin import pool_accounts
+            return acknowledge_admin(metadata, user.owner_id, payload, pool_accounts(request, fresh=True))
+        existing = metadata.get_file(f"!notifications!{user.owner_id}", f"{payload.created_at}#{payload.id}")
+        if existing and existing.get("kind") == ADMIN_KIND:
+            raise HTTPException(403, "Không được sửa thông báo quản trị")
+        return save_notification(metadata, user.owner_id, payload.model_dump())
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
+
+
+@router.get("/admin/notifications")
+def admin_notifications(request: Request, response: Response,
+    limit: int = Query(100, ge=1, le=100), cursor: str | None = Query(None, max_length=2048),
+    settings=Depends(get_settings), metadata=Depends(get_file_metadata), user=Depends(require_admin)):
+    require_metadata(settings, metadata)
+    from .admin import pool_accounts
+    accounts = pool_accounts(request, fresh=True)
+    if accounts.get(user.owner_id, {}).get("role") != "admin" or not accounts[user.owner_id].get("active"):
+        raise HTTPException(403, "Tài khoản hiện tại không còn quyền quản trị")
+    response.headers["Cache-Control"] = "no-store"
+    start = decode_cursor(cursor, f"!notifications!{ADMIN_OWNER}")
+    try:
+        page = notification_page(metadata, ADMIN_OWNER, limit=limit, start_key=start)
+        return {"items": [public_notice(r) for r in page.items if admin_visible(r, accounts, user.owner_id)],
+                "next_cursor": encode_cursor(page.next_key)}
     except DynamoDBError as exc:
         raise metadata_failure(exc) from None

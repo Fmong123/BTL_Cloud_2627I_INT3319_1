@@ -110,6 +110,7 @@ export function WorkspaceProvider({ children }) {
     baseUrl: preferences.baseUrl,
     available: activityAvailable,
     storageSuffix: userStorageSuffix,
+    admin: session.user.role === 'admin',
   });
   const notificationsRef = useRef(notifications);
   notificationsRef.current = notifications;
@@ -173,23 +174,7 @@ export function WorkspaceProvider({ children }) {
         title: 'Đã xác nhận tệp được lưu',
         tone: 'success',
       });
-    if (
-      record.scanStatus !== prior.scanStatus &&
-      !['not_started', 'scanning', 'restored'].includes(record.scanStatus) &&
-      !['execution_failed', 'execution_result_missing'].includes(record.statusReason)
-    ) {
-      notificationsRef.current.addEvent({
-        ...event,
-        kind: `scan-${record.scanStatus}`,
-        title: scanStates[record.scanStatus]?.label || 'Kết quả xử lý đã thay đổi',
-        tone:
-          record.scanStatus === 'safe'
-            ? 'success'
-            : ['error', 'quarantine_delete_failed'].includes(record.scanStatus)
-              ? 'error'
-              : 'warning',
-      });
-    }
+    // Scan/quarantine results are durable server events, including while this web is closed.
   }
   const remote = useRemoteLibrary({
     scope,
@@ -948,6 +933,7 @@ export function WorkspaceProvider({ children }) {
           folders.refresh();
           setHistoryRevision((value) => value + 1);
           remote.refreshFiles();
+          window.dispatchEvent(new Event('maysec:notifications-changed'));
         },
         recheck,
         inspectedId,
@@ -992,7 +978,7 @@ export function WorkspaceProvider({ children }) {
               <p>
                 {fileDialog.targets.length} tệp được chọn.{' '}
                 {fileDialog.action === 'trash'
-                  ? 'Có thể khôi phục trong 30 ngày. Tệp vẫn tính vào dung lượng 1 GB.'
+                  ? 'Có thể khôi phục trong 30 ngày. Tệp vẫn tính vào hạn mức dung lượng tài khoản.'
                   : fileDialog.action === 'restore'
                     ? 'Giữ nguyên kết quả quét và trạng thái cách ly.'
                     : 'Xóa toàn bộ nội dung và các phiên bản đã lưu. Không thể hoàn tác.'}

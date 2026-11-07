@@ -22,7 +22,7 @@ class AuditLogRepository:
     ) -> bool:
         """True: created; False: identical event exists; changed payload: conflict.
 
-        Details must already be sanitized by the caller (no raw PII or webhook secrets).
+        Details must already be sanitized by the caller (no raw PII or credentials).
         No automatic timestamp/event ID is generated, so retries can be deterministic.
         """
         identity = file_key(owner_id, file_id)

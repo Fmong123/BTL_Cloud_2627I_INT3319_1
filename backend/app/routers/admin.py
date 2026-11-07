@@ -1,4 +1,4 @@
-"""Admin-only quarantine access for identities in the configured Cognito pool.
+"""Admin-only quarantine access for user accounts in the configured Cognito pool.
 
 The regular /files routes remain owner-only. Every read of quarantine bytes is
 audited before release; metadata, directory or audit failures never grant access.
@@ -22,6 +22,7 @@ from ..auth import require_admin
 from ..db import DynamoDBError, utc_timestamp, file_key
 from ..dependencies import get_settings, get_file_metadata, get_audit_log, get_storage, get_rescanner
 from ..services.cognito_auth import AuthError, AuthUser
+from ..services.admin_scope import user_scope, user_account
 from ..services.storage import read_bounded, StorageTooLarge, StorageFailure
 from .files import (owned_file, public_file, require_metadata, metadata_failure,
                     safe_filename, scan_report, history_response, content_key)
@@ -31,6 +32,7 @@ from ..services.quarantine_review import (
     ReviewDecision, is_restored, quarantine_location, review_view, save_review, verify_restorable,
 )
 from ..services.scan_operations import operations_for, request_compression, resolve_compression, check_execution, compression_pending
+from ..services.pipeline_recovery import RecoveryRequest, recovery_view, needs_recovery, operate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -53,7 +55,7 @@ def can_read_quarantine(item, settings):
     return type(item.get("size_bytes")) is int and 0 < item["size_bytes"] <= settings.max_file_size_bytes
 
 
-def pool_accounts(request):
+def pool_accounts(request, *, fresh=False):
     directory = request.app.state.cognito_directory
     try:
         if directory is None:
@@ -68,8 +70,8 @@ def pool_accounts(request):
             with boto3.client("cognito-idp", region_name=settings.cognito_user_pool_id.split("_")[0],
                               config=Config(connect_timeout=3, read_timeout=5, retries={"total_max_attempts": 2})) as client:
                 directory = DemoAccounts(client, settings.cognito_user_pool_id)
-                return {account["id"]: account for account in directory.accounts()}
-        return {account["id"]: account for account in directory.accounts()}
+                return {account["id"]: account for account in directory.accounts(fresh=fresh)}
+        return {account["id"]: account for account in directory.accounts(fresh=fresh)}
     except AuthError as exc:
         raise HTTPException(exc.status_code, exc.message) from None
     except BotoCoreError:
@@ -86,11 +88,12 @@ def quarantine_list(request: Request, response: Response,
                     metadata=Depends(get_file_metadata)):
     response.headers["Cache-Control"] = "no-store"
     require_metadata(settings, metadata)
-    accounts = pool_accounts(request)
+    accounts = pool_accounts(request, fresh=True)
     if updated_from and updated_before and updated_from >= updated_before:
         raise HTTPException(400, "Khoảng thời gian cập nhật không hợp lệ")
-    if owner_id is not None and str(owner_id) not in accounts:
-        raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
+    if owner_id is not None:
+        user_account(accounts, str(owner_id))
+    accounts = user_scope(accounts)
     owners = [str(owner_id)] if owner_id else sorted(accounts)
     def normalized(value):
         return "".join(c for c in unicodedata.normalize("NFD", value.casefold().replace("đ", "d")) if not unicodedata.combining(c))
@@ -152,7 +155,7 @@ def security_overview(request: Request, response: Response, cursor: str | None =
     """Bounded aggregation pages, no Scan/index or client-provided totals."""
     response.headers["Cache-Control"] = "no-store"
     require_metadata(settings, metadata)
-    accounts = pool_accounts(request)
+    accounts = user_scope(pool_accounts(request, fresh=True))
     owners = sorted(accounts)
     scope = hashlib.sha256(json.dumps(["overview", settings.cognito_user_pool_id, owners]).encode()).hexdigest()[:24]
     index, start = 0, None
@@ -192,7 +195,7 @@ def security_overview(request: Request, response: Response, cursor: str | None =
                     review = review_view(item)
                     review_pending = bool(review and review["status"] in {"pending", "recommend_release"})
                     if (view.scan_status in {"scanning", "error", "unscanned", "quarantine_delete_failed"}
-                            or review_pending or compression_pending(item)):
+                            or review_pending or compression_pending(item) or needs_recovery(item)):
                         since = view.scan_started_at or view.rescan_requested_at or view.created_at
                         try:
                             age = max(0, int((now - datetime.fromisoformat(since.replace("Z", "+00:00"))).total_seconds()))
@@ -207,6 +210,8 @@ def security_overview(request: Request, response: Response, cursor: str | None =
                             "actions": operations_for(item),
                             "compression_requested": bool(item.get("compression_requested_at")),
                             "compression_resolution": item.get("compression_resolution"),
+                            "pipeline_attention": needs_recovery(item),
+                            "pipeline_busy": bool(item.get("pipeline_busy")),
                         })
             start = page.next_key
             if start is None:
@@ -220,10 +225,9 @@ def security_overview(request: Request, response: Response, cursor: str | None =
 
 def admin_file(request, owner_id, file_id, settings, metadata):
     require_metadata(settings, metadata)
-    accounts = pool_accounts(request)
+    accounts = pool_accounts(request, fresh=True)
     owner = str(owner_id)
-    if owner not in accounts:
-        raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
+    user_account(accounts, owner)
     item, view = owned_file(metadata, owner, str(file_id))
     return item, view, accounts
 
@@ -231,7 +235,7 @@ def admin_file(request, owner_id, file_id, settings, metadata):
 @router.get("/admin/files/{file_id}", response_model=AdminFileDetail)
 def file_detail(file_id: UUID, request: Request, response: Response, owner_id: UUID = Query(...),
                 user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
-                metadata=Depends(get_file_metadata)):
+                metadata=Depends(get_file_metadata), rescanner=Depends(get_rescanner)):
     response.headers["Cache-Control"] = "no-store"
     item, view, accounts = admin_file(request, owner_id, file_id, settings, metadata)
     # Only schema-whitelisted metadata and aggregate findings; never raw text or quarantine locations.
@@ -244,7 +248,31 @@ def file_detail(file_id: UUID, request: Request, response: Response, owner_id: U
             raise metadata_failure(exc) from None
     return {"file": view.model_dump(), "owner_name": accounts[str(owner_id)]["name"],
             "report": scan_report(item, view).model_dump(), "can_read": can_read_quarantine(item, settings),
-            "quarantine_review": review_view(item), "folder_path": folder_path}
+            "quarantine_review": review_view(item), "folder_path": folder_path,
+            "pipeline": recovery_view(item, configured=bool(settings.scan_pipeline_enabled and rescanner))}
+
+
+@router.get("/admin/files/{file_id}/pipeline")
+def pipeline_state(file_id: UUID, request: Request, response: Response, owner_id: UUID = Query(...),
+                   user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                   metadata=Depends(get_file_metadata), rescanner=Depends(get_rescanner)):
+    response.headers["Cache-Control"] = "no-store"
+    item, _, _ = admin_file(request, owner_id, file_id, settings, metadata)
+    return recovery_view(item, configured=bool(settings.scan_pipeline_enabled and rescanner))
+
+
+@router.post("/admin/files/{file_id}/pipeline")
+def pipeline_operation(file_id: UUID, payload: RecoveryRequest, request: Request, owner_id: UUID = Query(...),
+                       user: AuthUser = Depends(require_admin), settings=Depends(get_settings),
+                       metadata=Depends(get_file_metadata), audit=Depends(get_audit_log), rescanner=Depends(get_rescanner)):
+    require_metadata(settings, metadata, audit, writing=True)
+    item, _, _ = admin_file(request, owner_id, file_id, settings, metadata)
+    try:
+        message = operate(metadata, audit, item, user.owner_id, rescanner, settings, payload)
+        return {"message": message, "pipeline": recovery_view(metadata.get_file(str(owner_id), str(file_id)),
+            configured=bool(settings.scan_pipeline_enabled and rescanner))}
+    except DynamoDBError as exc:
+        raise metadata_failure(exc) from None
 
 
 @router.post("/admin/files/{file_id}/quarantine-review")
@@ -310,7 +338,7 @@ def file_history(file_id: UUID, request: Request, response: Response, owner_id: 
     response.headers["Cache-Control"] = "no-store"
     _, _, accounts = admin_file(request, owner_id, file_id, settings, metadata)
     require_metadata(settings, metadata, audit, writing=True)
-    result = history_response(str(file_id), str(owner_id), audit, limit, cursor)
+    result = history_response(str(file_id), str(owner_id), audit, limit, cursor, admin_details=True)
     for event in result["items"]:
         actor = event.get("actor")
         event["actor_name"] = accounts.get(actor, {}).get("name") or {
@@ -328,9 +356,7 @@ def quarantine_content(file_id: UUID, request: Request, owner_id: UUID = Query(.
                        metadata=Depends(get_file_metadata), audit=Depends(get_audit_log), storage=Depends(get_storage)):
     require_metadata(settings, metadata, audit, writing=True)
     owner, ident = str(owner_id), str(file_id)
-    if owner not in pool_accounts(request):
-        raise HTTPException(404, "Tài khoản không thuộc User Pool của ứng dụng")
-    item, view = owned_file(metadata, owner, ident)
+    item, view, _ = admin_file(request, owner_id, file_id, settings, metadata)
     if (lifecycle_state(item) != "active" or item.get("upload_state") != "uploaded" or is_restored(item)
             or item.get("status") not in {"quarantined", "quarantine_delete_failed"}):
         raise HTTPException(409, "Tệp chưa có bản cách ly sẵn sàng để đọc")

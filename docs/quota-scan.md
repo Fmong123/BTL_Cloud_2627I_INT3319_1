@@ -35,7 +35,7 @@ Chỉ nhận tệp `upload_state=uploaded`, trạng thái `safe/error/unscanned/
 
 Mỗi lượt mới có execution ARN/token riêng, chặn xem/tải bằng trạng thái scanning ngay khi nhận và xóa summary cũ. Compare-and-set ngăn hai lượt cùng nhận. Mỗi tệp chờ ít nhất 60 giây giữa hai yêu cầu mới; retry cùng token không tạo lượt mới. StartExecution dùng tên/input ổn định. Lỗi khởi chạy/timeout giữ scanning + dispatch unknown để không coi một lượt có thể đã chạy là thất bại; phản hồi báo lỗi để người vận hành sửa quyền/cấu hình rồi xác nhận lại. Nút **Xác nhận lượt quét** dùng lại token từ API, kể cả sau reload. Request đã started không tạo lại execution; timeout đến muộn không hạ started về unknown.
 
-Thông báo SNS/webhook vẫn giữ bằng chứng giao nhận theo tệp/version để không gửi lại mù quáng. Lượt quét lại không reset các trạng thái sent/sending/unknown cũ; muốn thông báo riêng theo từng lượt cần mở rộng hợp đồng notification.
+Thông báo SNS/email vẫn giữ bằng chứng giao nhận theo tệp/version để không gửi lại mù quáng. Lượt quét lại không reset các trạng thái sent/sending/unknown cũ; muốn thông báo riêng theo từng lượt cần mở rộng hợp đồng notification.
 
 Source Lambda hiện quét CCCD và số thẻ, có OCR ảnh/PDF. `extraction_complete=null` là chưa có bằng chứng, không suy ra đã đọc đủ. Metadata cũ có tổng phát hiện nhưng chưa có breakdown vẫn hiển thị tổng và nhãn chưa có thống kê đầy đủ theo loại. Không tự coi tệp lỗi/unsupported/đọc thiếu là an toàn.
 

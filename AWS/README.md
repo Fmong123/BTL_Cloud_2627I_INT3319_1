@@ -30,9 +30,11 @@ Builder chỉ tạo file local, không cấp quyền/deploy AWS và không thu t
 
 - Backend dùng DYNAMODB_FILES_TABLE/DYNAMODB_AUDIT_TABLE; Lambda dùng FILES_TABLE/AUDIT_TABLE, giá trị phải cùng bảng.
 - Scan: STRICT_DB_WRITE=true, layer PDF/Textract phù hợp. Upload tối đa 100 MB; Scan mặc định tối đa 52.428.800 byte, OCR ảnh 10 MiB.
-- Quarantine: bucket và KMS_KEY_ID thật (ARN/UUID). Notify: SNS_TOPIC_ARN, webhook nếu dùng.
+- Quarantine: bucket và KMS_KEY_ID thật (ARN/UUID). Notify: SNS_TOPIC_ARN (SNS/email).
 - Cleanup: FILES_TABLE, UPLOAD_BUCKET, QUARANTINE_BUCKET; role riêng và Logs.
 - Orchestration/State_machine.json là workflow STANDARD để đối chiếu; mẫu trash-cleanup-schedule.example.yaml mặc định DISABLED, chỉ bật sau nghiệm thu.
 - IAM/ chứa policy theo từng principal/role. Thay placeholder và đối chiếu ARN trước khi áp dụng; giữ trust policy và key policy đang cần.
 
 Không tạo lại bảng hay reset dữ liệu để thêm thuộc tính. Mỗi thay đổi trên AWS phải đối chiếu bản đang chạy, sao lưu và nghiệm thu theo handoff.
+
+Xử lý riêng bước lỗi: [pipeline recovery](../docs/pipeline-recovery.md). Cần đồng bộ cả ba ZIP/pipeline_common.py và workflow có RouteOperation/RecoveryQuarantine/RecoveryNotify; backend dùng workflow STANDARD/ARN và quyền hiện có. Không chạy lại Scan/OCR khi admin yêu cầu thử lại cách ly hoặc gửi SNS/email. Xem hướng dẫn ngừng kênh cũ và xử lý yêu cầu còn treo trong tài liệu này.

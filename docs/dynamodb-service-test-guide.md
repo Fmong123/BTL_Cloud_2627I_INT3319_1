@@ -156,7 +156,7 @@ audit = AuditLogRepository(client, settings.dynamodb_audit_table)
 - `audit.write_event(...)`: True khi thêm mới; False khi sự kiện giống hệt đã có; thay payload cùng event_key báo conflict. Caller phải giữ ổn định event_id và occurred_at khi retry. Không dùng thời điểm retry làm thời điểm sự kiện mới.
 - `audit.list_history(file_id, limit=20, start_key=None)`: lịch sử theo event_key; caller kiểm quyền trên file trước khi gọi. next_key là dữ liệu nội bộ, API sau này cần encode/validate cursor.
 
-`details` phải được lọc trước khi ghi: không raw PII, OCR text lớn hoặc webhook URL chứa secret. TypeSerializer không nhận Python float; dùng số nguyên cho byte/count, Decimal cho số thập phân nếu cần; Decimal có phần lẻ cần xử lý ở schema HTTP sau này. Item/count/summary vẫn chịu giới hạn DynamoDB.
+`details` phải được lọc trước khi ghi: không raw PII, OCR text lớn hoặc thông tin xác thực chứa secret. TypeSerializer không nhận Python float; dùng số nguyên cho byte/count, Decimal cho số thập phân nếu cần; Decimal có phần lẻ cần xử lý ở schema HTTP sau này. Item/count/summary vẫn chịu giới hạn DynamoDB.
 
 Cập nhật metadata và ghi audit hiện là **hai thao tác độc lập**, chưa có transaction giữa chúng. Chưa có logic scan/quarantine/users/admin, GSI hay cơ chế phục hồi upload tổng thể. Route đã ghép bookkeeping upload; cần đối soát khi DB lỗi sau lưu byte, xem hướng dẫn API local.
 

@@ -51,7 +51,7 @@ class DemoAccounts:
                     items.append({"id": sub, "username": username,
                                   "name": attrs.get("name") or attrs.get("preferred_username") or attrs.get("email") or username,
                                   "email": attrs.get("email", ""),
-                                  "role": role, "active": active, "status": status})
+                                  "role": role, "active": active, "enabled": bool(user.get("Enabled", False)), "status": status})
                 items.sort(key=lambda item: (item["role"] == "admin", item["name"].casefold(), item["id"]))
             except (ClientError, BotoCoreError) as exc:
                 code = exc.response.get("Error", {}).get("Code", "ClientError") if isinstance(exc, ClientError) else type(exc).__name__

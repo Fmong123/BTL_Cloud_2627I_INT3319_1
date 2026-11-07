@@ -1,0 +1,603 @@
+.admin-management {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+  padding: 8px 0 28px;
+}
+.admin-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.report-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.admin-metric {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  display: grid;
+  gap: 12px;
+}
+.admin-metric > span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: var(--font-control);
+}
+.admin-metric > span svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.admin-metric > strong {
+  font-size: 30px;
+  letter-spacing: -0.6px;
+  line-height: 1.2;
+}
+.admin-metric > small {
+  font-size: var(--font-label);
+  color: var(--muted);
+}
+.admin-panel {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 16px;
+}
+.admin-panel-heading {
+  padding: 22px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.admin-panel h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.admin-panel-heading p {
+  color: var(--muted);
+  font-size: var(--font-control);
+  margin: 7px 0 0;
+  line-height: 1.6;
+}
+.admin-filters {
+  padding: 0 22px 18px;
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.admin-filters label,
+.admin-edit-form > label {
+  display: grid;
+  gap: 8px;
+  font-size: var(--font-control);
+  font-weight: 500;
+  min-width: 145px;
+}
+.admin-filters select,
+.admin-filters input,
+.admin-edit-form select,
+.admin-edit-form input,
+.admin-edit-form textarea {
+  width: 100%;
+  font: inherit;
+  font-size: var(--font-control);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--control-border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  min-height: 42px;
+}
+.admin-filters .account-search {
+  flex: 1;
+  min-width: 230px;
+  display: grid;
+  gap: 8px;
+  position: relative;
+}
+.account-search label {
+  min-width: 0;
+  font-size: var(--font-control);
+}
+.account-search-control {
+  position: relative;
+}
+.account-search-control > svg {
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  color: var(--muted);
+}
+.admin-management .account-search .account-search-control input[type='search'] {
+  padding: 10px 40px;
+  min-height: 44px;
+  width: 100%;
+  border: 1px solid var(--control-border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--font-control);
+}
+.account-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.account-search-clear {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 34px;
+  height: 34px;
+}
+.admin-management .accounts-panel {
+  overflow: visible;
+}
+.account-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline: 0;
+  z-index: 30;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  max-height: 330px;
+  overflow: auto;
+}
+.account-suggestions ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+.account-suggestions li {
+  margin: 0;
+}
+.account-suggestions button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.account-suggestions button[aria-selected='true'],
+.account-suggestions button:hover {
+  background: var(--hover);
+}
+.account-suggestions button > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.account-suggestions button > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.account-suggestions strong {
+  font-size: var(--font-control);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.account-suggestions small {
+  font-size: var(--font-label);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.account-suggestions p {
+  padding: 12px 16px;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-control);
+}
+.admin-management .admin-action-box {
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+}
+.admin-management .admin-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  white-space: nowrap;
+}
+.admin-tag.role {
+  color: var(--info);
+  background: var(--info-bg);
+}
+.account-status-stack {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.account-identity {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.account-identity > strong {
+  font-weight: 600;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.account-identity > span {
+  color: var(--muted);
+  font-size: var(--font-label);
+  overflow-wrap: anywhere;
+}
+.account-identity > .admin-id {
+  margin-top: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.admin-table .admin-numeric {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.admin-table .account-date-cell {
+  text-align: center;
+}
+.admin-date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.admin-date .cell-date,
+.admin-date .cell-time {
+  display: block;
+  margin: 0;
+}
+.admin-date .cell-date {
+  font-size: var(--font-control);
+  color: var(--text);
+}
+.admin-date .cell-time {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: var(--font-caption);
+}
+.admin-date-inline .cell-date,
+.admin-date-inline .cell-time {
+  display: inline;
+  font: inherit;
+  color: inherit;
+}
+.accounts-table {
+  table-layout: fixed;
+  min-width: 1080px;
+}
+.accounts-table td,
+.accounts-table th {
+  padding-inline: 16px;
+}
+.accounts-table th:not(:first-child),
+.accounts-table td:not(:first-child) {
+  text-align: center;
+}
+.admin-table.accounts-table th:not(:first-child),
+.admin-table.accounts-table td:not(:first-child) {
+  padding-inline: 10px;
+}
+.accounts-table .account-status-stack {
+  justify-items: center;
+}
+.admin-table.accounts-table td progress {
+  margin-inline: auto;
+}
+.accounts-table .admin-row-actions {
+  justify-content: center;
+}
+.accounts-table th.account-date-cell {
+  white-space: normal;
+}
+.account-statistics-table {
+  table-layout: fixed;
+  min-width: 1000px;
+}
+.account-statistics-table th:last-child,
+.account-statistics-table td:last-child {
+  text-align: center;
+}
+.accounts-table .admin-row-actions {
+  flex-wrap: nowrap;
+  gap: 7px;
+}
+.accounts-table .admin-row-actions .button {
+  padding-inline: 9px;
+  white-space: nowrap;
+}
+.accounts-table .admin-row-actions .icon-button {
+  flex-shrink: 0;
+}
+.accounts-table td > strong {
+  font-variant-numeric: tabular-nums;
+}
+.account-statistics-table td:first-child {
+  overflow-wrap: anywhere;
+}
+.account-statistics-table .button {
+  white-space: nowrap;
+}
+.account-statistics-table .admin-id {
+  font-size: var(--font-label);
+}
+.accounts-panel .admin-pagination {
+  border-radius: 0 0 16px 16px;
+}
+.account-role-note {
+  display: flex;
+}
+.admin-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.admin-row-actions > a {
+  white-space: nowrap;
+  font-size: var(--font-control);
+}
+.admin-table-scroll {
+  overflow-x: auto;
+  max-height: 640px;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-control);
+  text-align: left;
+}
+.admin-table th {
+  font-size: var(--font-control);
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-soft, var(--bg));
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  white-space: nowrap;
+}
+.admin-table td,
+.admin-table th {
+  padding: 17px 22px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.admin-table td > span:not(.admin-tag),
+.admin-table td > small {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--font-label);
+  color: var(--muted);
+}
+.admin-table td > strong {
+  font-size: var(--font-control);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.admin-table td progress {
+  display: block;
+  width: 170px;
+  max-width: 100%;
+  height: 7px;
+  margin: 10px 0;
+  accent-color: var(--accent);
+}
+.admin-id {
+  font-size: var(--font-label);
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-weight: 400;
+  display: block;
+  margin-top: 6px;
+}
+.admin-tag {
+  display: inline-block;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--surface-soft, var(--bg));
+  font-size: var(--font-label);
+  margin: 7px 6px 0 0;
+  line-height: 1.4;
+}
+.admin-tag.positive {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.admin-tag.caution {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+.admin-muted,
+.admin-scope {
+  color: var(--muted);
+  font-size: var(--font-control);
+  line-height: 1.7;
+}
+.admin-scope {
+  margin: 0 4px;
+}
+.admin-empty {
+  padding: 28px 22px;
+  color: var(--muted);
+  font-size: var(--font-control);
+  margin: 0;
+}
+.admin-panel > .banner {
+  margin: 0 22px 18px;
+}
+.admin-management .admin-pagination {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  font-size: var(--font-control);
+  color: var(--muted);
+}
+.admin-edit-form {
+  display: grid;
+  gap: 20px;
+  padding: 22px;
+}
+.admin-edit-form p {
+  margin: 0;
+}
+.admin-edit-form textarea {
+  resize: vertical;
+}
+.admin-quota-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  background: var(--surface-soft, var(--bg));
+  padding: 14px;
+  border-radius: 10px;
+  font-size: var(--font-control);
+}
+.admin-quota-detail span {
+  display: grid;
+  gap: 6px;
+}
+.admin-history {
+  padding: 0 22px 22px;
+  max-height: 65vh;
+  overflow: auto;
+}
+.admin-history article {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.admin-history p {
+  font-size: var(--font-control);
+  line-height: 1.6;
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.admin-presets {
+  padding: 0 22px 18px;
+  color: var(--muted);
+  font-size: var(--font-label);
+}
+.admin-presets .button {
+  padding: 7px 10px;
+  min-height: 32px;
+}
+.admin-report-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  min-width: 0;
+}
+.report-legend {
+  display: flex;
+  gap: 18px;
+  font-size: var(--font-control);
+  color: var(--muted);
+}
+.report-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #8063c8;
+  margin-right: 7px;
+}
+.report-legend span + span::before {
+  background: #d9905c;
+}
+.report-chart {
+  padding: 12px 24px 8px;
+  overflow-x: auto;
+}
+.report-svg {
+  display: block;
+  width: 100%;
+  height: 200px;
+  border-bottom: 1px solid var(--border);
+}
+.report-total-bar {
+  fill: #8063c8;
+}
+.report-detected-bar {
+  fill: #d9905c;
+}
+.report-axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: var(--font-label);
+  gap: 8px;
+  padding-top: 8px;
+}
+.admin-wide-table {
+  min-width: 700px;
+}
+.report-details > summary {
+  padding: 18px 22px;
+  color: var(--accent);
+  font-size: var(--font-control);
+  cursor: pointer;
+}
+@media (max-width: 1100px) {
+  .report-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-report-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .admin-summary {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .admin-management {
+    gap: 14px;
+  }
+  .admin-metric {
+    padding: 18px;
+  }
+  .admin-panel-heading,
+  .admin-filters {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .admin-filters label {
+    flex: 1;
+    min-width: 130px;
+  }
+  .admin-filters .account-search {
+    flex-basis: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+  .account-search-control {
+    min-width: 0;
+  }
+  .admin-management .admin-pagination {
+    flex-wrap: wrap;
+  }
+  .admin-panel-heading > .admin-row-actions {
+    width: 100%;
+  }
+}
+
+.admin-management .button {
+  font-size: var(--font-label);
+}
+.account-statistics-table td:first-child > strong {
+  font-size: 16px;
+}

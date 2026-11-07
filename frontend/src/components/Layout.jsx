@@ -24,6 +24,9 @@ import {
   Sun,
   X,
   Trash2,
+  ChartNoAxesCombined,
+  UsersRound,
+  History,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { useAuth } from '../auth/Auth.jsx';
@@ -32,6 +35,7 @@ import { needsTracking } from '../utils/processing.js';
 import Modal from './Modal.jsx';
 import ConnectionMenu from './ConnectionMenu.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
+import { notificationTarget } from '../utils/notifications.js';
 import FileDetail from './FileDetail.jsx';
 import FilePreview from './FilePreview.jsx';
 import SidebarStorage from './SidebarStorage.jsx';
@@ -75,12 +79,16 @@ export default function Layout() {
     '/settings',
     '/admin/quarantine',
     '/admin/overview',
+    '/admin/reports',
+    '/admin/accounts',
+    '/admin/history',
   ].includes(location.pathname);
   const searchValue = filesPage || adminPage ? searchParams.get('q') || '' : '';
   const [themeOpen, setThemeOpen] = useState(false);
   const themeRef = useRef(null);
   const themeTrigger = useRef(null);
   const pageHeading = useRef(null);
+  const sidebarScroll = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 640px)').matches);
   useEffect(() => {
@@ -104,6 +112,9 @@ export default function Layout() {
     navigation.find(([path]) => path === location.pathname)?.[1] ||
     (location.pathname === '/admin/quarantine' ? 'Quản trị cách ly' : null) ||
     (location.pathname === '/admin/overview' ? 'Tổng quan bảo mật' : null) ||
+    (location.pathname === '/admin/reports' ? 'Thống kê' : null) ||
+    (location.pathname === '/admin/accounts' ? 'Quản trị tài khoản' : null) ||
+    (location.pathname === '/admin/history' ? 'Lịch sử quản trị' : null) ||
     'Không tìm thấy trang';
   const activity = w.activityFiles || w.files;
   const active = activity.filter(isBusy);
@@ -176,6 +187,15 @@ export default function Layout() {
     window.scrollTo(0, 0);
     if (!location.state?.headerSearch) pageHeading.current?.focus({ preventScroll: true });
   }, [location.pathname, title]);
+  useEffect(() => {
+    const container = sidebarScroll.current;
+    const selected = container?.querySelector('[aria-current="page"]');
+    if (!selected) return;
+    const area = container.getBoundingClientRect();
+    const item = selected.getBoundingClientRect();
+    if (item.bottom > area.bottom) container.scrollTop += item.bottom - area.bottom + 8;
+    else if (item.top < area.top) container.scrollTop -= area.top - item.top + 8;
+  }, [location.pathname, collapsed]);
   useEffect(() => {
     const onKey = (event) => {
       if (
@@ -263,7 +283,7 @@ export default function Layout() {
           {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
         </button>
         <nav className="sidebar-navigation" aria-label="Điều hướng chính">
-          <div className="sidebar-scroll-area">
+          <div className="sidebar-scroll-area" ref={sidebarScroll}>
             <div className="nav-group" role="group" aria-labelledby="personal-nav-label">
               <span className="nav-label" id="personal-nav-label">
                 KHÔNG GIAN CÁ NHÂN
@@ -292,6 +312,9 @@ export default function Layout() {
                 </span>
                 {navItem('/admin/overview', 'Tổng quan bảo mật', ShieldAlert)}
                 {navItem('/admin/quarantine', 'Quản trị cách ly', ShieldCheck)}
+                {navItem('/admin/reports', 'Thống kê', ChartNoAxesCombined)}
+                {navItem('/admin/accounts', 'Quản trị tài khoản', UsersRound)}
+                {navItem('/admin/history', 'Lịch sử quản trị', History)}
               </div>
             )}
             <SidebarStorage collapsed={collapsed} />
@@ -523,17 +546,24 @@ export default function Layout() {
                 <strong>{event.title}</strong>
                 <span>{event.message}</span>
               </div>
-              {event.fileId && (
+              {(event.fileId || event.destination || event.folderId) && (
                 <button
                   className="text-button"
                   onClick={() => {
-                    navigate('/files');
-                    w.inspect(event.fileId);
+                    const target = notificationTarget(event, w.allFiles || w.files);
+                    navigate(target.to, { state: target.state });
+                    w.inspect(target.inspect || null);
                     w.markRead(event.id);
                     w.dismissToast(event.id);
                   }}
                 >
-                  Xem tệp
+                  {event.destination === 'admin/quarantine'
+                    ? 'Xem yêu cầu'
+                    : event.fileId
+                      ? 'Xem tệp'
+                      : event.folderId
+                        ? 'Mở thư mục'
+                        : 'Xem chi tiết'}
                 </button>
               )}
               <button

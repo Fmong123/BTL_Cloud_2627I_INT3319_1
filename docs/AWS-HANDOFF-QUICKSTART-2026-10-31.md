@@ -42,7 +42,7 @@ IAM → user/role chạy backend → Permissions → Add permissions → Create 
 
 Lambda → từng hàm → Code → Upload from → .zip file → chọn gói cùng tên trong AWS/build/: securedrive-scan-pii.zip, securedrive-quarantine-file.zip, securedrive-notify.zip. Không upload ZIP bàn giao tổng. Cả ba dùng Handler=handler.lambda_handler, có handler.py và pipeline_common.py ở gốc.
 
-Chung: FILES_TABLE=securedrive-files; AUDIT_TABLE=securedrive-audit-log. Scan: STRICT_DB_WRITE=true, giữ layer PDF/Textract. Quarantine: đúng QUARANTINE_BUCKET và KMS_KEY_ID. Notify: đúng SNS_TOPIC_ARN, webhook nếu dùng. Giữ/đối chiếu execution role, Logs, runtime/layer và timeout; ZIP không tự cập nhật các phần này.
+Chung: FILES_TABLE=securedrive-files; AUDIT_TABLE=securedrive-audit-log. Scan: STRICT_DB_WRITE=true, giữ layer PDF/Textract. Quarantine: đúng QUARANTINE_BUCKET và KMS_KEY_ID. Notify: đúng SNS_TOPIC_ARN (SNS/email). Giữ/đối chiếu execution role, Logs, runtime/layer và timeout; ZIP không tự cập nhật các phần này.
 
 ### Bước 3 · Kiểm workflow và S3
 
@@ -50,7 +50,7 @@ Step Functions: workflow phải là STANDARD; đối chiếu AWS/Orchestration/S
 
 ### Bước 4 · Thêm Lambda dọn rác
 
-Tạo/cập nhật securedrive-trash-cleanup; upload AWS/build/securedrive-trash-cleanup.zip. Python 3.12; handler.lambda_handler; cấu hình thử 512 MB, timeout 300 giây. Env: FILES_TABLE, UPLOAD_BUCKET, QUARANTINE_BUCKET đúng tài nguyên thật. Không đặt AWS_PROFILE hoặc ghi đè AWS_REGION trên Lambda.
+Tạo/cập nhật securedrive-trash-cleanup; upload AWS/build/securedrive-trash-cleanup.zip. Python 3.12; handler.lambda_handler; cấu hình thử 512 MB, timeout 300 giây. Env: FILES_TABLE, AUDIT_TABLE, UPLOAD_BUCKET, QUARANTINE_BUCKET đúng tài nguyên thật; hai bảng mặc định securedrive-files và securedrive-audit-log. Không đặt AWS_PROFILE hoặc ghi đè AWS_REGION trên Lambda. Cleanup mới dọn cả metadata thư mục hết hạn, dùng chung khóa revision/purging với API; role cần thêm Query trên files và PutItem trên audit theo policy mẫu. Xem [chi tiết cleanup](trash-cleanup.md).
 
 Role riêng tin cậy lambda.amazonaws.com, có Logs và AWS/IAM/securedrive-trash-cleanup-policy.example.json đã điền account/bucket. Lịch: AWS/Orchestration/trash-cleanup-schedule.example.yaml, rate(1 hour), có quyền invoke. Template mặc định State: DISABLED; nghiệm thu xong mới bật. Không dùng DynamoDB TTL để xóa metadata rác.
 

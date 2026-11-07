@@ -9,6 +9,7 @@ import ScanBadge from './ScanBadge.jsx';
 import ExtractionReport from './ExtractionReport.jsx';
 import DetailTabs from './DetailTabs.jsx';
 import QuarantineReview from './QuarantineReview.jsx';
+import PipelineRecovery from './PipelineRecovery.jsx';
 
 const at = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'Chưa có');
 const types = { CCCD_VN: 'Căn cước công dân', CREDIT_CARD: 'Thẻ ngân hàng' };
@@ -29,7 +30,7 @@ export default function AdminFileDetail({
   const [tab, setTab] = useState('information');
   useEffect(() => {
     const controller = new AbortController();
-    setState({ loading: true });
+    setState((previous) => ({ ...previous, loading: true }));
     getAdminFileDetail(baseUrl, item.id, item.owner_id, { signal: controller.signal })
       .then((data) => {
         if (!controller.signal.aborted) setState({ data });
@@ -183,6 +184,16 @@ export default function AdminFileDetail({
                     <p className="scan-report-note">Chưa có thống kê đầy đủ theo từng loại.</p>
                   )}
                   <ExtractionReport report={data.report} />
+                  <PipelineRecovery
+                    baseUrl={baseUrl}
+                    id={item.id}
+                    ownerId={item.owner_id}
+                    initial={data.pipeline}
+                    onChange={() => {
+                      refresh((value) => value + 1);
+                      onReviewSaved?.();
+                    }}
+                  />
                   <p className="scan-report-note">
                     Chỉ hiển thị thống kê, không hiển thị nội dung nhạy cảm của tài liệu.
                   </p>

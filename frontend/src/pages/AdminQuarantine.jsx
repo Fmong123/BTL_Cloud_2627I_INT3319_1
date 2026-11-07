@@ -191,7 +191,7 @@ export default function AdminQuarantine() {
         <div>
           <h2>Tệp cần kiểm tra</h2>
           <p>
-            Quản lý tệp của các tài khoản trong hệ thống. Mỗi lần tải bản cách ly đều được ghi lịch
+            Quản lý tệp của người dùng trong phạm vi quản trị. Mỗi lần tải bản cách ly đều được ghi lịch
             sử.
           </p>
         </div>
@@ -238,7 +238,7 @@ export default function AdminQuarantine() {
           value={owner}
           onChange={(e) => update('owner', e.target.value)}
         >
-          <option value="">Mọi chủ sở hữu</option>
+          <option value="">Tất cả người dùng</option>
           {state.owners.map((account) => (
             <option key={account.id} value={account.id}>
               {account.name}

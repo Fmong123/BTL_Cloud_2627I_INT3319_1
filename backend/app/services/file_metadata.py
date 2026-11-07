@@ -115,19 +115,21 @@ class FileMetadataRepository:
         }
         names = {"#upload": "upload_state", "#previous": "updated_at", "#status": "status", "#life": "lifecycle_state"}
         values = {":uploaded": "uploaded", ":previous": previous["updated_at"], ":status": previous["status"], ":active": "active"}
+        values[":pipeline_idle"] = False
         sets = []
         for index, (name, value) in enumerate(fields.items()):
             names[f"#s{index}"] = name
             values[f":s{index}"] = value
             sets.append(f"#s{index} = :s{index}")
         remove = ["scan_result", "status_reason", "reason", "scan_reason", "extraction_complete", "scanned_at", "scan_started_at",
-                  "detected_format", "extraction_method", "total_pages", "extracted_pages", "extraction_duration_ms"]
+                  "detected_format", "extraction_method", "total_pages", "extracted_pages", "extraction_duration_ms",
+                  "pipeline_recovery", "pipeline_request_id", "pipeline_resolution"]
         for index, name in enumerate(remove):
             names[f"#r{index}"] = name
         update = dict(TableName=self.table_name,
             Key=serialize_item(file_key(owner_id, file_id)),
             UpdateExpression="SET " + ", ".join(sets) + " REMOVE " + ", ".join(f"#r{i}" for i in range(len(remove))),
-            ConditionExpression="#upload = :uploaded AND #previous = :previous AND #status = :status AND (attribute_not_exists(#life) OR #life = :active)",
+            ConditionExpression="#upload = :uploaded AND #previous = :previous AND #status = :status AND (attribute_not_exists(#life) OR #life = :active) AND (attribute_not_exists(pipeline_busy) OR pipeline_busy = :pipeline_idle)",
             ExpressionAttributeNames=names, ExpressionAttributeValues=serialize_item(values))
         if admin_actor:
             name = previous.get("display_name") or previous["original_name"]

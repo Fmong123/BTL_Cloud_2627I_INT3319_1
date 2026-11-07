@@ -90,10 +90,11 @@ export default function Help() {
           <summary>Đổi tên và Thùng rác hoạt động thế nào?</summary>
           <p>
             Trong menu ba chấm của tệp, chọn Đổi tên hoặc Chuyển vào Thùng rác. Đổi tên không thay
-            đổi nội dung hay kết quả quét. Tệp trong Thùng rác vẫn tính vào 1 GB, có thể khôi phục
-            trong 30 ngày và vẫn giữ trạng thái cách ly. Xóa vĩnh viễn cần xác nhận, chỉ giải phóng
-            dung lượng khi máy chủ xóa hết nội dung và các phiên bản. Nếu xóa chưa hoàn tất, chọn
-            xóa lại; tệp chờ xóa không thể khôi phục. Tác vụ dọn tự động cần được bật trên máy chủ.
+            đổi nội dung hay kết quả quét. Tệp trong Thùng rác vẫn tính vào hạn mức tài khoản, có
+            thể khôi phục trong 30 ngày và vẫn giữ trạng thái cách ly. Xóa vĩnh viễn cần xác nhận,
+            chỉ giải phóng dung lượng khi máy chủ xóa hết nội dung và các phiên bản. Nếu xóa chưa
+            hoàn tất, chọn xóa lại; tệp chờ xóa không thể khôi phục. Tác vụ dọn tự động cần được bật
+            trên máy chủ.
           </p>
         </details>
         <details>
@@ -148,21 +149,22 @@ export default function Help() {
           </p>
         </details>
         <details>
-          <summary>Hạn mức 1 GB được tính thế nào?</summary>
+          <summary>Hạn mức dung lượng được tính thế nào?</summary>
           <p>
-            Gói miễn phí có 1 GB, mỗi tệp tối đa 100 MB. Tệp cách ly và tệp trong Thùng rác vẫn được
-            tính vào dung lượng. Máy chủ giữ chỗ cho tệp đang tải hoặc chưa xác nhận kết quả, và từ
-            chối lượt tải vượt dung lượng còn lại. Sidebar hiển thị riêng dung lượng đã dùng và đang
-            giữ chỗ.
+            Hạn mức mặc định là 1 GB và quản trị viên có thể điều chỉnh theo tài khoản; mỗi tệp tối
+            đa 100 MB. Tệp cách ly và tệp trong Thùng rác vẫn được tính vào dung lượng. Máy chủ giữ
+            chỗ cho tệp đang tải hoặc chưa xác nhận kết quả, và từ chối lượt tải vượt dung lượng còn
+            lại. Sidebar hiển thị riêng dung lượng đã dùng và đang giữ chỗ.
           </p>
         </details>
         <details>
           <summary>Thông báo được giữ bao lâu?</summary>
           <p>
-            Biểu tượng chuông giữ các cập nhật mà web quan sát, gồm tải lên, quét, cách ly và thao
-            tác tệp. Thông báo và trạng thái đã đọc được giữ khi mở lại trang, đồng bộ máy chủ khi
-            dịch vụ hỗ trợ. Khi mất mạng, dữ liệu tạm lưu trên trình duyệt; tối đa 2.000 thông báo
-            gần nhất được lưu tại đây. Bảng này không thay thế audit log trên máy chủ.
+            Biểu tượng chuông giữ các kết quả xử lý từ máy chủ và thao tác trên web, gồm tải lên,
+            quét, cách ly và thao tác tệp. Thông báo và trạng thái đã đọc được giữ khi mở lại trang,
+            đồng bộ máy chủ khi dịch vụ hỗ trợ. Khi mất mạng, dữ liệu tạm lưu trên trình duyệt; tối
+            đa 2.000 thông báo gần nhất được lưu tại đây. Bảng này không thay thế audit log trên máy
+            chủ.
           </p>
         </details>
         <details>

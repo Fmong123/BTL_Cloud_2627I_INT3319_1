@@ -301,6 +301,9 @@ def audit_scan(row, source):
     put_audit(_table(AUDIT_TABLE), source, "scan_" + result["status"], result["status"],
               {**summary(row), "reason": result["reason"], "extraction_complete": result["extraction_complete"]},
               row["scanned_at"], execution_id=row.get("execution_id"))
+    from pipeline_common import put_notification
+    put_notification(_table(FILES_TABLE), source, row, "scan_" + result["status"], result["status"],
+                     row["scanned_at"], execution_id=row.get("execution_id"))
     return result
 
 
@@ -346,6 +349,8 @@ def lambda_handler(event, context):
     row = read_file(_table(FILES_TABLE), source)
     from pipeline_common import verify_rescan_execution
     verify_rescan_execution(row, event)
+    if event.get("recovery") or row.get("pipeline_busy"):
+        raise PipelineConflict("recovery_cannot_scan")
     if row["status"] not in {"not_started", "scanning"}:
         return audit_scan(row, source)
     if event.get("operation") == "record_failure":

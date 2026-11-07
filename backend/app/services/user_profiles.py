@@ -1,11 +1,16 @@
 """Cognito is the identity source; DynamoDB stores profile data, never credentials."""
-from ..db import call_dynamodb, require_table, serialize_item, utc_timestamp
+from ..db import call_dynamodb, require_table, serialize_item, deserialize_item, utc_timestamp
 
 
 class UserProfiles:
     def __init__(self, client, table):
         require_table(client, table)
         self.client, self.table = client, table
+
+    def get(self, owner):
+        result = call_dynamodb(self.client, "get_item", TableName=self.table,
+                              Key=serialize_item({"user_id": owner}), ConsistentRead=True)
+        return deserialize_item(result["Item"]) if "Item" in result else {}
 
     def sync(self, account: dict, *, login=False):
         now = utc_timestamp()

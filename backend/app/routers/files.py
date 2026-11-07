@@ -221,7 +221,7 @@ def upload_file(
         if metadata_enabled:
             require_metadata(settings, metadata, audit, writing=True)
         elif storage.mode == "s3":
-            raise HTTPException(503, "Cần bật metadata để kiểm tra hạn mức 1 GB trước khi tải lên S3")
+            raise HTTPException(503, "Cần bật metadata để kiểm tra hạn mức tài khoản trước khi tải lên S3")
         file_id = str(uuid4())
         key = f"uploads/{owner_id}/{file_id}/{safe_filename(file.filename)}"
         content_type = file.content_type or "application/octet-stream"
@@ -246,7 +246,7 @@ def upload_file(
                     details={"storage": storage.mode, "key": key, "size_bytes": size},
                 )
             except QuotaExceeded:
-                raise HTTPException(413, "Không đủ dung lượng trong gói miễn phí 1 GB") from None
+                raise HTTPException(413, "Không đủ dung lượng theo hạn mức hiện tại của tài khoản") from None
             except QuotaBusy:
                 raise HTTPException(429, "Đang giữ chỗ dung lượng cho lượt tải khác — hãy thử lại", headers={"Retry-After": "2"}) from None
             except DynamoDBError as exc:
@@ -629,7 +629,7 @@ def file_history(
     return history_response(file_id, owner_id, audit, limit, cursor)
 
 
-def history_response(file_id, owner_id, audit, limit, cursor):
+def history_response(file_id, owner_id, audit, limit, cursor, *, admin_details=False):
     """Authorize the file before calling; whitelist fields shared by owner/admin."""
     start = None
     if cursor:
@@ -650,5 +650,13 @@ def history_response(file_id, owner_id, audit, limit, cursor):
         raise HTTPException(503, "Lịch sử tệp có dữ liệu không khớp chủ sở hữu")
     allowed = ("event_key", "occurred_at", "action", "actor", "from_status", "to_status")
     next_cursor = base64.urlsafe_b64encode(json.dumps(page.next_key).encode()).decode().rstrip("=") if page.next_key else None
-    return {"id": file_id, "items": [{k: item[k] for k in allowed if k in item} for item in page.items],
+    items = []
+    for item in page.items:
+        event = {k: item[k] for k in allowed if k in item}
+        if admin_details and item.get("action") in {"admin_pipeline_requested", "admin_pipeline_checked", "admin_notification_confirmed"}:
+            event["details"] = {k: v for k, v in item.get("details", {}).items()
+                if k in {"action", "channel", "reason", "allow_duplicate", "execution_status", "result", "receipt", "evidence", "confirmation"}
+                and (isinstance(v, str) and len(v) <= 500 or type(v) is bool)}
+        items.append(event)
+    return {"id": file_id, "items": items,
             "next_cursor": next_cursor}

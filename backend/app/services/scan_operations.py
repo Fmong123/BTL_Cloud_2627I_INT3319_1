@@ -20,6 +20,8 @@ def compression_pending(item):
 def operations_for(item):
     if item.get("lifecycle_state", "active") != "active" or item.get("upload_state") != "uploaded":
         return []
+    if item.get("pipeline_busy"):
+        return []
     status, reason = item.get("status"), item.get("status_reason") or item.get("reason")
     actions = ["withdraw_compression"] if compression_pending(item) else []
     if status == "scanning":
