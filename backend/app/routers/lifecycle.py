@@ -144,11 +144,13 @@ def notifications(limit: int = Query(100, ge=1, le=100), cursor: str | None = Qu
     try:
         page = notification_page(metadata, owner, limit=limit, start_key=start)
         accounts = {}
-        if user.role == "admin" and any(r.get("kind") == ADMIN_KIND for r in page.items):
+        if user.role == "admin" and any(r.get("kind") == ADMIN_KIND or r.get("destination") == "admin/costs" for r in page.items):
             from .admin import pool_accounts
             accounts = pool_accounts(request, fresh=True)
         items = [public_notice(r) for r in page.items
-                 if r.get("kind") != ADMIN_KIND or admin_visible(r, accounts, owner)]
+                 if (r.get("kind") != ADMIN_KIND or admin_visible(r, accounts, owner))
+                 and (r.get("destination") != "admin/costs" or
+                      (accounts.get(owner, {}).get("role") == "admin" and accounts[owner].get("active")))]
         return {"items": items, "next_cursor": encode_cursor(page.next_key)}
     except DynamoDBError as exc:
         raise metadata_failure(exc) from None
@@ -165,6 +167,13 @@ def persist_notification(payload: NotificationRequest, request: Request, setting
             from .admin import pool_accounts
             return acknowledge_admin(metadata, user.owner_id, payload, pool_accounts(request, fresh=True))
         existing = metadata.get_file(f"!notifications!{user.owner_id}", f"{payload.created_at}#{payload.id}")
+        if existing and existing.get("destination") == "admin/costs":
+            from .admin import pool_accounts
+            actor = pool_accounts(request, fresh=True).get(user.owner_id, {})
+            if user.role != "admin" or actor.get("role") != "admin" or not actor.get("active"):
+                raise HTTPException(403, "Thông báo chi phí này dành cho quản trị viên")
+        if payload.kind.startswith("billing-") and not existing:
+            raise HTTPException(403, "Thông báo chi phí chỉ được tạo bởi máy chủ")
         if existing and existing.get("kind") == ADMIN_KIND:
             raise HTTPException(403, "Không được sửa thông báo quản trị")
         return save_notification(metadata, user.owner_id, payload.model_dump())

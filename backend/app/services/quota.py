@@ -16,12 +16,12 @@ class QuotaBusy(Exception):
     pass
 
 
-def usage(metadata, owner_id, *, config=None):
+def usage(metadata, owner_id, *, config=None, items=None):
     used = reserved = 0
     cursor = None
     while True:
-        page = metadata.list_files(owner_id, limit=100, start_key=cursor)
-        for item in page.items:
+        page = metadata.list_files(owner_id, limit=100, start_key=cursor) if items is None else None
+        for item in page.items if page else items:
             if item.get("upload_state") == "failed":
                 continue
             size = item.get("size_bytes")
@@ -31,7 +31,7 @@ def usage(metadata, owner_id, *, config=None):
                 used += size
             else:
                 reserved += size
-        cursor = page.next_key
+        cursor = page.next_key if page else None
         if not cursor:
             break
     config = quota_config(metadata, owner_id) if config is None else config
@@ -57,9 +57,9 @@ def lock_key(owner_id):
 
 
 @contextmanager
-def quota_lock(metadata, owner_id, *, seconds=60):
+def quota_lock(metadata, owner_id, *, seconds=60, key_name="lock"):
     token = uuid4().hex
-    key = serialize_item(lock_key(owner_id))
+    key = serialize_item({"owner_id": f"!quota!{owner_id}", "file_id": key_name})
     deadline = time.monotonic() + 4
     while True:
         try:

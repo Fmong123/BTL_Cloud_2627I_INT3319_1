@@ -1,8 +1,11 @@
 import { Cloud } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { FREE_STORAGE_BYTES, formatStorageUsage, storedBytes } from '../utils/storageUsage.js';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/Auth.jsx';
 
 export default function SidebarStorage({ collapsed }) {
+  const { session } = useAuth();
   const w = useWorkspace();
   const serverQuota = w.storageQuota;
   const authoritative = w.quotaAvailable && Number.isSafeInteger(serverQuota?.used);
@@ -72,6 +75,17 @@ export default function SidebarStorage({ collapsed }) {
           )}
         </p>
         <span className="storage-plan-note">{note}</span>
+        {known && !demo && used >= FREE_STORAGE_BYTES * 0.8 && (
+          <p className="billing-storage-warning">
+            {used >= FREE_STORAGE_BYTES
+              ? 'Đã hết mức miễn phí 1 GB'
+              : 'Dung lượng miễn phí sắp đầy'}
+          </p>
+        )}
+        <div className="billing-storage-links">
+          <Link to="/pricing">Bảng giá</Link>
+          <Link to={session.user.role === 'admin' ? '/admin/costs' : '/costs'}>Chi phí</Link>
+        </div>
       </div>
     </section>
   );

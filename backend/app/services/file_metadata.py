@@ -203,10 +203,12 @@ class FileMetadataRepository:
         )
 
     def _mark_upload(self, owner_id, file_id, state, *, updated_at):
-        response = call_dynamodb(
-            self.client, "update_item", TableName=self.table_name,
+        update_expression = "SET #upload = :target, #updated = :updated"
+        if state == "uploaded":
+            update_expression += ", billing_uploaded_at = if_not_exists(billing_uploaded_at, :updated)"
+        params = dict(TableName=self.table_name,
             Key=serialize_item(file_key(owner_id, file_id)),
-            UpdateExpression="SET #upload = :target, #updated = :updated",
+            UpdateExpression=update_expression,
             ConditionExpression=(
                 "attribute_exists(#owner) AND attribute_exists(#file) "
                 "AND #upload IN (:uploading, :unknown, :target)"
@@ -219,8 +221,16 @@ class FileMetadataRepository:
                 ":target": state, ":updated": utc_timestamp(updated_at),
                 ":uploading": "uploading", ":unknown": "unknown",
             }),
-            ReturnValues="ALL_NEW",
         )
+        if state == "uploaded":
+            from .billing_ledger import interval_action
+            item = self.get_file(owner_id, file_id)
+            call_dynamodb(self.client, "transact_write_items", TransactItems=[
+                {"Update": params}, interval_action(self, owner_id, file_id, item["size_bytes"],
+                    item.get("billing_uploaded_at") or params["ExpressionAttributeValues"][":updated"]["S"]),
+            ])
+            return self.get_file(owner_id, file_id)
+        response = call_dynamodb(self.client, "update_item", **params, ReturnValues="ALL_NEW")
         return deserialize_item(response["Attributes"])
 
     def mark_pending_scan_failed(

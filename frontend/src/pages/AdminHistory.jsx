@@ -22,6 +22,7 @@ import '../admin-history.css';
 const categories = {
   all: 'Mọi thao tác',
   account: 'Tài khoản & quota',
+  billing: 'Chi phí & chính sách',
   pipeline: 'Xử lý tệp',
   report: 'Xuất dữ liệu',
   trash: 'Dọn Thùng rác',
@@ -59,7 +60,11 @@ function Result({ event }) {
 function value(change, side) {
   const result = change[side];
   if (result == null) return 'Chưa ghi nhận';
-  return change.format === 'bytes' ? size(result) : String(result);
+  return change.format === 'bytes'
+    ? size(result)
+    : change.format === 'vnd'
+      ? `${Number(result).toLocaleString('vi-VN')} đ`
+      : String(result);
 }
 
 export default function AdminHistory() {
@@ -293,7 +298,11 @@ export default function AdminHistory() {
                           <td data-label="Người thực hiện">
                             <strong>{row.actor_name}</strong>
                             <small>
-                              {row.actor_kind === 'system' ? 'Tự động' : 'Quản trị viên'}
+                              {row.actor_kind === 'system'
+                                ? 'Tự động'
+                                : row.actor_kind === 'user'
+                                  ? 'Người dùng'
+                                  : 'Quản trị viên'}
                             </small>
                           </td>
                           <td data-label="Thao tác">

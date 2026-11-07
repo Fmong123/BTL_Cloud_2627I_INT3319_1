@@ -1,0 +1,285 @@
+{
+  "version": "maysec-2026-11-07-v3",
+  "checked_at": "2026-11-07",
+  "region": "ap-southeast-2",
+  "currency": "VND",
+  "estimate_only": true,
+  "free_bytes": 1000000000,
+  "storage_rate": 5000,
+  "management_rate": 10000,
+  "trial_limit_bytes": 10000000000,
+  "fx_vnd_per_usd": 26000,
+  "fx_note": "Tỷ giá dự toán cố định 26.000 đ/USD, không phải tỷ giá ngân hàng trực tiếp.",
+  "tax_note": "Giá dự kiến trước thuế; chưa thu tiền, chưa tạo công nợ.",
+  "rates": [
+    {
+      "name": "S3 Standard",
+      "unit": "GB/tháng",
+      "usd": 0.025,
+      "source": "https://aws.amazon.com/s3/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T17:44:45Z",
+      "usage_type": "APS2-TimedStorage-ByteHrs",
+      "description": "$0.025 per GB - first 50 TB / month of storage used"
+    },
+    {
+      "name": "S3 PUT/COPY/POST/LIST",
+      "unit": "1.000 request",
+      "usd": 0.0055,
+      "source": "https://aws.amazon.com/s3/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T17:44:45Z",
+      "usage_type": "APS2-Requests-Tier1",
+      "description": "$0.0055 per 1,000 PUT, COPY, POST, or LIST requests"
+    },
+    {
+      "name": "S3 GET",
+      "unit": "1.000 request",
+      "usd": 0.00044,
+      "source": "https://aws.amazon.com/s3/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T17:44:45Z",
+      "usage_type": "APS2-Requests-Tier2",
+      "description": "$0.0044 per 10,000 GET and all other requests"
+    },
+    {
+      "name": "Textract Detect Document Text",
+      "unit": "trang",
+      "usd": 0.0015,
+      "source": "https://aws.amazon.com/textract/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonTextract/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-27T18:43:01Z",
+      "usage_type": "APS2-AsyncTextPagesProcessed",
+      "description": "USD 1.50 per 1,000 Pages for AsyncTextPagesProcessed in Asia Pacific (Sydney): 0-1M pages tier"
+    },
+    {
+      "name": "Lambda x86 — xử lý",
+      "unit": "GB-giây",
+      "usd": 1.66667e-05,
+      "source": "https://aws.amazon.com/lambda/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSLambda/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-30T23:42:55Z",
+      "usage_type": "APS2-Lambda-GB-Second",
+      "description": "AWS Lambda - Total Compute - Asia Pacific (Sydney)-Tier-1"
+    },
+    {
+      "name": "Lambda — lời gọi",
+      "unit": "1 triệu request",
+      "usd": 0.19999999999999998,
+      "source": "https://aws.amazon.com/lambda/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSLambda/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-30T23:42:55Z",
+      "usage_type": "APS2-Request",
+      "description": "AWS Lambda - Total Requests - Asia Pacific (Sydney)"
+    },
+    {
+      "name": "Step Functions Standard",
+      "unit": "1.000 chuyển trạng thái",
+      "usd": 0.025,
+      "source": "https://aws.amazon.com/step-functions/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonStates/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T21:34:23Z",
+      "usage_type": "APS2-StateTransition",
+      "description": "$0.000025 per state transition"
+    },
+    {
+      "name": "DynamoDB Standard on-demand — ghi",
+      "unit": "1 triệu WRU",
+      "usd": 0.71,
+      "source": "https://aws.amazon.com/dynamodb/pricing/on-demand/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-05T16:40:16Z",
+      "usage_type": "APS2-WriteRequestUnits",
+      "description": "$0.71 per million write request units (Asia Pacific (Sydney))"
+    },
+    {
+      "name": "DynamoDB Standard on-demand — đọc",
+      "unit": "1 triệu RRU",
+      "usd": 0.14250000000000002,
+      "source": "https://aws.amazon.com/dynamodb/pricing/on-demand/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-05T16:40:16Z",
+      "usage_type": "APS2-ReadRequestUnits",
+      "description": "$0.1425 per million read request units (Asia Pacific (Sydney))"
+    },
+    {
+      "name": "DynamoDB — lưu trữ sau mức miễn phí",
+      "unit": "GB/tháng",
+      "usd": 0.285,
+      "source": "https://aws.amazon.com/dynamodb/pricing/on-demand/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-05T16:40:16Z",
+      "usage_type": "APS2-TimedStorage-ByteHrs",
+      "description": "$0.285 per GB-Month of storage used beyond first 25 free GB-Months"
+    },
+    {
+      "name": "KMS — khóa do khách hàng quản lý",
+      "unit": "khóa/tháng",
+      "usd": 1.0,
+      "source": "https://aws.amazon.com/kms/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-26T20:18:14Z",
+      "usage_type": "ap-southeast-2-KMS-Keys",
+      "description": "$1 per customer managed KMS key version in Asia Pacific (Sydney)"
+    },
+    {
+      "name": "KMS — request đối xứng",
+      "unit": "10.000 request",
+      "usd": 0.030000000000000002,
+      "source": "https://aws.amazon.com/kms/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-26T20:18:14Z",
+      "usage_type": "ap-southeast-2-KMS-Requests",
+      "description": "$0.03 per 10000 KMS requests in Asia Pacific (Sydney)"
+    },
+    {
+      "name": "SNS — email sau mức miễn phí",
+      "unit": "1.000 thông báo",
+      "usd": 0.02,
+      "source": "https://aws.amazon.com/sns/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSNS/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T21:35:13Z",
+      "usage_type": "APS2-DeliveryAttempts-SMTP",
+      "description": "$2.00 per 100,000 Amazon SNS Email/Email-JSON Notifications thereafter"
+    },
+    {
+      "name": "EventBridge — custom event (nếu dùng)",
+      "unit": "1 triệu sự kiện",
+      "usd": 1.0,
+      "source": "https://aws.amazon.com/eventbridge/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSEvents/current/ap-southeast-2/index.json",
+      "published_at": "2026-09-24T16:39:03Z",
+      "usage_type": "APS2-Event-64K-Chunks",
+      "description": "$1.00 per million EventBridge custom events received in Asia Pacific (Sydney)"
+    },
+    {
+      "name": "CloudWatch Logs Standard — ghi log",
+      "unit": "GB",
+      "usd": 0.67,
+      "source": "https://aws.amazon.com/cloudwatch/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T21:35:32Z",
+      "usage_type": "APS2-DataProcessing-Bytes",
+      "description": "$0.67 per GB custom log data ingested in Standard log class - Asia Pacific (Sydney)"
+    },
+    {
+      "name": "CloudWatch — giữ log",
+      "unit": "GB/tháng",
+      "usd": 0.033,
+      "source": "https://aws.amazon.com/cloudwatch/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-04T21:35:32Z",
+      "usage_type": "APS2-TimedStorage-ByteHrs",
+      "description": "$0.033 per GB-mo of log storage - Asia Pacific (Sydney)"
+    },
+    {
+      "name": "Cognito Essentials — giả định tier",
+      "unit": "MAU",
+      "usd": 0.015,
+      "source": "https://aws.amazon.com/cognito/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCognito/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-20T23:38:14Z",
+      "usage_type": "APS2-CognitoEssentialsMAU",
+      "description": "Cognito Essentials ap-southeast-2 tier 1 pricing"
+    },
+    {
+      "name": "Cognito Lite — phương án tier khác",
+      "unit": "MAU",
+      "usd": 0.0055,
+      "source": "https://aws.amazon.com/cognito/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCognito/current/ap-southeast-2/index.json",
+      "published_at": "2026-10-20T23:38:14Z",
+      "usage_type": "APS2-CognitoLiteMAU",
+      "description": "Cognito Lite ap-southeast-2 tier 1 pricing"
+    },
+    {
+      "name": "Truyền dữ liệu ra Internet — Sydney",
+      "unit": "GB",
+      "usd": 0.114,
+      "source": "https://aws.amazon.com/ec2/pricing/on-demand/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-03T13:31:47Z",
+      "usage_type": "APS2-DataTransfer-Out-Bytes",
+      "description": "$0.114 per GB - first 10 TB / month data transfer out beyond the global free tier"
+    },
+    {
+      "name": "IPv4 công khai",
+      "unit": "IP/giờ",
+      "usd": 0.005,
+      "source": "https://aws.amazon.com/vpc/pricing/",
+      "description": "Chưa áp dụng ưu đãi hoặc thuế."
+    },
+    {
+      "name": "Route 53 — hosted zone (nếu dùng)",
+      "unit": "zone/tháng",
+      "usd": 0.5,
+      "source": "https://aws.amazon.com/route53/pricing/",
+      "description": "25 hosted zone đầu; chưa gồm truy vấn và tên miền."
+    },
+    {
+      "name": "EBS gp3 — dung lượng provisioned",
+      "unit": "GB/tháng",
+      "usd": 0.096,
+      "source": "https://aws.amazon.com/ebs/pricing/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-07T00:28:52Z",
+      "usage_type": "APS2-EBS:VolumeUsage.gp3",
+      "description": "$0.096 per GB-month of General Purpose (gp3) provisioned storage - Asia Pacific (Sydney)"
+    },
+    {
+      "name": "EC2 t3.micro Linux On-Demand — cấu hình tham chiếu",
+      "unit": "giờ",
+      "usd": 0.0132,
+      "source": "https://aws.amazon.com/ec2/pricing/on-demand/",
+      "catalogue": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/ap-southeast-2/index.json",
+      "published_at": "2026-11-07T00:28:52Z",
+      "usage_type": "APS2-BoxUsage:t3.micro",
+      "description": "$0.0132 per On Demand Linux t3.micro Instance Hour"
+    }
+  ],
+  "assumptions": [
+    "Mỗi GB lưu trữ/tháng giả định 1,25 GB vật lý gồm phần dự phòng phiên bản; OCR 40 trang; truyền ra 0,25 GB; dự phòng xử lý/request 0,004 USD.",
+    "Chi phí biến đổi theo giả định: (0,025 × 1,25 + 0,0015 × 40 + 0,114 × 0,25 + 0,004) × 26.000 = 3.217,5 đ/GB/tháng. Dự phòng 30% thành 4.182,75 đ; làm tròn giá đề xuất 5.000 đ.",
+    "Phí quản trị giả định mỗi user/tháng: Cognito Essentials 0,015 USD + 10.000 WRU × 0,71 USD/triệu + 50.000 RRU × 0,1425 USD/triệu + 0,02 GB log × 0,67 USD + phân bổ vận hành 0,20 USD. Tổng 6.308,25 đ; dự phòng 30% thành 8.200,73 đ; làm tròn giá đề xuất 10.000 đ.",
+    "Số trang OCR và lưu lượng trên là giả định định giá, không phải hạn mức mới hoặc số liệu AWS đã đo. OCR/quét vẫn theo giới hạn định dạng, dung lượng và tần suất hiện có.",
+    "Chưa xác nhận loại máy EC2, dung lượng/loại EBS, Cognito tier thật, DNS, tên miền và tải thực tế. Phân bổ vận hành không phải hóa đơn của máy chủ; chi phí cố định có thể không được bù khi ít user.",
+    "Không lấy AWS Free Tier, credit hoặc chiết khấu tạm thời để bảo đảm giá lâu dài. Không tính EventBridge custom event cho sự kiện AWS miễn phí trong cùng tài khoản; bảng liệt kê giá tham chiếu khi có phát sinh.",
+    "Chi phí AWS được liệt kê để giải thích giá dịch vụ, không cộng các dòng AWS lần nữa vào tiền của user/admin."
+  ],
+  "rules": [
+    "1 GB miễn phí riêng cho mỗi user; phần vượt tính theo tổng byte và thời gian lưu thực tế, làm tròn VND sau khi cộng.",
+    "Chỉ bắt đầu phí vượt miễn phí sau khi chủ tài khoản xác nhận bật tính phí theo sử dụng. Không tính ngược dữ liệu trước mốc theo dõi.",
+    "Tệp trong Thùng rác/cách ly vẫn tính một lần. Dung lượng giữ chỗ chưa tính; xóa vĩnh viễn thành công mới dừng tính.",
+    "Phí admin gồm tổng phí lưu trữ đã tính cho user và phí quản trị theo thời gian user được quản lý. Không thu phí lưu trữ hai lần và không nhân phí khi có nhiều admin.",
+    "Khóa đăng nhập không ngừng quản lý hoặc xóa dữ liệu. User vẫn được quản lý cho đến khi rời danh sách role=user; thời điểm này được ghi khi đối chiếu directory.",
+    "Admin chỉ được chỉnh quota và ngưỡng cảnh báo, không sửa giá hoặc mức miễn phí. Quota là trần upload, không phải dung lượng đã mua.",
+    "Kỳ chi phí là tháng dương lịch theo giờ Việt Nam (UTC+7), tính đúng thời gian lưu và số ngày của tháng. Phí quản trị làm tròn từng user trước khi cộng tổng để khớp chi tiết và bảng kê. Bảng phí lưu trữ từng ngày làm tròn riêng nên có thể lệch vài đồng với tổng kỳ.",
+    "Dự báo giả định giữ nguyên dung lượng và số user hiện tại đến hết tháng; không phải số tiền đã thu. Bản demo chưa có thanh toán, hóa đơn hay công nợ.",
+    "Ngưỡng tiền chỉ để nhắc qua chuông khi dự báo hoặc phí phát sinh đạt ngưỡng; không tự dừng lưu trữ hoặc xử lý. Mỗi kỳ và mỗi ngưỡng đã lưu chỉ nhắc một lần cho từng loại dự báo/phát sinh. Ngưỡng 0 đ nhắc khi có chi phí dương, không phải tắt cảnh báo.",
+    "Thông báo dung lượng ở các mốc 80%, 90%, 100% mức miễn phí; giảm dưới 75% mới bắt đầu chu kỳ cảnh báo mới. Tải lại trang không tạo thông báo trùng.",
+    "Hệ thống đối chiếu tự động khoảng mỗi 60 giây khi backend hoạt động và kết nối được dịch vụ; có thể chậm hơn khi mất kết nối. Dữ liệu trước lúc bắt đầu theo dõi không được tính ngược."
+  ],
+  "user_policy": [
+    "Bật tính phí là xác nhận theo dõi phần vượt miễn phí, không phải mua sẵn toàn bộ hạn mức. Dung lượng chưa dùng không bị tính tiền.",
+    "Admin tăng hạn mức không tự bật tính phí cho bạn. Admin giảm hạn mức không làm thay đổi mức miễn phí hoặc đơn giá; hạn mức không được thấp hơn dung lượng đang dùng và đang giữ chỗ.",
+    "OCR, quét PII, mã hóa, cách ly và thông báo đã gộp trong giá; không cộng tiền theo trang hoặc số lần quét. Vẫn áp dụng định dạng, kích thước và tần suất được hệ thống hỗ trợ; quét lại cần cách nhau ít nhất 60 giây.",
+    "Chỉ xóa vĩnh viễn thành công mới ngừng tính dung lượng của tệp. Chuyển vào Thùng rác, cách ly hoặc khóa đăng nhập không giải phóng dung lượng.",
+    "Bạn được xem chi phí và xuất bảng kê của chính mình. Thay đổi ngưỡng có xác nhận giá trị cũ/mới; nếu dữ liệu đã đổi ở phiên khác, cần cập nhật trước khi lưu lại."
+  ],
+  "admin_policy": [
+    "Chi phí quản trị gồm tổng lưu trữ của user trong thời gian được quản lý và khoản quản trị bổ sung 10.000 đ/user/tháng theo thời gian. Đây là tổng quan hệ thống của demo, chưa gán user cho công ty hoặc doanh nghiệp.",
+    "Phí quản trị không phụ thuộc user đã bật phí vượt miễn phí hay đã đăng nhập; tài khoản bị khóa vẫn được quản lý. Không nhân phí theo số admin.",
+    "User mới được ghi nhận khi đồng bộ tài khoản hoặc đối chiếu định kỳ, không cần mở trang Chi phí. Thay đổi nhóm/xóa ngoài ứng dụng được ghi tại lúc phát hiện, không suy đoán lịch sử vai trò trước đó.",
+    "Kỳ đã kết thúc có bản đối chiếu theo phiên bản. Dữ liệu ghi muộn được cập nhật bằng phiên bản mới và giữ bản trước đó; các phút đầu kỳ mới hoặc khi có dữ liệu cần bổ sung sẽ hiện đang đối chiếu. Khi user rời nhóm hoặc đổi vai trò, vẫn giữ số liệu tài chính trong thời gian được quản lý, không mở nội dung tệp riêng của tài khoản đó.",
+    "Có thể xem chi tiết, thống kê OCR/quét, trạng thái đối chiếu tự động và xuất CSV theo kỳ. Nút Đối chiếu ngay cho phép thử lại khi thống kê/thông báo cập nhật chậm. Thao tác bật tính phí, đổi ngưỡng, đối chiếu thủ công và xuất bảng kê được ghi nhật ký; CSV là bảng kê ước tính, không phải hóa đơn.",
+    "Chỉ bên phát triển quyết định giá và mức miễn phí. Phiên bản/đơn giá đã ghi nhận được giữ cho tài khoản; thay giá tương lai cần quy định hiệu lực riêng, không tự tính lại các kỳ cũ."
+  ],
+  "hosting_reference": {
+    "instance": "EC2 t3.micro Linux On-Demand",
+    "hours": 730,
+    "ebs_gb": 20,
+    "usd_month": 16.706,
+    "vnd_month": 434356,
+    "description": "730 giờ EC2 t3.micro + 20 GB EBS gp3 + 1 IPv4 công khai + 1 khóa KMS + 1 hosted zone Route 53. Đây là cấu hình tham chiếu, chưa xác nhận là cấu hình đang chạy; chưa gồm CPU credit, DNS query, tên miền, request, OCR và truyền dữ liệu."
+  }
+}

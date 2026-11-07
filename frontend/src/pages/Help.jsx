@@ -158,6 +158,19 @@ export default function Help() {
           </p>
         </details>
         <details>
+          <summary>Tính phí theo sử dụng và chi phí OCR được tính thế nào?</summary>
+          <p>
+            1 GB miễn phí riêng cho mỗi user. Khi chủ tài khoản xác nhận bật tính phí theo sử dụng,
+            phần lưu trữ vượt miễn phí tính theo dung lượng và thời gian thực tế. OCR, quét PII, mã
+            hóa và thông báo đã gộp trong giá dịch vụ, theo phạm vi xử lý được hỗ trợ. Admin xem
+            tổng phí lưu trữ user cộng phí quản trị theo thời gian quản lý, không tính lưu trữ lần
+            thứ hai. Hiện chỉ ước tính, chưa thu tiền.
+          </p>
+          <Link className="text-button" to="/pricing">
+            Đọc Chính sách & bảng giá <ArrowRight size={16} />
+          </Link>
+        </details>
+        <details>
           <summary>Thông báo được giữ bao lâu?</summary>
           <p>
             Biểu tượng chuông giữ các kết quả xử lý từ máy chủ và thao tác trên web, gồm tải lên,

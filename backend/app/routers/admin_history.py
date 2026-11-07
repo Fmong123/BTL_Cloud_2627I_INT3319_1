@@ -34,7 +34,7 @@ def failure():
 def history(request: Request, response: Response, user=Depends(require_admin),
             from_date: date | None = None, to_date: date | None = None,
             owner_id: UUID | None = None,
-            category: Literal["all", "account", "pipeline", "report", "trash"] = "all",
+            category: Literal["all", "account", "pipeline", "report", "trash", "billing"] = "all",
             outcome: Literal["all", "success", "failed", "pending", "unknown", "closed"] = "all",
             q: str = Query("", max_length=200), cursor: str | None = Query(None, max_length=4096),
             limit: int = Query(20, ge=1, le=50)):

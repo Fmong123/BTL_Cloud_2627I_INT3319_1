@@ -13,6 +13,7 @@ import jwt
 from botocore.exceptions import BotoCoreError, ClientError
 
 from .cognito_auth import AuthError, AuthUser
+from ..db import utc_timestamp
 
 logger = logging.getLogger(__name__)
 DEMO_TYPE = "maysec-demo+jwt"
@@ -52,6 +53,9 @@ class DemoAccounts:
                                   "name": attrs.get("name") or attrs.get("preferred_username") or attrs.get("email") or username,
                                   "email": attrs.get("email", ""),
                                   "role": role, "active": active, "enabled": bool(user.get("Enabled", False)), "status": status})
+                    created = user.get("UserCreateDate")
+                    if created is not None:
+                        items[-1]["created_at"] = utc_timestamp(created.isoformat())
                 items.sort(key=lambda item: (item["role"] == "admin", item["name"].casefold(), item["id"]))
             except (ClientError, BotoCoreError) as exc:
                 code = exc.response.get("Error", {}).get("Code", "ClientError") if isinstance(exc, ClientError) else type(exc).__name__

@@ -14,6 +14,7 @@ và mọi nhánh đều cập nhật bảng files + ghi audit log (khi DynamoDB 
 """
 
 import io
+import hashlib
 import logging
 import os
 import re
@@ -22,7 +23,7 @@ from collections import Counter
 from functools import lru_cache
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, BotoCoreError
 from pipeline_common import (
     PipelineConflict, conditional_failure, put_audit, read_file, source_from_event,
     status_fields, summary, update_file, utc,
@@ -37,7 +38,8 @@ AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "securedrive-audit-log")
 # Integrated pipeline requires confirmed metadata/audit before notification.
 STRICT_DB_WRITE = os.environ.get("STRICT_DB_WRITE", "true").lower() == "true"
 
-MAX_SCAN_BYTES = int(os.environ.get("MAX_SCAN_BYTES", str(50 * 1024 * 1024)))
+# Match backend upload admission: 100 MB = 100,000,000 bytes.
+MAX_SCAN_BYTES = int(os.environ.get("MAX_SCAN_BYTES", "100000000"))
 MAX_OCR_IMAGE_BYTES = 10 * 1024 * 1024  # giới hạn Textract đồng bộ
 MAX_FINDINGS = int(os.environ.get("MAX_FINDINGS", "500"))  # tránh payload Step Functions quá 256KB
 MIN_PDF_TEXT_CHARS = int(os.environ.get("MIN_PDF_TEXT_CHARS", "20"))
@@ -296,11 +298,31 @@ def payload_from_record(row, source):
             "scanned_at": row.get("scanned_at"), "extraction_complete": row.get("extraction_complete", True)}
 
 
+def processing_record(row, source):
+    identity = "|".join(str(v or "") for v in (source["file_id"], source["version"], row.get("execution_id"), row["scanned_at"]))
+    return {"owner_id": f"!quota!{source['owner_id']}",
+        "file_id": "billing-scan-" + hashlib.sha256(identity.encode()).hexdigest(),
+        "occurred_at": row["scanned_at"], "scan_status": (row.get("scan_result") or {}).get("status", row["status"]),
+        "extraction_method": row.get("extraction_method", "unknown"),
+        "extracted_pages": row.get("extracted_pages", 0)}
+
+
 def audit_scan(row, source):
     result = payload_from_record(row, source)
-    put_audit(_table(AUDIT_TABLE), source, "scan_" + result["status"], result["status"],
-              {**summary(row), "reason": result["reason"], "extraction_complete": result["extraction_complete"]},
+    record = row.get("billing_processing_record") or processing_record(row, source)
+    details = {**summary(row), "reason": result["reason"], "extraction_complete": result["extraction_complete"]}
+    # Preserve the exact payload of pre-upgrade audit events on replay.
+    if row.get("billing_processing_record"):
+        details["billing_processing"] = record
+    put_audit(_table(AUDIT_TABLE), source, "scan_" + result["status"], result["status"], details,
               row["scanned_at"], execution_id=row.get("execution_id"))
+    try:
+        _table(FILES_TABLE).put_item(Item=record, ConditionExpression="attribute_not_exists(file_id)")
+    except (ClientError, BotoCoreError) as exc:
+        if not conditional_failure(exc):
+            # The durable audit contains the event; the backend repairs it later.
+            # Usage statistics must never prevent quarantine or notification.
+            logger.warning("Processing usage deferred for file_id=%s", source["file_id"])
     from pipeline_common import put_notification
     put_notification(_table(FILES_TABLE), source, row, "scan_" + result["status"], result["status"],
                      row["scanned_at"], execution_id=row.get("execution_id"))
@@ -326,6 +348,8 @@ def record_result(source, status, findings, counts, reason, ctx, *, complete=Tru
         fields["quarantine_status"] = "pending"
     if reason:
         fields["status_reason"] = reason
+    fields["billing_processing_record"] = processing_record(fields, source)
+    fields["billing_usage_pending"] = True
     try:
         row = update_file(_table(FILES_TABLE), source, fields, statuses=["not_started", "scanning"],
                           remove=[] if reason else ["status_reason"], execution=ctx.get("execution"))

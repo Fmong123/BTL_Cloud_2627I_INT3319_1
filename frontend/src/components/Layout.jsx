@@ -27,6 +27,8 @@ import {
   ChartNoAxesCombined,
   UsersRound,
   History,
+  ReceiptText,
+  Wallet,
 } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { useAuth } from '../auth/Auth.jsx';
@@ -35,7 +37,7 @@ import { needsTracking } from '../utils/processing.js';
 import Modal from './Modal.jsx';
 import ConnectionMenu from './ConnectionMenu.jsx';
 import NotificationCenter from './NotificationCenter.jsx';
-import { notificationTarget } from '../utils/notifications.js';
+import { notificationTarget, notificationText } from '../utils/notifications.js';
 import FileDetail from './FileDetail.jsx';
 import FilePreview from './FilePreview.jsx';
 import SidebarStorage from './SidebarStorage.jsx';
@@ -51,6 +53,7 @@ const navigation = [
   ['/files', 'Tệp của tôi', HardDrive],
   ['/uploads', 'Hoạt động xử lý', CloudUpload],
   ['/trash', 'Thùng rác', Trash2],
+  ['/pricing', 'Chính sách & bảng giá', ReceiptText],
   ['/settings', 'Cài đặt', Settings2],
   ['/help', 'Hướng dẫn', CircleHelp],
 ];
@@ -77,6 +80,9 @@ export default function Layout() {
     '/uploads',
     '/trash',
     '/settings',
+    '/pricing',
+    '/costs',
+    '/admin/costs',
     '/admin/quarantine',
     '/admin/overview',
     '/admin/reports',
@@ -115,6 +121,7 @@ export default function Layout() {
     (location.pathname === '/admin/reports' ? 'Thống kê' : null) ||
     (location.pathname === '/admin/accounts' ? 'Quản trị tài khoản' : null) ||
     (location.pathname === '/admin/history' ? 'Lịch sử quản trị' : null) ||
+    (['/costs', '/admin/costs'].includes(location.pathname) ? 'Theo dõi chi phí' : null) ||
     'Không tìm thấy trang';
   const activity = w.activityFiles || w.files;
   const active = activity.filter(isBusy);
@@ -300,6 +307,11 @@ export default function Layout() {
               </span>
               {shortcuts.map(([key, path, label, Icon]) => navItem(path, label, Icon, key))}
               {navItem('/trash', 'Thùng rác', Trash2)}
+              {navItem(
+                auth.session.user.role === 'admin' ? '/admin/costs' : '/costs',
+                'Theo dõi chi phí',
+                Wallet,
+              )}
             </div>
             {auth.session.user.role === 'admin' && (
               <div
@@ -374,11 +386,11 @@ export default function Layout() {
                 onClick={() => setThemeOpen(!themeOpen)}
               >
                 {w.preferences.theme === 'system' ? (
-                  <Monitor size={20} />
+                  <Monitor size={24} />
                 ) : w.preferences.theme === 'dark' ? (
-                  <Moon size={20} />
+                  <Moon size={24} />
                 ) : (
-                  <Sun size={20} />
+                  <Sun size={24} />
                 )}
               </button>
               {themeOpen && (
@@ -406,7 +418,7 @@ export default function Layout() {
                 aria-label="Người dùng"
                 title={auth.session.user.name}
               >
-                <CircleUserRound size={24} />
+                <CircleUserRound size={28} />
                 <span>{auth.session.user.name}</span>
               </summary>
               <div className="user-menu-panel">
@@ -543,8 +555,8 @@ export default function Layout() {
               role={['warning', 'error'].includes(event.tone) ? 'alert' : 'status'}
             >
               <div>
-                <strong>{event.title}</strong>
-                <span>{event.message}</span>
+                <strong>{notificationText(event, event.title)}</strong>
+                <span>{notificationText(event, event.message)}</span>
               </div>
               {(event.fileId || event.destination || event.folderId) && (
                 <button
@@ -568,7 +580,7 @@ export default function Layout() {
               )}
               <button
                 className="icon-button"
-                aria-label={`Đóng thông báo ${event.title}`}
+                aria-label={`Đóng thông báo ${notificationText(event, event.title)}`}
                 onClick={() => w.dismissToast(event.id)}
               >
                 <X size={16} />

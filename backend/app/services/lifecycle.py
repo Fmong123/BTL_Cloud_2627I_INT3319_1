@@ -17,6 +17,8 @@ HISTORY_FIELDS = (
     "lifecycle_state", "lifecycle_updated_at",
     "rescan_requested_at",
     "folder_id", "folder_updated_at", "trash_root_id",
+    "billing_uploaded_at",
+    "billing_usage_pending", "billing_processing_record",
 )
 
 
@@ -158,15 +160,24 @@ class FileLifecycle:
         if (claimed.get("status") == "quarantined" and review.get("status") == "restored"
                 and review.get("version") == claimed.get("quarantine_version_id")):
             snapshot["status"] = "restored"
-        snapshot.update(owner_id=f"!history!{item['owner_id']}", lifecycle_state="purged")
-        call_dynamodb(self.metadata.client, "transact_write_items", TransactItems=[
+        snapshot.update(owner_id=f"!history!{item['owner_id']}", lifecycle_state="purged",
+                        billing_deleted_at=utc_timestamp())
+        actions = [
             {"Put": {"TableName": self.metadata.table_name, "Item": serialize_item(snapshot)}},
             {"Delete": {"TableName": self.metadata.table_name,
                 "Key": serialize_item(file_key(item["owner_id"], item["file_id"])),
                 "ConditionExpression": "#life = :deleting",
                 "ExpressionAttributeNames": {"#life": "lifecycle_state"},
                 "ExpressionAttributeValues": serialize_item({":deleting": "deleting"})}},
-        ])
+        ]
+        if claimed.get("upload_state") == "uploaded":
+            from .billing_ledger import interval_action
+            config = self.metadata.get_file(f"!quota!{item['owner_id']}", "billing") or {}
+            actions.append(interval_action(self.metadata, item["owner_id"], item["file_id"], item["size_bytes"],
+                claimed.get("billing_uploaded_at") or config.get("started_at") or snapshot["billing_deleted_at"],
+                snapshot["billing_deleted_at"], processing_pending=bool(claimed.get("billing_usage_pending")),
+                processing_record=claimed.get("billing_processing_record")))
+        call_dynamodb(self.metadata.client, "transact_write_items", TransactItems=actions)
         return {"id": item["file_id"], "deleted": True}
 
 

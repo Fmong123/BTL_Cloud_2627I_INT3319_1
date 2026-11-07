@@ -16,10 +16,14 @@ from fastapi import HTTPException
 from ..db import call_dynamodb, deserialize_item, serialize_item, utc_timestamp
 from .admin_reports import VN
 
-CATEGORIES = {"account": "Tài khoản & quota", "pipeline": "Xử lý tệp", "report": "Xuất dữ liệu", "trash": "Dọn Thùng rác"}
+CATEGORIES = {"account": "Tài khoản & quota", "pipeline": "Xử lý tệp", "report": "Xuất dữ liệu", "trash": "Dọn Thùng rác", "billing": "Chi phí & chính sách"}
 OUTCOMES = {"success": "Thành công", "failed": "Thất bại", "pending": "Đã ghi nhận yêu cầu",
             "unknown": "Chưa xác nhận", "closed": "Đã kết thúc"}
 ACTIONS = {
+    "billing_activated": ("billing", "Bật tính phí theo sử dụng", "success"),
+    "billing_budget_changed": ("billing", "Đổi ngưỡng cảnh báo chi phí", "success"),
+    "billing_report_exported": ("billing", "Xuất bảng kê chi phí", "success"),
+    "billing_reconciled": ("billing", "Đối chiếu chi phí", "success"),
     "account_quota_changed": ("account", "Thay đổi quota", "success"),
     "account_access_requested": ("account", "Yêu cầu đổi trạng thái tài khoản", "pending"),
     "account_access_changed": ("account", "Thay đổi trạng thái tài khoản", "success"),
@@ -85,6 +89,10 @@ def allowed(row, accounts, actor_id, owner_id=None):
     action, owner, actor = row.get("action"), row.get("owner_id"), row.get("actor")
     if action not in ACTIONS:
         return False
+    if action.startswith("billing_"):
+        if owner == actor_id == actor:
+            return owner_id is None or owner_id == owner
+        return accounts.get(owner, {}).get("role") == "user" and actor == owner and (owner_id is None or owner_id == owner)
     if action == "admin_report_exported":
         # Export audit lives under the exporting admin. Only their own record is
         # visible, and only if its original target is still in the user scope.
@@ -131,12 +139,12 @@ def project(row, accounts, actor_id):
             "occurred_at": row["occurred_at"], "action": action, "action_label": label,
             "category": category, "category_label": CATEGORIES[category],
             "outcome": outcome, "outcome_label": OUTCOMES[outcome],
-            "actor_name": "Bạn" if actor == actor_id else SYSTEM_ACTORS.get(actor, "Quản trị viên khác"),
-            "actor_kind": "self" if actor == actor_id else ("system" if actor in SYSTEM_ACTORS else "admin"),
+            "actor_name": "Bạn" if actor == actor_id else ("Chủ tài khoản" if category == "billing" and actor == owner else SYSTEM_ACTORS.get(actor, "Quản trị viên khác")),
+            "actor_kind": "self" if actor == actor_id else ("user" if category == "billing" and actor == owner else ("system" if actor in SYSTEM_ACTORS else "admin")),
             "owner_id": target, "owner_name": accounts.get(target, {}).get("name") or "Tất cả người dùng",
             "owner_email": accounts.get(target, {}).get("email") or None,
-            "target_id": None if category in {"account", "report"} else row["file_id"],
-            "target_name": "Hạn mức lưu trữ" if action == "account_quota_changed" else (
+            "target_id": None if category in {"account", "report", "billing"} else row["file_id"],
+            "target_name": "Chi phí & chính sách" if category == "billing" else "Hạn mức lưu trữ" if action == "account_quota_changed" else (
                 "Trạng thái truy cập" if category == "account" else ("Thống kê" if category == "report" else None))}
 
 
@@ -158,6 +166,18 @@ def detail(row, event):
     if event["action"] == "account_quota_changed":
         change("Hạn mức lưu trữ", number(d.get("before_bytes")), number(d.get("after_bytes")))
         changes[-1]["format"] = "bytes"
+    elif event["action"] == "billing_budget_changed":
+        change("Ngưỡng cảnh báo (đồng)", number(d.get("before_vnd")), number(d.get("after_vnd")))
+        changes[-1]["format"] = "vnd"
+    elif event["action"] == "billing_activated":
+        facts.append({"label": "Chính sách đã xác nhận", "value": text(d.get("policy_version"), 80)})
+        facts.append({"label": "Hạn mức sau xác nhận (byte)", "value": number(d.get("limit_bytes"))})
+    elif event["action"] == "billing_report_exported":
+        facts.append({"label": "Kỳ chi phí", "value": text(d.get("month"), 7)})
+        facts.append({"label": "Định dạng", "value": "CSV"})
+    elif event["action"] == "billing_reconciled":
+        for key, label in (("owners_checked", "Tài khoản đã kiểm tra"), ("repairs", "Bản ghi đã bổ sung"), ("failed_checks", "Mục cần thử lại")):
+            facts.append({"label": label, "value": number(d.get(key))})
     elif event["action"] in {"account_access_requested", "account_access_changed"}:
         change("Trạng thái truy cập", ("Cho phép đăng nhập" if d["before_enabled"] else "Tạm khóa") if type(d.get("before_enabled")) is bool else None,
                ("Cho phép đăng nhập" if d["enabled"] else "Tạm khóa") if type(d.get("enabled")) is bool else None)

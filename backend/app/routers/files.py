@@ -267,7 +267,7 @@ def upload_file(
             if metadata_enabled:
                 record_upload_failure(metadata, audit, owner_id, file_id, unknown=False,
                                       reason="quota_exceeded", pipeline_enabled=settings.scan_pipeline_enabled)
-            raise HTTPException(413, "Không đủ dung lượng trong gói miễn phí 1 GB") from None
+            raise HTTPException(413, "Không đủ dung lượng trong hạn mức tài khoản. Xem Chính sách & bảng giá hoặc liên hệ quản trị viên.") from None
         except StorageUnavailable:
             if metadata_enabled:
                 record_upload_failure(metadata, audit, owner_id, file_id, unknown=False, reason="storage_unavailable", pipeline_enabled=settings.scan_pipeline_enabled)
@@ -294,6 +294,8 @@ def upload_file(
                 )
             except DynamoDBError as exc:
                 raise metadata_failure(exc, file_id=file_id, key=key, stored=True) from None
+            from ..services.billing import check_owner
+            check_owner(metadata, owner_id)
             try:
                 view = public_file(record, owner_id)
             except HTTPException as exc:
@@ -317,7 +319,15 @@ def get_storage_usage(
     try:
         if settings.metadata_mode == "dynamodb":
             require_metadata(settings, metadata)
-            return usage(metadata, owner_id)
+            result = usage(metadata, owner_id)
+            # Notification failures never turn a valid quota read into a fake 0.
+            from ..services.billing import account, storage_alert
+            try:
+                account(metadata, owner_id)
+                storage_alert(metadata, owner_id)
+            except (DynamoDBError, QuotaBusy):
+                logger.warning("Storage warning not confirmed; next quota refresh will retry")
+            return result
         if isinstance(storage, LocalStorage):
             return storage.storage_usage(owner_id)
     except DynamoDBError as exc:

@@ -43,6 +43,15 @@ def sync_profile(request, account, *, login=False):
         raise HTTPException(503, "Chưa kết nối được bảng hồ sơ người dùng")
     try:
         profiles.sync(account, login=login)
+        metadata = request.app.state.file_metadata
+        if metadata is not None and account.get("role") == "user":
+            from ..services.billing import account as billing_account, reconcile_roster
+            from ..services.quota import QuotaBusy
+            try:
+                billing_account(metadata, account["id"])
+                reconcile_roster(metadata, {account["id"]: account}, complete=False)
+            except (DynamoDBError, QuotaBusy):
+                logger.warning("Billing account observation deferred")
     except DynamoDBError as exc:
         logger.warning("User profile synchronization failed (%s)", exc.code)
         raise HTTPException(503, "Chưa đồng bộ được securedrive-users. Kiểm tra quyền dynamodb:UpdateItem của backend.") from None
@@ -71,6 +80,13 @@ def demo_accounts(request: Request, response: Response):
         accounts = demo_directory(request).accounts()
         for account in accounts:
             sync_profile(request, account)
+        if request.app.state.file_metadata is not None:
+            from ..services.billing import admin_summary
+            from ..services.quota import QuotaBusy
+            try:
+                admin_summary(request.app.state.file_metadata, {a["id"]: a for a in accounts})
+            except (DynamoDBError, QuotaBusy):
+                logger.warning("Billing directory reconciliation deferred")
         return {"items": accounts, "refresh_seconds": 30}
     except AuthError as exc:
         raise HTTPException(exc.status_code, exc.message) from None

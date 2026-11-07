@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -16,6 +17,7 @@ from .routers.admin import router as admin_router
 from .routers.admin_accounts import router as accounts_router
 from .routers.admin_reports import router as reports_router
 from .routers.admin_history import router as history_router
+from .routers.billing import router as billing_router
 from .routers.files import router
 from .routers.lifecycle import router as lifecycle_router
 from .routers.folders import router as folder_router
@@ -103,6 +105,8 @@ def create_app(
         metadata_client = dynamodb_client
         owns_metadata_client = False
         demo_client = None
+        billing_task = None
+        billing_stop = asyncio.Event()
         try:
             if settings.cognito_user_pool_id and app.state.cognito_directory is None:
                 import boto3
@@ -144,8 +148,14 @@ def create_app(
                     logger.warning("DynamoDB initialization failed (%s); metadata requests will return 503", exc.code)
                 if metadata_client is not None:
                     app.state.user_profiles = UserProfiles(metadata_client, settings.dynamodb_users_table)
+            if app.state.file_metadata is not None and app.state.cognito_directory is not None:
+                from .services.billing import monitor
+                billing_task = asyncio.create_task(monitor(app, billing_stop))
             yield
         finally:
+            billing_stop.set()
+            if billing_task:
+                await billing_task
             if demo_client is not None:
                 demo_client.close()
                 app.state.demo_accounts = None
@@ -181,6 +191,7 @@ def create_app(
     app.state.auth_verifier = auth_verifier if auth_verifier is not None else build_verifier(settings)
     app.state.demo_accounts = demo_accounts
     app.state.cognito_directory = demo_accounts
+    app.state.billing_monitor_status = {"state": "waiting"}
     app.state.user_profiles = None
     app.add_middleware(UploadBodyLimitMiddleware, max_file_size_bytes=settings.max_file_size_bytes)
     # CORS wraps the limiter too, so its 413 response is readable in the UI.
@@ -233,6 +244,8 @@ def create_app(
                 app.state.file_metadata is not None and app.state.audit_log is not None
             ),
             "owner_mode": "cognito" if settings.auth_mode == "cognito" else "development",
+            "billing_monitor": {"state": app.state.billing_monitor_status["state"] if app.state.file_metadata and app.state.cognito_directory else "unavailable",
+                "enabled": bool(app.state.file_metadata is not None and app.state.cognito_directory is not None)},
             "auth_mode": settings.auth_mode,
             "capabilities": {
                 "persistent_favorites": metadata_ready,
@@ -243,6 +256,7 @@ def create_app(
                 "folders": bool(metadata_ready),
                 "persistent_activity": bool(metadata_ready),
                 "rescan": bool(metadata_ready and settings.scan_pipeline_enabled and app.state.rescanner is not None),
+                "billing_estimates": bool(metadata_ready),
             },
         }
 
@@ -254,6 +268,7 @@ def create_app(
     app.include_router(accounts_router, tags=["Administration"])
     app.include_router(reports_router, tags=["Administration"])
     app.include_router(history_router, tags=["Administration"])
+    app.include_router(billing_router, tags=["Cost estimates"])
     return app
 
 app = create_app(s3_uploader=upload_to_s3)
