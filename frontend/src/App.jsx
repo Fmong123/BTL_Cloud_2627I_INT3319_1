@@ -9,6 +9,8 @@ import Uploads from './pages/Uploads.jsx';
 import Settings from './pages/Settings.jsx';
 import Help from './pages/Help.jsx';
 import Trash from './pages/Trash.jsx';
+import Pricing from './pages/Pricing.jsx';
+import Costs from './pages/Costs.jsx';
 import { AuthProvider, useAuth } from './auth/Auth.jsx';
 const AdminQuarantine = lazy(() => import('./pages/AdminQuarantine.jsx'));
 const AdminOverview = lazy(() => import('./pages/AdminOverview.jsx'));
@@ -54,12 +56,15 @@ function SignedInApp() {
             <Route path="files" element={<Drive />} />
             <Route path="uploads" element={<Uploads />} />
             <Route path="trash" element={<Trash />} />
+            <Route path="pricing" element={<Pricing />} />
+            <Route path="costs" element={<Costs />} />
             <Route element={<AdminAccess />}>
               <Route path="admin/overview" element={<AdminOverview />} />
               <Route path="admin/quarantine" element={<AdminQuarantine />} />
               <Route path="admin/reports" element={<AdminReports />} />
               <Route path="admin/accounts" element={<AdminAccounts />} />
               <Route path="admin/history" element={<AdminHistory />} />
+              <Route path="admin/costs" element={<Costs admin />} />
             </Route>
             <Route path="settings" element={<Settings />} />
             <Route path="help" element={<Help />} />

@@ -12,6 +12,10 @@ Dùng [hướng dẫn cài đặt](../docs/AWS-HANDOFF-QUICKSTART-2026-10-31.md)
 
 Source chưa tự triển khai lên AWS. /health chỉ xác nhận readiness cấu hình/client, không chứng minh quyền AWS đủ.
 
+Cập nhật chi phí theo sử dụng: phát hành đồng bộ backend với `assets/billing-policy.json`, frontend, ZIP `securedrive-scan-pii` (thống kê lượt xử lý) và `securedrive-trash-cleanup` (đóng thời gian lưu). Policy `securedrive-scan-pii-policy.json` đã thêm PutItem giới hạn vào partition `!quota!<UUID>`; áp dụng khi cập nhật role, không mở quyền ghi toàn bảng. Backend đối chiếu tài khoản/cảnh báo mỗi khoảng 60 giây khi đang chạy và có directory; không cần lịch AWS mới cho demo. Không reset quota, sổ tài chính hay snapshot tháng cũ. Xem `docs/pay-as-you-go.md` trước khi phát hành.
+
+Phiên bản v3 giữ bản ghi thống kê cần bổ sung cùng kết quả quét/audit; nếu Put thống kê lỗi thì quét/cách ly vẫn tiếp tục. Backend cần Query audit theo file và ghi vào sổ quota để phục hồi, đã nằm trong mẫu quyền runtime. Cleanup phải giữ bản ghi đang chờ khi purge. Các bản đối chiếu tháng cũ có revision, giữ bản trước khi nhận dữ liệu ghi muộn; không TTL/xóa sổ tài chính, audit hoặc snapshot revision nếu còn cần đối chiếu. Trang chi phí admin cho xem trạng thái worker và chạy đối chiếu thủ công. Lease `billing-monitor-lock` dùng chung giữa các worker và nút này; không khởi chạy thêm lịch AWS song song cho demo.
+
 ## Thành phần
 
 | Thành phần | Yêu cầu |
@@ -45,7 +49,7 @@ hoạt động. Cập nhật ZIP cleanup để lịch sử giữ được trạn
 
 ## Giới hạn quét
 
-Upload dùng 100 MB = 100.000.000 byte; quota 1 GB/owner. Scan mặc định MAX_SCAN_BYTES=52.428.800 byte, OCR ảnh 10 MiB. Ngoài giới hạn/định dạng hỗ trợ phải unscanned/error, không nhận safe.
+Upload dùng 100 MB = 100.000.000 byte; quota 1 GB/owner. Scan mặc định `MAX_SCAN_BYTES=100000000` byte, đồng bộ upload. Khi cập nhật Lambda `securedrive-scan-pii`, đặt biến môi trường `MAX_SCAN_BYTES=100000000` nếu đang có override cũ; chỉ upload ZIP không thay đổi biến môi trường. OCR ảnh giữ giới hạn 10 MiB trong source. PDF cần OCR đã dùng Textract bất đồng bộ và được qua bước kiểm tra dung lượng tới 100 MB; vẫn phải đáp ứng giới hạn số trang của Textract và thời gian xử lý. JPEG/PNG trên giới hạn OCR cần bước xử lý/chia ảnh riêng, không thể chỉ nâng hằng số lên 100 MB. Ngoài giới hạn/định dạng hỗ trợ phải unscanned/error, không nhận safe.
 
 Ba ZIP pipeline không tự cài pypdf; dùng layer/dependency tương thích runtime nếu trích PDF trực tiếp. OCR thiếu trang/partial/rỗng không coi safe. Giữ timeout/memory đủ cho mẫu OCR nghiệm thu; source hiện phát hiện CCCD và số thẻ, không quét mã độc/mật khẩu/API key.
 

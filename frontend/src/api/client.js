@@ -447,6 +447,50 @@ export function persistNotification(baseUrl, event, options = {}) {
   });
 }
 
+export const getBillingPolicy = (baseUrl, options) =>
+  requestJson(baseUrl, '/billing/policy', options);
+export const reconcileBilling = (baseUrl, options = {}) =>
+  requestJson(baseUrl, '/admin/billing/reconcile', { ...options, method: 'POST', timeout: 60000 });
+export function getBillingVersions(baseUrl, month, before, options = {}) {
+  const query = new URLSearchParams({ month });
+  if (before != null) query.set('before', before);
+  return requestJson(baseUrl, `/admin/billing/versions?${query}`, { timeout: 30000, ...options });
+}
+export function getBillingUsage(baseUrl, { admin = false, month = '', ...options } = {}) {
+  return requestJson(
+    baseUrl,
+    `${admin ? '/admin' : ''}/billing/usage${month ? `?month=${encodeURIComponent(month)}` : ''}`,
+    { timeout: 30000, ...options },
+  );
+}
+export const activateBilling = (baseUrl, policyVersion, requestId, options = {}) =>
+  requestJson(baseUrl, '/billing/activate', {
+    ...options,
+    method: 'POST',
+    body: { policy_version: policyVersion, request_id: requestId },
+  });
+export const setBillingBudget = (baseUrl, budget, revision, requestId, options = {}) =>
+  requestJson(baseUrl, '/billing/preferences', {
+    ...options,
+    method: 'PATCH',
+    body: { budget_vnd: budget, revision, request_id: requestId },
+  });
+
+export async function downloadBillingReport(baseUrl, { admin = false, month, ...options }) {
+  const blob = await requestJson(
+    baseUrl,
+    `${admin ? '/admin' : ''}/billing/export?${new URLSearchParams({ month })}`,
+    {
+      timeout: 60000,
+      responseType: 'blob',
+      ...options,
+    },
+  );
+  if (!blob.type.startsWith('text/csv'))
+    throw new ApiError('Máy chủ chưa trả đúng định dạng bảng kê');
+  return blob;
+}
+
 export async function getFileStatus(baseUrl, id, options = {}) {
   if (typeof id !== 'string' || !id.trim()) throw new Error('ID tệp chưa hợp lệ');
   const data = await requestJson(baseUrl, `/files/${encodeURIComponent(id)}/status`, options);

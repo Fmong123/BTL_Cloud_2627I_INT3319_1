@@ -29,7 +29,7 @@ Builder chỉ tạo file local, không cấp quyền/deploy AWS và không thu t
 ## Cấu hình cần giữ khớp
 
 - Backend dùng DYNAMODB_FILES_TABLE/DYNAMODB_AUDIT_TABLE; Lambda dùng FILES_TABLE/AUDIT_TABLE, giá trị phải cùng bảng.
-- Scan: STRICT_DB_WRITE=true, layer PDF/Textract phù hợp. Upload tối đa 100 MB; Scan mặc định tối đa 52.428.800 byte, OCR ảnh 10 MiB.
+- Scan: STRICT_DB_WRITE=true, layer PDF/Textract phù hợp. Upload tối đa 100 MB; Scan mặc định `MAX_SCAN_BYTES=100000000` (100 MB), khớp giới hạn upload. Khi triển khai, cập nhật cả biến môi trường Lambda nếu đang đặt mức cũ. OCR ảnh vẫn giới hạn 10 MiB trong source; không nâng lên 100 MB vì giới hạn Textract.
 - Quarantine: bucket và KMS_KEY_ID thật (ARN/UUID). Notify: SNS_TOPIC_ARN (SNS/email).
 - Cleanup: FILES_TABLE, UPLOAD_BUCKET, QUARANTINE_BUCKET; role riêng và Logs.
 - Orchestration/State_machine.json là workflow STANDARD để đối chiếu; mẫu trash-cleanup-schedule.example.yaml mặc định DISABLED, chỉ bật sau nghiệm thu.

@@ -5,8 +5,11 @@ import { checkHealth, validateApiBaseUrl } from '../api/client.js';
 import { formatBytes, UPLOAD_LIMIT } from '../utils/files.js';
 import { themeLabels } from '../components/Layout.jsx';
 import { sortLabels } from '../components/FileBrowser.jsx';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/Auth.jsx';
 
 export default function Settings() {
+  const { session } = useAuth();
   const w = useWorkspace();
   const [draft, setDraft] = useState({
     mode: w.preferences.mode,
@@ -109,6 +112,19 @@ export default function Settings() {
   }
   return (
     <div className="settings-layout">
+      <section className="settings-section">
+        <h2>Dung lượng & chi phí</h2>
+        <p>
+          Mức miễn phí và hạn mức upload là hai khái niệm riêng. Giá do bên phát triển quy định;
+          thay đổi quota không tự làm tăng phí.
+        </p>
+        <div className="billing-storage-links">
+          <Link to="/pricing">Chính sách & bảng giá</Link>
+          <Link to={session.user.role === 'admin' ? '/admin/costs' : '/costs'}>
+            Theo dõi chi phí
+          </Link>
+        </div>
+      </section>
       <section className="settings-section">
         <div className="section-title">
           <span className="section-icon">

@@ -1,5 +1,16 @@
 // Both the bell and floating notices use the same internal navigation rules.
+export function notificationText(event, value) {
+  const text = String(value || '');
+  if (!event.kind?.startsWith('billing-')) return text;
+  return text
+    .replace(/theo dõi\s+pay\s+as\s+(?:you|u)\s+go/gi, 'tính phí theo sử dụng')
+    .replace(/pay\s+as\s+(?:you|u)\s+go/gi, 'tính phí theo sử dụng');
+}
+
 export function notificationTarget(event, files = []) {
+  if (event.destination === 'pricing') return { to: '/pricing' };
+  if (event.destination === 'costs') return { to: '/costs' };
+  if (event.destination === 'admin/costs') return { to: '/admin/costs' };
   if (event.destination === 'admin/quarantine' && event.targetOwnerId && event.fileId)
     return {
       to: `/admin/quarantine?${new URLSearchParams({ owner: event.targetOwnerId, file: event.fileId })}`,

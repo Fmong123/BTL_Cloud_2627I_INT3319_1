@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { listNotifications, persistNotification } from '../api/client.js';
 import { NOTIFICATIONS_KEY, readNotificationRecords, writeRecords } from '../utils/persistence.js';
 
+const adminOnly = (event) =>
+  event.kind === 'admin-review-request' || event.destination === 'admin/costs';
+
 function toastFor(event, now) {
   return {
     id: event.id,
@@ -41,7 +44,7 @@ export function useNotifications(
         let writeFailed = false;
         try {
           for (const event of ref.current.filter((item) => item.scope === scope)) {
-            if (event.kind === 'admin-review-request' && !admin) continue;
+            if (adminOnly(event) && !admin) continue;
             if (event.serverEvent && !event.read) continue;
             const signature = JSON.stringify(event);
             if (synced.current.get(`${scope}|${event.id}`) === signature) continue;
@@ -59,12 +62,10 @@ export function useNotifications(
           admin,
         });
         if (!alive) return;
-        const allowedAdmin = new Set(
-          saved.filter((event) => event.kind === 'admin-review-request').map((event) => event.id),
-        );
+        const allowedAdmin = new Set(saved.filter(adminOnly).map((event) => event.id));
         const merged = new Map(
           ref.current
-            .filter((event) => event.kind !== 'admin-review-request' || allowedAdmin.has(event.id))
+            .filter((event) => !adminOnly(event) || allowedAdmin.has(event.id))
             .map((event) => [`${event.scope}|${event.id}`, event]),
         );
         const newToasts = [];
@@ -93,7 +94,7 @@ export function useNotifications(
         setStorageError(writeFailed ? 'Một số thông báo trên trình duyệt chưa đồng bộ.' : null);
       } catch (error) {
         if (alive && error.adminScopeDenied) {
-          update(ref.current.filter((event) => event.kind !== 'admin-review-request'));
+          update(ref.current.filter((event) => !adminOnly(event)));
           setVisible([]);
         }
         if (alive && error.name !== 'AbortError')
@@ -170,13 +171,11 @@ export function useNotifications(
   return {
     storageError,
     addEvent,
-    notifications: events.filter(
-      (item) => item.scope === scope && (admin || item.kind !== 'admin-review-request'),
-    ),
+    notifications: events.filter((item) => item.scope === scope && (admin || !adminOnly(item))),
     toasts: visible
       .filter((item) => item.scope === scope)
       .map((item) => events.find((event) => event.id === item.id))
-      .filter((item) => item && (admin || item.kind !== 'admin-review-request')),
+      .filter((item) => item && (admin || !adminOnly(item))),
     dismissToast: (id) => setVisible((current) => current.filter((item) => item.id !== id)),
     markRead: (id) => {
       update(

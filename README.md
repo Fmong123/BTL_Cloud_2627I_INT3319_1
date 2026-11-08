@@ -4,9 +4,10 @@ React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý qu�
 
 ## Chức năng hiện có
 
-- Sáu trang cá nhân: Tổng quan, Tệp của tôi, Hoạt động xử lý, Thùng rác, Cài đặt, Hướng dẫn; admin có thêm Tổng quan bảo mật và Quản trị cách ly.
+- Các trang cá nhân, quản trị và [theo dõi chi phí theo sử dụng](docs/pay-as-you-go.md). Chính sách & bảng giá cạnh Cài đặt/Hướng dẫn; Theo dõi chi phí ở Lối tắt, khác nhau theo vai trò user/admin.
+- Chi phí đồng bộ chuông cảnh báo, nhật ký quản trị và xuất CSV phía máy chủ; đối chiếu tự động khi backend hoạt động, giữ lịch sử khi tài khoản đổi vai trò và thống kê OCR/quét đã gộp trong giá.
 - Upload/kéo thả, tối đa 5 tệp song song; mỗi tệp tối đa **100 MB = 100.000.000 byte**.
-- Quota **1 GB = 1.000.000.000 byte/owner**, tính cả tệp trong rác và dung lượng đang giữ chỗ.
+- Quota mặc định **1 GB = 1.000.000.000 byte/owner**, admin có thể cấp riêng. Khi chủ tài khoản bật dùng thử Tính phí theo sử dụng, chỉ nâng mặc định lên 10 GB nếu chưa có quota do admin đặt. Mức miễn phí vẫn 1 GB, khác với trần upload. Rác/cách ly vẫn tính dung lượng; giữ chỗ chưa tính phí.
 - Danh sách từ API, tìm/lọc/sắp xếp, đánh dấu; xem ảnh/PDF/văn bản và tải xuống khi đủ điều kiện.
 - Báo cáo quét, yêu cầu quét lại, đổi tên, khôi phục/xóa vĩnh viễn; lịch sử upload/thông báo giữ sau reload.
 - Giao diện sáng/tối, sidebar thu gọn, chọn nhiều và panel chi tiết.

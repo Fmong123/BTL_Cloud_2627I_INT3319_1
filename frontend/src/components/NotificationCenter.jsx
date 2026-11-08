@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, ChevronRight, CircleAlert, Inbox, X } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
-import { notificationTarget } from '../utils/notifications.js';
+import { notificationTarget, notificationText } from '../utils/notifications.js';
 
 export default function NotificationCenter() {
   const w = useWorkspace();
@@ -64,7 +64,7 @@ export default function NotificationCenter() {
         aria-controls="notification-panel"
         onClick={() => setOpen((value) => !value)}
       >
-        <Bell size={20} />
+        <Bell size={24} />
         {unread > 0 && (
           <span className="notification-count" aria-hidden="true">
             {unread > 99 ? '99+' : unread}
@@ -135,10 +135,10 @@ export default function NotificationCenter() {
                   </span>
                   <div>
                     <button className="notification-event-title" onClick={() => show(event)}>
-                      {event.title}
+                      {notificationText(event, event.title)}
                       <ChevronRight size={13} />
                     </button>
-                    <p>{event.message}</p>
+                    <p>{notificationText(event, event.message)}</p>
                     <time dateTime={new Date(event.createdAt).toISOString()}>
                       {new Date(event.createdAt).toLocaleString('vi-VN', {
                         hour: '2-digit',

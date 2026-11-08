@@ -12,6 +12,8 @@ Trang `/admin/history` gom các sự kiện quản trị đã có trong bảng a
 
 Các nhóm sự kiện: quota và trạng thái tài khoản; đọc/xem xét cách ly; quét lại, yêu cầu nén, đối chiếu và phục hồi pipeline; SNS; xuất thống kê của chính admin đang đăng nhập; cleanup thư mục hết hạn. Các hoạt động cá nhân như upload, đổi tên hay trash thư mục không trở thành sự kiện quản trị chỉ vì chúng cũng có audit.
 
+Nhóm **Chi phí & chính sách** bổ sung bật theo dõi chi phí, đổi ngưỡng cảnh báo, xuất bảng kê CSV và đối chiếu thủ công. Hoạt động user hiện còn thuộc phạm vi được gắn người thực hiện “Chủ tài khoản”; hoạt động riêng của admin chỉ hiện cho chính admin đó. Không lẫn thành lịch sử thao tác của quản trị viên khác. Chi tiết đổi ngưỡng có số tiền trước/sau; xác nhận kích hoạt lưu phiên bản chính sách và hạn mức. Đối chiếu ghi số tài khoản đã kiểm tra, số bản ghi bổ sung và số mục còn cần thử lại; hoàn thành lượt kiểm tra không có nghĩa mọi mục đều thành công, cần xem các con số chi tiết.
+
 ## Phân quyền và dữ liệu
 
 Mỗi lượt đọc danh sách, trang tiếp hoặc chi tiết đều kiểm tra directory Cognito mới. Chỉ tài khoản đang có quyền admin và còn hoạt động được truy cập. Đối tượng quản trị phải đang có role=user; không đọc lịch sử tài khoản/tệp admin qua trang này. Sự kiện xuất báo cáo nằm dưới chính admin nên chỉ trả bản do admin hiện tại thực hiện, trong phạm vi người dùng hợp lệ. Khi lọc một tài khoản, chỉ trả lần xuất riêng cho tài khoản đó.
