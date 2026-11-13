@@ -13,7 +13,7 @@ import '../admin-quarantine.css';
 
 const statuses = {
   all: 'Mọi trạng thái',
-  flagged: 'Chờ cách ly',
+  flagged: 'Chưa cách ly',
   quarantined: 'Đã cách ly',
   quarantine_delete_failed: 'Chưa xóa được nguồn',
 };

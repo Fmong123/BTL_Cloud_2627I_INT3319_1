@@ -1,5 +1,6 @@
 """Version-aware quarantine with recoverable copy/delete bookkeeping."""
 import os
+import logging
 from functools import lru_cache
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -10,6 +11,7 @@ FILES_TABLE = os.environ.get("FILES_TABLE", "securedrive-files")
 AUDIT_TABLE = os.environ.get("AUDIT_TABLE", "securedrive-audit-log")
 QUARANTINE_BUCKET = os.environ.get("QUARANTINE_BUCKET", "")
 KMS_KEY_ID = os.environ.get("KMS_KEY_ID", "")
+logger = logging.getLogger(__name__)
 
 class QuarantineError(Exception):
     pass
@@ -53,8 +55,10 @@ def record_failure(source, ctx, reason, *, deletion=False, location=None):
     status = "quarantine_delete_failed" if deletion else "flagged"
     notice_at = (row.get("quarantine_failure_at") if row.get("quarantine_failure_execution") == ctx.get("execution", "")
                  and row.get("quarantine_reason") == ("quarantine_delete_failed" if deletion else reason) else None) or utc(ctx.get("entered_at"))
+    unknown_phase = reason in {"quarantine_failed", "quarantine_configuration_incomplete",
+                               "kms_key_arn_or_id_required", "quarantine_prepare_failed"}
     fields = {**status_fields(status, source["file_id"]),
-              "quarantine_status": "delete_failed" if deletion else "copy_failed",
+              "quarantine_status": "delete_failed" if deletion else "failed" if unknown_phase else "copy_failed",
               "status_reason": "quarantine_delete_failed" if deletion else reason,
               "quarantine_reason": "quarantine_delete_failed" if deletion else reason,
               "quarantine_failure_at": notice_at, "quarantine_failure_execution": ctx.get("execution", "")}
@@ -106,8 +110,6 @@ def lambda_handler(event, context):
         raise PipelineConflict("file_not_flagged")
     if event.get("operation") == "record_failure":
         return {"status": record_failure(source, ctx, row.get("quarantine_reason") or "quarantine_failed")["status"]}
-    if not source["version"] or not QUARANTINE_BUCKET or not KMS_KEY_ID:
-        raise QuarantineError("quarantine_configuration_incomplete")
     if (event.get("scan") or {}).get("status") != "flagged":
         raise PipelineConflict("scan_not_flagged")
     if recovery and row["status"] != "quarantined":
@@ -116,14 +118,19 @@ def lambda_handler(event, context):
                     statuses=["flagged", "quarantine_delete_failed"], execution=ctx.get("execution"),
                     extra_condition="attribute_not_exists(pipeline_worker) AND pipeline_recovery.request_id = :request",
                     extra_values={":request": recovery["request_id"]})
-    if row["status"] != "quarantined":
-        update_file(_table(FILES_TABLE), source, {"quarantine_status": row.get("quarantine_status", "pending")},
-                    statuses=[row["status"]], execution=ctx.get("execution"))
     destination_key = f"{source['key']}.version-{source['version']}"
     location = {"quarantine_bucket": QUARANTINE_BUCKET, "quarantine_key": destination_key,
                 "source_version_id": source["version"]}
-    phase = "copy"
+    phase = "prepare"
     try:
+        if not source["version"] or not QUARANTINE_BUCKET or not KMS_KEY_ID:
+            raise QuarantineError("quarantine_configuration_incomplete")
+        if KMS_KEY_ID.startswith("alias/") or ":alias/" in KMS_KEY_ID:
+            raise QuarantineError("kms_key_arn_or_id_required")
+        if row["status"] != "quarantined":
+            update_file(_table(FILES_TABLE), source, {"quarantine_status": row.get("quarantine_status", "pending")},
+                        statuses=[row["status"]], execution=ctx.get("execution"))
+        phase = "copy"
         if row.get("quarantine_bucket") and row["quarantine_bucket"] != QUARANTINE_BUCKET:
             raise QuarantineError("quarantine_bucket_mismatch")
         source_head = head(source["bucket"], source["key"], source["version"])
@@ -155,6 +162,12 @@ def lambda_handler(event, context):
             _client("s3").delete_object(Bucket=source["bucket"], Key=source["key"], VersionId=source["version"])
     except (BotoCoreError, ClientError, QuarantineError) as exc:
         reason = str(exc) if isinstance(exc, QuarantineError) else "quarantine_" + phase + "_failed"
-        record_failure(source, ctx, reason, deletion=phase == "delete", location=location if phase == "delete" else None)
+        logger.exception("Quarantine failed, file_id=%s phase=%s reason=%s", source["file_id"], phase, reason)
+        try:
+            record_failure(source, ctx, reason, deletion=phase == "delete", location=location if phase == "delete" else None)
+        except Exception:
+            # Preserve the original failure; the workflow has an independent
+            # conditional DynamoDB fallback when this writer is unavailable.
+            logger.exception("Quarantine failure persistence failed, file_id=%s", source["file_id"])
         raise QuarantineError(reason) from exc
     return finish(source, row, location, ctx)

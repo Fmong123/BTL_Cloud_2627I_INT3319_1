@@ -705,7 +705,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
               <option value="all">Mọi kết quả xử lý</option>
               {Object.entries(scanStates).map(([v, state]) => (
                 <option key={v} value={v}>
-                  {state.label}
+                  {v === 'flagged' ? 'Chưa cách ly' : state.label}
                 </option>
               ))}
             </select>
@@ -856,7 +856,7 @@ export default function FileBrowser({ activity = false, overview = false }) {
               {section !== 'all' && chip('section', sections[section])}
               {category !== 'all' && chip('category', categories[category])}
               {status !== 'all' && chip('status', statuses[status])}
-              {scan !== 'all' && chip('scan', scanStates[scan].label)}
+              {scan !== 'all' && chip('scan', scan === 'flagged' ? 'Chưa cách ly' : scanStates[scan].label)}
               {date !== 'all' &&
                 chip(
                   'date',

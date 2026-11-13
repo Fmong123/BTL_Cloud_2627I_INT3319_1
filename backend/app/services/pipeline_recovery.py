@@ -202,6 +202,19 @@ def check(metadata, audit, item, actor, runner, *, allow_dispatch=True):
         if runner is not None and item.get("execution_id"):
             info = execution_info(runner, item["execution_id"])
             if info:
+                if item.get("status") == "flagged" and info.get("status") in TERMINAL:
+                    # A stopped workflow cannot leave an unconfirmed quarantine
+                    # labelled as queued. Do not infer whether copy/delete ran.
+                    require_stopped(runner, item["execution_id"])
+                    fields = quarantine_failure_fields(item)
+                    if fields:
+                        stamp = utc_timestamp()
+                        commit(metadata, audit, item, {**fields, "updated_at": stamp,
+                            "status_time": f"{stamp}#{item['file_id']}"}, actor,
+                            ("quarantine-check-" + hashlib.sha256(item["execution_id"].encode()).hexdigest(),
+                             "admin_pipeline_checked"),
+                            {"action": "check", "result": "failed", "execution_status": info["status"]})
+                    return "Lượt xử lý đã kết thúc nhưng cách ly chưa hoàn tất. Admin cần chọn Thử lại cách ly để chạy lại."
                 labels = {"SUCCEEDED": "đã hoàn tất", "FAILED": "đã kết thúc với lỗi", "TIMED_OUT": "đã hết thời gian",
                           "ABORTED": "đã dừng", "RUNNING": "đang chạy", "PENDING_REDRIVE": "đang chờ chạy lại"}
                 return (f"Lượt xử lý gần nhất {labels.get(info.get('status'), 'chưa rõ trạng thái')}. "
@@ -244,7 +257,11 @@ def check(metadata, audit, item, actor, runner, *, allow_dispatch=True):
                  item.get(f"notify_{item['status']}_{channel}_state") == "sent")
     succeeded = info["status"] == "SUCCEEDED" and confirmed
     state = "succeeded" if succeeded else "failed"
-    commit(metadata, audit, item, {"pipeline_busy": False,
+    failure_fields = quarantine_failure_fields(item) if job["action"] == "retry_quarantine" and not succeeded else {}
+    if failure_fields:
+        stamp = utc_timestamp()
+        failure_fields.update(updated_at=stamp, status_time=f"{stamp}#{item['file_id']}")
+    commit(metadata, audit, item, {**failure_fields, "pipeline_busy": False,
         "pipeline_recovery": {**job, "state": state, "checked_at": utc_timestamp()}}, actor,
         (job["request_id"] + "-checked", "admin_pipeline_checked"),
         {"action": job["action"], "channel": channel, "execution_status": info["status"], "result": state},
@@ -252,6 +269,13 @@ def check(metadata, audit, item, actor, runner, *, allow_dispatch=True):
                 item.get("display_name") or item["original_name"], "success" if succeeded else "warning")
         if job["action"] == "retry_quarantine" else None)
     return "Đã xác nhận xử lý thành công." if succeeded else "Lượt xử lý đã kết thúc; chưa xác nhận thành công. Xem trạng thái và lịch sử để xử lý tiếp."
+
+
+def quarantine_failure_fields(item):
+    if item.get("status") != "flagged" or item.get("quarantine_status") not in {None, "pending"}:
+        return {}
+    return {"quarantine_status": "failed", "quarantine_reason": "quarantine_failed",
+            "status_reason": "quarantine_failed"}
 
 
 def operate(metadata, audit, item, actor, runner, settings, payload):
@@ -292,6 +316,12 @@ def operate(metadata, audit, item, actor, runner, settings, payload):
     elif item["status"] == "quarantined" and item.get("quarantine_status") != "completed":
         raise HTTPException(409, "Chưa xác nhận cách ly hoàn tất")
     fields, remove = {}, ["pipeline_worker"]
+    if payload.action == "retry_quarantine" and item.get("status") == "flagged":
+        # Only an explicit admin request starts a new pending quarantine. Keep
+        # scan findings/reason, but clear the previous quarantine failure label.
+        stamp = utc_timestamp()
+        fields.update(quarantine_status="pending", updated_at=stamp, status_time=f"{stamp}#{item['file_id']}")
+        remove.extend(["quarantine_reason", "status_reason"])
     if payload.action == "confirm_sent":
         if delivery_state not in {"unknown", "sending"}:
             raise HTTPException(409, "Chỉ đối soát thủ công lần gửi chưa rõ kết quả")

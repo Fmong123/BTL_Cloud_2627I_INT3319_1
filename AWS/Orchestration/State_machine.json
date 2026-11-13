@@ -6,9 +6,18 @@
     "RouteOperation": {
       "Type": "Choice",
       "Choices": [
-        {"Condition": "{% $states.input.recovery.action = 'retry_quarantine' %}", "Next": "RecoveryQuarantine"},
-        {"Condition": "{% $states.input.recovery.action = 'retry_notification' %}", "Next": "RecoveryNotify"},
-        {"Condition": "{% $exists($states.input.recovery) %}", "Next": "InvalidRecovery"}
+        {
+          "Condition": "{% $states.input.recovery.action = 'retry_quarantine' %}",
+          "Next": "RecoveryQuarantine"
+        },
+        {
+          "Condition": "{% $states.input.recovery.action = 'retry_notification' %}",
+          "Next": "RecoveryNotify"
+        },
+        {
+          "Condition": "{% $exists($states.input.recovery) %}",
+          "Next": "InvalidRecovery"
+        }
       ],
       "Default": "ScanFilePII"
     },
@@ -21,7 +30,16 @@
         "Payload": "{% $merge([$states.input, {'ctx': {'execution': $states.context.Execution.Id, 'entered_at': $states.context.State.EnteredTime}}]) %}"
       },
       "Output": "{% $states.result.Payload %}",
-      "End": true
+      "End": true,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Output": "{% $merge([$states.input, {'error': $states.errorOutput}]) %}",
+          "Next": "QuarantineFailed"
+        }
+      ]
     },
     "RecoveryNotify": {
       "Type": "Task",
@@ -34,7 +52,10 @@
       "Output": "{% $states.result.Payload %}",
       "End": true
     },
-    "InvalidRecovery": {"Type": "Fail", "Error": "InvalidRecoveryOperation"},
+    "InvalidRecovery": {
+      "Type": "Fail",
+      "Error": "InvalidRecoveryOperation"
+    },
     "ScanFilePII": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
@@ -200,7 +221,8 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "Next": "QuarantineFailedEnd"
+          "Next": "PersistQuarantineFailure",
+          "Output": "{% $states.input %}"
         }
       ]
     },
@@ -216,6 +238,144 @@
       "Type": "Fail",
       "Error": "ScanPersistenceFailed",
       "Cause": "Cannot confirm scan result and audit. Inspect CloudWatch and metadata before retrying."
+    },
+    "PersistQuarantineFailure": {
+      "Type": "Task",
+      "Comment": "Independent of the failed Lambda. Atomically record an unconfirmed quarantine and its audit without altering scan findings or S3 objects.",
+      "Resource": "arn:aws:states:::aws-sdk:dynamodb:transactWriteItems",
+      "Arguments": {
+        "ClientRequestToken": "{% $substring($states.context.Execution.Name, 0, 36) %}",
+        "TransactItems": [
+          {
+            "Update": {
+              "TableName": "securedrive-files",
+              "Key": {
+                "owner_id": {
+                  "S": "{% $states.input.scan.owner_id %}"
+                },
+                "file_id": {
+                  "S": "{% $states.input.scan.file_id %}"
+                }
+              },
+              "UpdateExpression": "SET #step = :failed, status_reason = :reason, quarantine_reason = :reason, updated_at = :at, status_time = :order",
+              "ConditionExpression": "attribute_exists(owner_id) AND #status = :flagged AND (attribute_not_exists(#step) OR #step = :pending) AND #execution = :execution AND source_version_id = :version AND upload_bucket = :bucket AND #key = :key AND (attribute_not_exists(lifecycle_state) OR lifecycle_state = :active)",
+              "ExpressionAttributeNames": {
+                "#step": "quarantine_status",
+                "#status": "status",
+                "#execution": "execution_id",
+                "#key": "key"
+              },
+              "ExpressionAttributeValues": {
+                ":failed": {
+                  "S": "failed"
+                },
+                ":reason": {
+                  "S": "quarantine_failed"
+                },
+                ":flagged": {
+                  "S": "flagged"
+                },
+                ":pending": {
+                  "S": "pending"
+                },
+                ":active": {
+                  "S": "active"
+                },
+                ":at": {
+                  "S": "{% $states.context.State.EnteredTime %}"
+                },
+                ":order": {
+                  "S": "{% $states.context.State.EnteredTime & '#' & $states.input.scan.file_id %}"
+                },
+                ":execution": {
+                  "S": "{% $states.context.Execution.Id %}"
+                },
+                ":version": {
+                  "S": "{% $states.input.scan.source_version_id %}"
+                },
+                ":bucket": {
+                  "S": "{% $states.input.detail.bucket.name %}"
+                },
+                ":key": {
+                  "S": "{% $states.input.detail.object.key %}"
+                }
+              }
+            }
+          },
+          {
+            "Put": {
+              "TableName": "securedrive-audit-log",
+              "ConditionExpression": "attribute_not_exists(event_key)",
+              "Item": {
+                "file_id": {
+                  "S": "{% $states.input.scan.file_id %}"
+                },
+                "owner_id": {
+                  "S": "{% $states.input.scan.owner_id %}"
+                },
+                "event_key": {
+                  "S": "{% $states.context.State.EnteredTime & '#workflow-quarantine-failed#' & $states.context.Execution.Name %}"
+                },
+                "occurred_at": {
+                  "S": "{% $states.context.State.EnteredTime %}"
+                },
+                "action": {
+                  "S": "quarantine_failed"
+                },
+                "actor": {
+                  "S": "stepfunctions:securedrive-scan-pipeline"
+                },
+                "status": {
+                  "S": "flagged"
+                },
+                "to_status": {
+                  "S": "flagged"
+                },
+                "execution_id": {
+                  "S": "{% $states.context.Execution.Id %}"
+                },
+                "details": {
+                  "M": {
+                    "reason": {
+                      "S": "quarantine_failed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "DynamoDb.TransactionCanceledException"
+          ],
+          "Next": "QuarantineFailedEnd"
+        },
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "QuarantineFailurePersistenceFailed"
+        }
+      ],
+      "Next": "QuarantineFailedEnd"
+    },
+    "QuarantineFailurePersistenceFailed": {
+      "Type": "Fail",
+      "Error": "QuarantineFailurePersistenceFailed",
+      "Cause": "Both Lambda and independent failure persistence are unavailable. Check workflow DynamoDB permissions and reconcile metadata before retrying quarantine."
     }
   }
 }

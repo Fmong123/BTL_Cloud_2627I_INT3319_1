@@ -23,6 +23,7 @@ const quarantineLabels = {
   copied: 'Đã sao chép · chưa xác nhận xóa nguồn',
   completed: 'Cách ly hoàn tất',
   pending: 'Đang chờ cách ly',
+  failed: 'Cách ly thất bại · cần admin yêu cầu thử lại',
 };
 const at = (value) => (value ? new Date(value).toLocaleString('vi-VN') : 'Chưa ghi nhận');
 

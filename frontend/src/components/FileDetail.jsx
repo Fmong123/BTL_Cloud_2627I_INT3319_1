@@ -20,7 +20,7 @@ import FileIcon from './FileIcon.jsx';
 import StatusBadge from './StatusBadge.jsx';
 import ScanBadge from './ScanBadge.jsx';
 import QuarantineReview from './QuarantineReview.jsx';
-import { needsCompression, scanStates } from '../utils/processing.js';
+import { needsCompression, scanState, scanStates } from '../utils/processing.js';
 import FileScanReport from './FileScanReport.jsx';
 import FileHistory from './FileHistory.jsx';
 import DetailTabs from './DetailTabs.jsx';
@@ -135,7 +135,9 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
     );
   const uploadConfirmed = file.status === 'success' || file.uploadState === 'uploaded';
   const isolated = file.scanStatus === 'quarantined';
-  const quarantineProblem = file.scanStatus === 'quarantine_delete_failed';
+  const quarantineProblem =
+    file.scanStatus === 'quarantine_delete_failed' ||
+    (file.scanStatus === 'flagged' && scanState(file)?.tone === 'error');
   const detected = ['flagged', 'quarantined', 'quarantine_delete_failed', 'restored'].includes(
     file.scanStatus,
   );
@@ -379,7 +381,7 @@ export default function FileDetail({ id, onClose, inline = false, initialTab = '
                         : isolated
                           ? 'Đã cách ly'
                           : quarantineProblem
-                            ? 'Chưa hoàn tất — bản nguồn có thể vẫn còn'
+                            ? 'Cách ly chưa hoàn tất · cần quản trị viên xử lý'
                             : file.scanStatus === 'flagged'
                               ? 'Đang chờ hoặc đang thực hiện cách ly'
                               : 'Chưa có xác nhận cách ly'}

@@ -42,7 +42,7 @@ IAM → user/role chạy backend → Permissions → Add permissions → Create 
 
 Lambda → từng hàm → Code → Upload from → .zip file → chọn gói cùng tên trong AWS/build/: securedrive-scan-pii.zip, securedrive-quarantine-file.zip, securedrive-notify.zip. Không upload ZIP bàn giao tổng. Cả ba dùng Handler=handler.lambda_handler, có handler.py và pipeline_common.py ở gốc.
 
-Chung: FILES_TABLE=securedrive-files; AUDIT_TABLE=securedrive-audit-log. Scan: STRICT_DB_WRITE=true, giữ layer PDF/Textract. Quarantine: đúng QUARANTINE_BUCKET và KMS_KEY_ID. Notify: đúng SNS_TOPIC_ARN (SNS/email). Giữ/đối chiếu execution role, Logs, runtime/layer và timeout; ZIP không tự cập nhật các phần này.
+Chung: FILES_TABLE=securedrive-files; AUDIT_TABLE=securedrive-audit-log. Scan: STRICT_DB_WRITE=true, quyền Textract đúng; ZIP Scan từ bản sửa 13/11/2026 đã kèm parser PDF/crypto/Pillow cho Python 3.12 x86_64 (đối chiếu runtime manifest), không còn yêu cầu layer PDF riêng. Quarantine: đúng QUARANTINE_BUCKET và KMS_KEY_ID. Notify: đúng SNS_TOPIC_ARN (SNS/email). Đối chiếu execution role, Logs, runtime/architecture và timeout; ZIP không tự cập nhật các phần này. Workflow mới cần policy Step Functions có quyền ghi audit, xem AWS/DEPLOYMENT.md.
 
 ### Bước 3 · Kiểm workflow và S3
 

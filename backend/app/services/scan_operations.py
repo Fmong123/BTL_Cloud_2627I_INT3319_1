@@ -10,6 +10,9 @@ from .lifecycle import notification_put
 
 SIZE_REASONS = {"file_too_large", "image_too_large"}
 RETRY_REASONS = {"scan_failed", "scan_crashed", "ocr_failed", "ocr_timeout",
+                 "ocr_throttled", "ocr_unavailable",
+                 "pdf_parser_unavailable", "pdf_crypto_unavailable", "image_decoder_unavailable",
+                 "ocr_access_denied", "ocr_source_unavailable", "ocr_kms_unavailable", "ocr_invalid_request",
                  "rescan_start_failed", "execution_failed", "execution_result_missing"}
 
 

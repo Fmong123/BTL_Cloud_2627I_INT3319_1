@@ -139,7 +139,7 @@ class FileScanReport(FileStatusResponse):
     counts_complete: bool = False
     extraction_complete: bool | None = None
     scan_reason: str | None = None
-    detected_format: Literal["text", "pdf", "png", "jpeg", "tiff"] | None = None
+    detected_format: Literal["text", "pdf", "png", "jpeg", "tiff", "gif", "webp"] | None = None
     extraction_method: Literal["direct_text", "pdf_text", "textract_image", "textract_pdf"] | None = None
     extracted_pages: int | None = Field(default=None, ge=0)
     total_pages: int | None = Field(default=None, ge=0)

@@ -1,0 +1,14 @@
+{
+  "runtime": "python3.12",
+  "architecture": "x86_64",
+  "os": "Amazon Linux 2023",
+  "sha256": "bc757e505c73dfa4bb87ab50f9c1e6cd2851e2beef8d4be1d146743d3f240424",
+  "size_bytes": 12942438,
+  "dependencies": [
+    "pypdf[crypto]==7.1.0",
+    "cryptography==50.0.2",
+    "cffi==2.1.1",
+    "pycparser==3.12",
+    "Pillow==13.0.0"
+  ]
+}

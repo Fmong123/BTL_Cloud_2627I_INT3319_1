@@ -60,7 +60,7 @@ export default function AdminOverview() {
     return () => controller.abort();
   }, [session.baseUrl, revision]);
   const cards = [
-    ['Chờ cách ly', 'flagged', Clock3, 'purple'],
+    ['Chưa cách ly', 'flagged', Clock3, 'purple'],
     ['Đã cách ly', 'quarantined', ShieldCheck, 'green'],
     ['Cách ly lỗi', 'quarantine_delete_failed', ShieldAlert, 'pink'],
   ];

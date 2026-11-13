@@ -1,6 +1,6 @@
 import { scanExplanation } from '../utils/processing.js';
 
-const formats = { text: 'Văn bản', pdf: 'PDF', png: 'Ảnh PNG', jpeg: 'Ảnh JPEG', tiff: 'Ảnh TIFF' };
+const formats = { text: 'Văn bản', pdf: 'PDF', png: 'Ảnh PNG', jpeg: 'Ảnh JPEG', tiff: 'Ảnh TIFF', gif: 'Ảnh GIF', webp: 'Ảnh WebP' };
 const methods = {
   direct_text: 'Đọc văn bản trực tiếp',
   pdf_text: 'Đọc lớp chữ PDF',
@@ -35,7 +35,7 @@ export default function ExtractionReport({ report }) {
         </div>
         {(report?.totalPages != null || report?.extractedPages != null) && (
           <div>
-            <dt>Trang đọc được / tổng</dt>
+            <dt>{['gif', 'webp'].includes(report?.detectedFormat) ? 'Khung đọc được / tổng' : 'Trang đọc được / tổng'}</dt>
             <dd>
               {report.extractedPages ?? '—'} / {report.totalPages ?? '—'}
             </dd>

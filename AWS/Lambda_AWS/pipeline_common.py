@@ -186,6 +186,9 @@ def put_notification(table, source, row, action, status, timestamp, *, execution
     logical = "|".join((source["file_id"], source.get("version") or "unversioned", execution_id or "", action))
     ident = "server-" + hashlib.sha256(logical.encode()).hexdigest()
     title, tone = labels[status]
+    failed_quarantine = status == "flagged" and action.startswith("quarantine_failed_")
+    if failed_quarantine:
+        title, tone = "Cách ly thất bại", "error"
     item = {"owner_id": "!notifications!" + source["owner_id"], "file_id": f"{timestamp}#{ident}",
             "id": ident, "created_at": timestamp, "target_file_id": source["file_id"],
             "kind": "scan-result" if action.startswith("scan_") else "quarantine-result",
@@ -197,5 +200,7 @@ def put_notification(table, source, row, action, status, timestamp, *, execution
         if not conditional_failure(exc):
             raise
         old = table.get_item(Key={k: item[k] for k in ("owner_id", "file_id")}, ConsistentRead=True).get("Item")
-        if not old or any(old.get(k) != item[k] for k in ("id", "kind", "title", "target_file_id", "server_event")):
+        legacy_failure_title = failed_quarantine and old and old.get("title") == labels["flagged"][0]
+        if (not old or any(old.get(k) != item[k] for k in ("id", "kind", "target_file_id", "server_event"))
+                or old.get("title") != item["title"] and not legacy_failure_title):
             raise PipelineConflict("notification_replay_conflict") from exc

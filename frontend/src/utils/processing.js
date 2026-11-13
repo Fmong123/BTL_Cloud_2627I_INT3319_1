@@ -26,15 +26,40 @@ export const scanStates = {
   error: { label: 'Quét lỗi', tone: 'error' },
 };
 
+export function scanState(file) {
+  if (
+    file?.scanStatus === 'flagged' &&
+    (file.statusReason?.startsWith('quarantine_') ||
+      ['kms_key_arn_or_id_required', 'source_size_mismatch', 'source_missing_without_copy_record',
+        'completed_source_still_exists'].includes(file.statusReason))
+  ) {
+    return { label: 'Cách ly thất bại', tone: 'error' };
+  }
+  return scanStates[file?.scanStatus];
+}
+
 const scanReasons = {
   text_decode_failed: 'Không đọc được bảng mã văn bản.',
   pdf_password_protected: 'PDF được bảo vệ bằng mật khẩu nên chưa đọc được.',
   pdf_invalid: 'PDF bị hỏng hoặc không đọc được cấu trúc.',
+  pdf_parser_unavailable: 'Bộ quét thiếu thư viện đọc PDF. Cần cập nhật gói Lambda.',
+  pdf_crypto_unavailable: 'Bộ quét thiếu thư viện giải mã PDF. Cần cập nhật gói Lambda.',
+  image_decoder_unavailable: 'Bộ quét thiếu thư viện đọc ảnh GIF/WebP. Cần cập nhật gói Lambda.',
+  image_invalid: 'Ảnh bị hỏng hoặc không đọc được cấu trúc.',
   ocr_document_unreadable: 'Dịch vụ OCR không đọc được tài liệu này.',
   ocr_failed: 'Tác vụ OCR không hoàn tất thành công.',
+  ocr_access_denied: 'Bộ quét chưa có quyền gọi OCR. Cần kiểm tra quyền Amazon Textract.',
+  ocr_source_unavailable: 'OCR chưa đọc được bản nguồn. Cần kiểm tra quyền S3/KMS và vùng AWS.',
+  ocr_kms_unavailable: 'OCR chưa sử dụng được khóa mã hóa của tệp nguồn.',
+  ocr_invalid_request: 'Yêu cầu OCR chưa hợp lệ. Cần kiểm tra cấu hình xử lý.',
+  ocr_document_too_large: 'Tài liệu vượt giới hạn xử lý của dịch vụ OCR.',
+  ocr_throttled: 'Dịch vụ OCR đang giới hạn lượt xử lý. Có thể yêu cầu quét lại sau.',
+  ocr_unavailable: 'Chưa kết nối được dịch vụ OCR. Có thể yêu cầu quét lại sau.',
   empty_file: 'Tệp rỗng, không có nội dung để kiểm tra.',
   image_too_large: 'Ảnh vượt giới hạn dung lượng OCR.',
   source_size_mismatch: 'Dung lượng tệp nguồn không khớp dữ liệu đã lưu.',
+  source_missing_without_copy_record: 'Không tìm thấy bản nguồn và chưa có bằng chứng bản cách ly.',
+  completed_source_still_exists: 'Đã ghi nhận cách ly nhưng bản nguồn vẫn còn. Cần kiểm tra lại.',
   unsupported_type: 'Chưa hỗ trợ định dạng này.',
   unsupported_type_or_size: 'Định dạng hoặc dung lượng chưa hỗ trợ.',
   file_too_large: 'Tệp vượt giới hạn quét.',
@@ -44,6 +69,7 @@ const scanReasons = {
   quarantine_copy_failed: 'Chưa sao chép được tệp sang kho cách ly.',
   quarantine_read_failed: 'Chưa đọc hoặc đối chiếu được tệp trong quá trình cách ly.',
   quarantine_failed: 'Cách ly chưa hoàn tất. Cần kiểm tra bước xử lý bị lỗi.',
+  quarantine_prepare_failed: 'Chưa chuẩn bị được trạng thái cách ly. Cần kiểm tra quyền ghi metadata.',
   quarantine_size_mismatch: 'Dung lượng bản cách ly không khớp tệp nguồn.',
   quarantine_kms_mismatch: 'Mã hóa bản cách ly chưa khớp khóa KMS được cấu hình.',
   quarantine_configuration_incomplete: 'Cấu hình kho cách ly hoặc khóa mã hóa chưa đầy đủ.',

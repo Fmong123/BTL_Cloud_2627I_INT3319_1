@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, ShieldCheck } from 'lucide-react';
 import { getScanReport, rescanFile } from '../api/client.js';
 import { useWorkspace } from '../state/Workspace.jsx';
-import { scanStates } from '../utils/processing.js';
+import { scanState } from '../utils/processing.js';
 import ExtractionReport from './ExtractionReport.jsx';
 
 const types = {
@@ -179,7 +179,7 @@ export default function FileScanReport({ file, refreshKey }) {
             </div>
             <div>
               <dt>Kết quả</dt>
-              <dd>{scanStates[file.scanStatus]?.label || 'Chưa có kết quả'}</dd>
+              <dd>{scanState(file)?.label || 'Chưa có kết quả'}</dd>
             </div>
             {report?.rescanRequestedAt && (
               <div>
