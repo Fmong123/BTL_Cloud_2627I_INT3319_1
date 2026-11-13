@@ -10,6 +10,7 @@ test-results-*/
 backend/.venv/
 backend/data/
 backend/.test-tmp/
+/.test-tmp/
 __pycache__/
 .pytest_cache/
 *.py[cod]

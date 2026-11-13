@@ -204,3 +204,11 @@ def put_notification(table, source, row, action, status, timestamp, *, execution
         if (not old or any(old.get(k) != item[k] for k in ("id", "kind", "target_file_id", "server_event"))
                 or old.get("title") != item["title"] and not legacy_failure_title):
             raise PipelineConflict("notification_replay_conflict") from exc
+        if legacy_failure_title:
+            # Upgrade the old misleading pending label without resetting read
+            # receipts, timestamps, names or the event's identity on replay.
+            table.update_item(Key={k: item[k] for k in ("owner_id", "file_id")},
+                UpdateExpression="SET title = :title, tone = :tone",
+                ConditionExpression="id = :id AND title IN (:old, :title) AND server_event = :server",
+                ExpressionAttributeValues={":title": title, ":tone": tone, ":id": ident,
+                                           ":old": labels["flagged"][0], ":server": True})

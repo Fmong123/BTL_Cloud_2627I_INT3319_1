@@ -53,8 +53,10 @@ export default function ExtractionReport({ report }) {
           </div>
         )}
       </dl>
-      {reason && (
-        <p className="scan-report-note">{scanExplanation({ ...report, statusReason: reason })}</p>
+      {(reason || ['error', 'unscanned'].includes(report?.scanStatus)) && (
+        <p className="scan-report-note">
+          <strong>Lý do: </strong>{scanExplanation({ ...report, statusReason: reason })}
+        </p>
       )}
       {!report?.detectedFormat && !report?.extractionMethod && (
         <p className="scan-report-note">

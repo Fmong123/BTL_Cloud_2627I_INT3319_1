@@ -21,12 +21,17 @@ Phạm vi: code local, dependency Lambda, hợp đồng API, giao diện và ki�
 | Lỗi quyền S3/Textract/KMS, giới hạn lượt gọi chỉ hiện scan_failed | Mã lý do riêng, giải thích tiếng Việt; lỗi tạm thời/cấu hình có thao tác quét lại phù hợp. |
 | OCR có thể hết thời gian mà chưa kịp lưu kết quả | Chừa 15 giây cho lưu kết quả; kiểm tra phân trang, frame limit, số trang và giữ phần đã phát hiện khi bị gián đoạn. |
 | Lỗi cấu hình cách ly nằm ngoài phần bắt lỗi | Đưa kiểm tra bucket/KMS và bước chuẩn bị vào phần có ghi trạng thái lỗi; thêm log theo file_id/phase. |
-| Lambda cách ly lỗi, workflow lại phụ thuộc chính Lambda đó để ghi lỗi | Nhánh PersistQuarantineFailure dùng transaction DynamoDB độc lập, ghi trạng thái và audit; không copy/xóa S3. Nhánh phục hồi cũng đi qua xử lý lỗi này. |
+| Lambda cách ly lỗi, workflow lại phụ thuộc chính Lambda đó để ghi lỗi | Nhánh PersistQuarantineFailure dùng transaction DynamoDB độc lập, ghi trạng thái, audit và thông báo web; không copy/xóa S3. Nhánh phục hồi cũng đi qua xử lý lỗi này. |
 | Kiểm tra biết workflow đã dừng nhưng metadata vẫn pending | Backend đối chiếu lượt đã dừng, giữ khoảng chờ Lambda cũ, ghi nhận cách ly thất bại cùng lịch sử. Không tự tạo lượt cách ly mới. |
 | Badge, báo cáo, thông báo và nhóm tệp không thống nhất | Dùng nhãn lỗi cách ly theo lý do; sự kiện lỗi mới báo thất bại. Bộ lọc/nhóm tổng hợp flagged dùng “Chưa cách ly” vì bao gồm cả đang chờ và thất bại. |
 | Tệp cách ly thất bại vẫn nằm trong nhóm Đang xử lý | Chuyển sang Cần kiểm tra; chỉ lượt đang chờ mới hiển thị Chờ cách ly. |
 | Báo cáo quản trị bỏ sót lỗi copy/chuẩn bị cách ly | Tính các lỗi cách ly của tệp flagged vào tổng lỗi, biểu đồ ngày và thống kê người dùng; không tính lượt đang chờ là lỗi. |
 | Admin thử lại cách ly nhưng nhãn lỗi cũ vẫn còn | Yêu cầu thử lại hợp lệ chuyển bước về pending và xóa lý do lỗi cách ly cũ; giữ kết quả quét, phát hiện và lý do đọc thiếu. |
+| Báo cáo chưa rõ lý do lại hướng dẫn mở chính trang chi tiết đang xem | Hiển thị “Lý do” ngay dưới kết quả trích xuất; PDF khóa hiện giải thích mật khẩu. Phân biệt báo cáo thiếu lý do và mã chưa được giao diện hỗ trợ, không suy đoán PDF khóa từ lỗi OCR cũ. |
+| Client báo cáo quét chưa nhận GIF/WebP dù schema hỗ trợ | Đồng bộ whitelist định dạng của client với schema backend và phần hiển thị. |
+| Fallback workflow/admin đối chiếu ghi lỗi nhưng bỏ sót chuông chủ tệp | Thêm thông báo “Cách ly thất bại” cùng transaction trạng thái/audit; không gửi SNS và không tạo lượt cách ly mới. IAM Step Functions chỉ thêm PutItem vào partition thông báo. |
+| Phát lại sự kiện lỗi cách ly cũ vẫn giữ nhãn Chờ cách ly | Nâng nhãn/tone của đúng sự kiện đó, giữ nguyên ID, thời điểm và trạng thái đã đọc. |
+| SNS dùng tên gốc và chưa nói rõ phát hiện từ tài liệu đọc thiếu | Dùng tên hiển thị hiện tại, thêm mức độ đọc thiếu khi cần và ghi rõ phạm vi không phải kiểm tra mã độc; không đưa giá trị nhạy cảm vào thông báo. |
 
 ## Quy tắc được giữ
 
@@ -39,9 +44,11 @@ Phạm vi: code local, dependency Lambda, hợp đồng API, giao diện và ki�
 
 ## Kiểm chứng local
 
-- Backend: **379 passed**, gồm PDF có lớp chữ ngắn, PDF AES có mật khẩu, PDF hỏng/rỗng, PNG/JPEG/GIF/WebP/TIFF, ảnh không chữ/không PII trả safe, ảnh có CCCD/thẻ trả flagged, phân trang OCR, thiếu trang, lỗi quyền/network, cách ly copy/delete/recovery, hợp đồng workflow, báo cáo lỗi, audit, auth, quota, lịch sử, lifecycle và billing.
-- Frontend: **19 passed** (18 bài hiện có và 1 bài trạng thái pipeline); production build thành công.
+- Backend: **383 passed**, gồm PDF có lớp chữ ngắn, PDF AES có mật khẩu, PDF hỏng/rỗng, PNG/JPEG/GIF/WebP/TIFF, ảnh không chữ/không PII trả safe, ảnh có CCCD/thẻ trả flagged, phân trang OCR, thiếu trang, lỗi quyền/network, cách ly copy/delete/recovery, hợp đồng workflow, thông báo, báo cáo lỗi, audit, auth, quota, lịch sử, lifecycle và billing.
+- Frontend: **21 passed** (18 bài hiện có và 3 bài trạng thái/lý do/API pipeline); production build thành công.
 - UI phục hồi pipeline: đạt, dùng FastAPI HTTP + Moto + handler Lambda thật trong source, SNS giả lập, giao diện 320–1440 px và dark mode.
+- UI thông báo: đạt chuông/toast, đọc rồi reload, thông báo khi web đóng, liên kết tệp, inbox admin, thay quota, đổi tài khoản và hiển thị 320/390 px. Test fallback kiểm tra thông báo/audit/trạng thái cùng transaction, phát lại không đặt lại đã đọc; đối chiếu admin lặp không tạo thông báo trùng.
+- Kiểm tra bổ sung sau phản hồi về lý do: sáu bài hợp đồng workflow vẫn đạt, có xác nhận `pdf_password_protected` xuyên suốt handler/metadata/API. UI xác nhận PDF khóa hiện “Lý do: PDF được bảo vệ bằng mật khẩu nên chưa đọc được”, còn báo cáo cũ thiếu mã hiện thông báo chưa ghi nhận lý do cụ thể.
 - UI fullstack: đạt, production /api proxy, upload multipart, token demo ký, tách drive, đồng bộ người dùng, đọc version cách ly và audit. Dùng Chrome đã cài trên máy vì Chromium của Playwright chưa tải.
 - Tất cả biểu thức JSONata được parse; Arguments thật của PersistQuarantineFailure được đánh giá bằng JSONata và transaction chạy trên Moto. Có test chặn execution/version/bucket sai, tệp trong rác, đã copied/completed.
 - Sáu bài kiểm tra hợp đồng chạy nhánh từ file ASL thật, đánh giá JSONata, gọi handler thật trên Moto và đối chiếu metadata/API/quyền tải/thông báo: ảnh thường, ảnh nhạy cảm, PDF khóa, OCR chưa xác nhận đủ trang, Lambda cách ly không gọi được và SNS chưa rõ kết quả. Đây là mô phỏng local, chưa thay thế nghiệm thu Step Functions trên AWS.
@@ -55,7 +62,7 @@ Test/helper theo chính sách repo chỉ lưu local và không nằm trong gói 
 Gói `AWS/build/maysec-pipeline-fix-2026-11-13.zip` là bản cập nhật để áp dụng lên checkout đang có, không phải bản cài mới. Gói chứa các file source thay đổi, bốn ZIP Lambda, frontend/dist, hướng dẫn này và manifest checksum. Không chứa .env, credentials, node_modules, venv, dữ liệu upload hoặc bộ test local.
 
 1. Sao lưu code/config/policy cloud hiện tại và xác minh account/region. Scan ZIP đi kèm dành riêng cho **Python 3.12 / x86_64 / Amazon Linux 2023**; kiểm tra AWS/build/securedrive-scan-pii.runtime.json. Runtime/architecture khác cần build wheel khác.
-2. Role Step Functions: áp dụng quyền UpdateItem files + PutItem audit trong AWS/IAM/securedrive-sfn-dynamodb-policy.json. Role Scan/Quarantine giữ policy riêng trong AWS/IAM; kiểm tra bucket/quyền GetObjectVersion, Textract, KMS và DynamoDB theo AWS/DEPLOYMENT.md. Không cấp quyền xóa/copy S3 cho workflow.
+2. Role Step Functions: áp dụng quyền UpdateItem files + PutItem audit + PutItem files giới hạn partition thông báo trong AWS/IAM/securedrive-sfn-dynamodb-policy.json. Role Scan/Quarantine giữ policy riêng trong AWS/IAM; kiểm tra bucket/quyền GetObjectVersion, Textract, KMS và DynamoDB theo AWS/DEPLOYMENT.md. Không cấp quyền xóa/copy S3 cho workflow.
 3. Cập nhật ba Lambda Scan/Quarantine/Notify cùng common từ ZIP tương ứng. Kiểm tra ENV FILES_TABLE/AUDIT_TABLE, QUARANTINE_BUCKET/KMS_KEY_ID, SNS_TOPIC_ARN. KMS phải là ARN/UUID thật, không dùng alias.
 4. Cập nhật workflow từ AWS/Orchestration/State_machine.json sau khi quyền đã đủ. Nhánh ghi lỗi không phụ thuộc Lambda và không sửa/xóa dữ liệu nội dung.
 5. Cập nhật backend/frontend đồng bộ, restart backend và refresh frontend. Scan: MAX_SCAN_BYTES=100000000; MIN_PDF_TEXT_CHARS=1; timeout/memory gợi ý 300 giây/1024 MB để nghiệm thu tập mẫu.

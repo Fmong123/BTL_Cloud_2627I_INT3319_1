@@ -343,6 +343,25 @@
                 }
               }
             }
+          },
+          {
+            "Put": {
+              "TableName": "securedrive-files",
+              "ConditionExpression": "attribute_not_exists(file_id)",
+              "Item": {
+                "owner_id": {"S": "{% '!notifications!' & $states.input.scan.owner_id %}"},
+                "file_id": {"S": "{% $states.context.State.EnteredTime & '#' & $states.context.Execution.Name %}"},
+                "id": {"S": "{% $states.context.Execution.Name %}"},
+                "created_at": {"S": "{% $states.context.State.EnteredTime %}"},
+                "target_file_id": {"S": "{% $states.input.scan.file_id %}"},
+                "kind": {"S": "quarantine-result"},
+                "title": {"S": "Cách ly thất bại"},
+                "message": {"S": "Chưa hoàn tất cách ly tệp. Mở chi tiết để xem trạng thái và lý do."},
+                "tone": {"S": "error"},
+                "read": {"BOOL": false},
+                "server_event": {"BOOL": true}
+              }
+            }
           }
         ]
       },

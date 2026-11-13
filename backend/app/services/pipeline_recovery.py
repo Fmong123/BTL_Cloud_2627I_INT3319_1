@@ -211,9 +211,10 @@ def check(metadata, audit, item, actor, runner, *, allow_dispatch=True):
                         stamp = utc_timestamp()
                         commit(metadata, audit, item, {**fields, "updated_at": stamp,
                             "status_time": f"{stamp}#{item['file_id']}"}, actor,
-                            ("quarantine-check-" + hashlib.sha256(item["execution_id"].encode()).hexdigest(),
+                            ("quarantine-check-" + hashlib.sha256(item["execution_id"].encode()).hexdigest()[:48],
                              "admin_pipeline_checked"),
-                            {"action": "check", "result": "failed", "execution_status": info["status"]})
+                            {"action": "check", "result": "failed", "execution_status": info["status"]},
+                            notice=("Cách ly thất bại", item.get("display_name") or item["original_name"], "error"))
                     return "Lượt xử lý đã kết thúc nhưng cách ly chưa hoàn tất. Admin cần chọn Thử lại cách ly để chạy lại."
                 labels = {"SUCCEEDED": "đã hoàn tất", "FAILED": "đã kết thúc với lỗi", "TIMED_OUT": "đã hết thời gian",
                           "ABORTED": "đã dừng", "RUNNING": "đang chạy", "PENDING_REDRIVE": "đang chờ chạy lại"}

@@ -89,6 +89,10 @@ const scanReasons = {
   quota_exceeded: 'Không đủ dung lượng theo hạn mức tài khoản.',
 };
 export function scanExplanation(file) {
+  if (file?.statusReason && !scanReasons[file.statusReason] &&
+      ['error', 'unscanned'].includes(file.scanStatus)) {
+    return 'Bộ quét trả về lý do chưa được giao diện hỗ trợ. Cần cập nhật giao diện để xem giải thích.';
+  }
   return (
     scanReasons[file?.statusReason] ||
     scanStates[file?.scanStatus]?.description ||
@@ -96,8 +100,8 @@ export function scanExplanation(file) {
       not_started: 'Tệp chưa được quét.',
       scanning: 'Đang chờ hoặc đang quét dữ liệu nhạy cảm.',
       quarantined: 'Tệp đã được cách ly. Không thể xem hoặc tải nội dung.',
-      unscanned: 'Chưa thể quét tệp này. Mở chi tiết để xem lý do.',
-      error: 'Xử lý quét gặp lỗi. Mở chi tiết để xem lý do.',
+      unscanned: 'Báo cáo lượt quét này chưa ghi nhận lý do cụ thể. Cần quét lại sau khi cập nhật bộ quét.',
+      error: 'Lượt quét gặp lỗi nhưng báo cáo chưa ghi nhận lý do cụ thể. Cần quét lại sau khi cập nhật bộ quét.',
     }[file?.scanStatus] ||
     'Chưa có kết quả quét.'
   );
