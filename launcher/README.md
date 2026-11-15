@@ -84,4 +84,4 @@ Từ gốc project:
 
 Ba lựa chọn trên không cài thư viện, không mở server và không xác thực/gọi AWS. `--check` trả mã 1 nếu có mục môi trường cần xử lý; AWS CLI không bắt buộc cho Local/Demo.
 
-Không yêu cầu các script/test launcher cũ. Kiểm tra cấu hình bằng --show-config; nghiệm thu chức năng theo docs/api-guide.md và handoff.
+Không yêu cầu các script/test launcher cũ. Kiểm tra cấu hình bằng --show-config; chọn chế độ theo [hướng dẫn local](../docs/guides/local-development.md), nghiệm thu theo [kiểm tra hệ thống](../docs/operations/testing.md), triển khai cloud theo [hướng dẫn AWS](../docs/operations/aws-deployment.md).
