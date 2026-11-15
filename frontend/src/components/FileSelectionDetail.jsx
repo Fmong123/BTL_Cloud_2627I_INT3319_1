@@ -3,7 +3,7 @@ import { Download, Eye, Star, X } from 'lucide-react';
 import { useWorkspace } from '../state/Workspace.jsx';
 import { formatBytes } from '../utils/files.js';
 import { downloadBlockReason, previewInfo } from '../utils/content.js';
-import { scanStates } from '../utils/processing.js';
+import { scanState } from '../utils/processing.js';
 
 export default function FileSelectionDetail({ files, onClose, onClear }) {
   const w = useWorkspace();
@@ -43,7 +43,7 @@ export default function FileSelectionDetail({ files, onClose, onClear }) {
     const label =
       file.mode === 'demo'
         ? 'Trải nghiệm'
-        : scanStates[file.scanStatus]?.label || 'Chưa có kết quả';
+        : scanState(file)?.label || 'Chưa có kết quả';
     counts.set(label, (counts.get(label) || 0) + 1);
   });
   return (

@@ -1,5 +1,5 @@
 import { Check, CircleAlert, Clock3, LoaderCircle, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { scanExplanation, scanStates } from '../utils/processing.js';
+import { scanExplanation, scanState } from '../utils/processing.js';
 
 export default function ScanBadge({
   scanStatus,
@@ -21,7 +21,7 @@ export default function ScanBadge({
         ? { label: 'Chậm hơn dự kiến', tone: 'warning' }
         : scanStatus === 'scanning' && !started
           ? { label: 'Chờ xác nhận quét', tone: 'muted' }
-          : scanStates[scanStatus] || { label: 'Chưa có kết quả', tone: 'muted' };
+          : scanState({ scanStatus, statusReason }) || { label: 'Chưa có kết quả', tone: 'muted' };
   const Icon =
     mode === 'demo'
       ? Clock3

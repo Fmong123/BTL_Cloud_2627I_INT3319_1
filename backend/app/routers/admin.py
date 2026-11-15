@@ -345,6 +345,7 @@ def file_history(file_id: UUID, request: Request, response: Response, owner_id: 
             "fastapi": "Hệ thống API", "lambda": "Pipeline tự động",
             "lambda:securedrive-scan-pii": "Bộ quét tự động",
             "lambda:securedrive-quarantine-file": "Bộ cách ly tự động",
+            "stepfunctions:securedrive-scan-pipeline": "Workflow dự phòng cách ly",
             "lambda:securedrive-notify": "Dịch vụ thông báo",
         }.get(actor, "Hệ thống")
     return result

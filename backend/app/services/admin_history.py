@@ -49,6 +49,7 @@ ACTIONS = {
     "folder_purged": ("trash", "Đã dọn thư mục hết hạn", "success"),
 }
 SYSTEM_ACTORS = {
+    "stepfunctions:securedrive-scan-pipeline": "Workflow dự phòng cách ly",
     "lambda:securedrive-quarantine-file": "Bộ cách ly tự động",
     "lambda:securedrive-notify": "Dịch vụ thông báo",
     "lambda:securedrive-trash-cleanup": "Dọn Thùng rác tự động",
@@ -105,6 +106,7 @@ def allowed(row, accounts, actor_id, owner_id=None):
     if action in SYSTEM_ACTIONS:
         return actor in SYSTEM_ACTORS and ((action.startswith("folder_") and actor == "lambda:securedrive-trash-cleanup")
                 or (action.startswith("quarantine_") and actor == "lambda:securedrive-quarantine-file")
+                or (action == "quarantine_failed" and actor == "stepfunctions:securedrive-scan-pipeline")
                 or (action.startswith("notify_") and actor == "lambda:securedrive-notify"))
     # Personal rescans and folder activity are outside administrative history.
     try:

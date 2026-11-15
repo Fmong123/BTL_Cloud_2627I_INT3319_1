@@ -1,35 +1,52 @@
-# MâySec — kho lưu trữ và kiểm tra dữ liệu nhạy cảm
+# MâySec
 
-React/Vite + FastAPI + S3/DynamoDB, cùng Lambda và Step Functions xử lý quét/cách ly. Danh tính theo Cognito, tách dữ liệu theo `sub`. Frontend có màn hình chọn tài khoản demo vào ngay, tự cập nhật tài khoản mới, gửi token cho mọi API và khu quản trị cách ly. Xem [cấu hình demo và quyền AWS](docs/cognito-demo.md).
+MâySec là hệ thống lưu trữ tài liệu và phát hiện dữ liệu nhạy cảm, xây dựng bằng React/Vite, FastAPI và AWS. Người dùng có không gian lưu trữ riêng; S3, EventBridge, Step Functions và Lambda xử lý quét CCCD/số thẻ, cách ly và gửi kết quả. Hệ thống hiện không quét mã độc.
 
-## Chức năng hiện có
+## Chức năng chính
 
-- Các trang cá nhân, quản trị và [theo dõi chi phí theo sử dụng](docs/pay-as-you-go.md). Chính sách & bảng giá cạnh Cài đặt/Hướng dẫn; Theo dõi chi phí ở Lối tắt, khác nhau theo vai trò user/admin.
-- Chi phí đồng bộ chuông cảnh báo, nhật ký quản trị và xuất CSV phía máy chủ; đối chiếu tự động khi backend hoạt động, giữ lịch sử khi tài khoản đổi vai trò và thống kê OCR/quét đã gộp trong giá.
-- Upload/kéo thả, tối đa 5 tệp song song; mỗi tệp tối đa **100 MB = 100.000.000 byte**.
-- Quota mặc định **1 GB = 1.000.000.000 byte/owner**, admin có thể cấp riêng. Khi chủ tài khoản bật dùng thử Tính phí theo sử dụng, chỉ nâng mặc định lên 10 GB nếu chưa có quota do admin đặt. Mức miễn phí vẫn 1 GB, khác với trần upload. Rác/cách ly vẫn tính dung lượng; giữ chỗ chưa tính phí.
-- Danh sách từ API, tìm/lọc/sắp xếp, đánh dấu; xem ảnh/PDF/văn bản và tải xuống khi đủ điều kiện.
-- Báo cáo quét, yêu cầu quét lại, đổi tên, khôi phục/xóa vĩnh viễn; lịch sử upload/thông báo giữ sau reload.
-- Giao diện sáng/tối, sidebar thu gọn, chọn nhiều và panel chi tiết.
-- Thư mục nhiều cấp, đường dẫn, đổi tên/di chuyển; chuyển tệp bằng hộp thoại hoặc kéo thả; xóa và khôi phục cả thư mục trong Thùng rác.
-- Drive/cache riêng theo tài khoản; đồng bộ `securedrive-users`, lịch sử từng tệp và admin đọc cách ly có audit.
-- Admin [thử lại riêng cách ly, gửi lại và đối soát thông báo SNS/email](docs/pipeline-recovery.md), dùng chung quyền user-only, workflow và audit hiện có.
+- Upload/kéo thả; quản lý tệp, thư mục nhiều cấp; tìm kiếm, lọc và đánh dấu yêu thích.
+- Xem/tải nội dung khi đủ điều kiện, báo cáo quét và yêu cầu quét lại.
+- Đổi tên, di chuyển, Thùng rác, khôi phục, xóa vĩnh viễn và cleanup hết hạn.
+- Đăng nhập Cognito, Drive riêng theo tài khoản; đăng nhập trình diễn khi được bật ở backend.
+- Lịch sử xử lý, chuông thông báo và theo dõi chi phí sử dụng ước tính.
+- Quản trị tài khoản user, quota, báo cáo CSV/PDF, lịch sử quản trị, xem xét cách ly và phục hồi pipeline.
+- Giao diện sáng/tối, hỗ trợ màn hình nhỏ.
 
-Upload thành công chỉ xác nhận đã lưu nội dung. Nội dung chỉ được xem/tải khi đã upload xong, kết quả quét `safe` và không trong rác. Quét hiện phát hiện CCCD và số thẻ, không phải quét mã độc.
+Upload thành công xác nhận nội dung đã lưu. Quyền đọc còn phụ thuộc kết quả quét, vòng đời và quyết định xem xét cách ly. Quy tắc chi tiết nằm trong [tài liệu hệ thống](docs/README.md).
+
+## Cấu trúc mã nguồn
+
+```text
+frontend/src/        React: trang, component, phiên đăng nhập, state và API client
+backend/app/         FastAPI: router, schema, xác thực, storage và nghiệp vụ
+AWS/Lambda_AWS/      Scan, Quarantine, Notify và Trash Cleanup
+AWS/Orchestration/   Workflow Step Functions và mẫu lịch cleanup
+AWS/IAM/             Policy mẫu theo từng principal/role
+launcher/            Menu Windows, cấu hình và quản lý tiến trình
+docs/                Chính sách, thiết kế, tham chiếu và hướng dẫn
+MaySec.cmd           Điểm khởi động trên Windows
+```
+
+Luồng chính: **Frontend → FastAPI → S3 → EventBridge → Step Functions → Lambda → DynamoDB**. Frontend đọc trạng thái qua API. Xem [thiết kế hệ thống](docs/design/system.md).
 
 ## Chạy trên Windows
 
-Nhấp đúp **MaySec.cmd** để chọn chế độ và khởi động. [Launcher](launcher/README.md) đọc cấu hình hiện có, đồng bộ port/CORS/giới hạn và quản lý tiến trình.
+Cần Python 3.10+, Node.js và pnpm; CI hiện dùng Python 3.12, Node.js 24 và pnpm 10.
 
-Chạy trực tiếp, từ thư mục gốc project:
+Nhấp đúp **MaySec.cmd**, kiểm tra môi trường, chọn chế độ rồi khởi động. Launcher đồng bộ port, URL API, CORS và giới hạn dung lượng. Xem [hướng dẫn launcher](launcher/README.md).
+
+Để chạy trực tiếp Local không AWS, từ thư mục gốc:
 
 ```powershell
 Set-Location backend
 py -3 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+if (-not (Test-Path -LiteralPath '.env')) {
+    Copy-Item -LiteralPath '.env.example' -Destination '.env'
+}
 ```
 
-Tạo `backend/.env` từ `.env.example` nếu chưa có; giữ file cấu hình riêng đang dùng. Với Local không AWS:
+Sửa các giá trị tương ứng trong `backend/.env`:
 
 ```dotenv
 MAYSEC_STORAGE_MODE=local
@@ -37,55 +54,33 @@ MAYSEC_AUTH_MODE=dev
 MAYSEC_METADATA_MODE=disabled
 MAYSEC_SCAN_PIPELINE_ENABLED=false
 MAYSEC_RESCAN_STATE_MACHINE_ARN=
-MAYSEC_MAX_FILE_SIZE_BYTES=100000000
+MAYSEC_DEMO_LOGIN_ENABLED=false
+COGNITO_USER_POOL_ID=
+COGNITO_APP_CLIENT_ID=
 ```
 
-Từ `backend/`, chạy:
+Từ `backend/`, chạy API:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --env-file .env
 ```
 
-Terminal khác, từ `frontend/`:
+Trong terminal khác, từ thư mục gốc:
 
 ```powershell
+Set-Location frontend
 pnpm.cmd install --frozen-lockfile
 pnpm.cmd run dev --port 5173 --strictPort
 ```
 
-Frontend mặc định demo; chọn Lưu trữ thật và URL `http://127.0.0.1:8000` để dùng API Local với auth=dev. Local không metadata vẫn upload thật nhưng không có thư viện/quét trên server. S3 cần metadata DynamoDB và access token Cognito. Xem [hướng dẫn Cognito backend](docs/cognito-backend.md) để gọi API và chuẩn bị IAM.
+Mở [giao diện](http://127.0.0.1:5173), vào không gian local và chọn **Lưu trữ thật/Kết nối API** với URL `http://127.0.0.1:8000` trong cấu hình kết nối. Kiểm tra API tại [health](http://127.0.0.1:8000/health) và [Swagger](http://127.0.0.1:8000/docs).
 
-## Tài liệu cần đọc
+Local không metadata ghi nội dung thật nhưng chưa có thư viện/quét trên server. Để dùng đầy đủ chức năng, cấu hình S3 + DynamoDB + Cognito và pipeline theo [hướng dẫn AWS](docs/operations/aws-deployment.md). Các chế độ khác tại [hướng dẫn phát triển local](docs/guides/local-development.md).
 
-| Công việc | Hướng dẫn |
-| --- | --- |
-| Cài backend và chọn chế độ | [API guide](docs/api-guide.md) |
-| Endpoint, payload và giới hạn | [API contract](docs/api-contract.md); schema đang chạy tại /docs |
-| Thao tác web và dữ liệu được ghi nhớ | [Frontend guide](docs/frontend-guide.md) |
-| Cài/cập nhật AWS | [Bàn giao và cài đặt](docs/AWS-HANDOFF-QUICKSTART-2026-10-31.md) |
-| Quyền và lưu ý kỹ thuật AWS | [Phụ lục](docs/AWS-HANDOFF-2026-10-31.md) |
-| Source, builder Lambda | [AWS](AWS/README.md) |
+## Tài liệu và kiểm tra
 
-## Kiểm tra
+- [Mục lục tài liệu](docs/README.md): chính sách, thiết kế, dữ liệu, API và vận hành.
+- [Cấu hình](docs/reference/configuration.md), [API](docs/reference/api.md), [mô hình dữ liệu](docs/reference/data-model.md).
+- [Kiểm tra và nghiệm thu](docs/operations/testing.md): build, test local và kiểm tra AWS thật.
 
-Các bộ test và script hỗ trợ chỉ lưu local, được `.gitignore` loại khỏi Git. Các lệnh test dưới đây chỉ dùng trên máy có sẵn bộ test; bản clone mới vẫn build/chạy ứng dụng mà không cần chúng.
-
-Backend, từ `backend/`:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-Frontend, từ `frontend/`:
-
-```powershell
-npm.cmd test
-npm.cmd run build
-pnpm.cmd exec playwright install chromium
-npm.cmd run test:ui
-```
-
-Trên máy có bộ test local trong `backend/tests` và `frontend/tests`, test dùng client giả/Moto, khóa thử và API cục bộ; không thao tác AWS thật. Test giao diện tự khởi động FastAPI và bản build frontend trên cổng 8019/5189, ghi ảnh vào `frontend/test-results`. Cần cài requirements-dev của backend trước. Xem [hướng dẫn frontend](docs/frontend-guide.md) để chạy chế độ dev hoặc chọn trình duyệt/Python khác.
-
-.github/workflows/check.yml chỉ kiểm tra cú pháp Python và build frontend trên push/PR, không phụ thuộc test/script local, không deploy và không cần credentials AWS. Không đưa .env thật, credentials, dữ liệu upload, venv hoặc node_modules vào Git/gói bàn giao.
+CI kiểm tra cú pháp Python và build frontend; không deploy. Bộ test và builder Lambda chỉ giữ local theo `.gitignore`, không có sẵn trong bản clone mới. Cấu hình riêng, credentials và dữ liệu upload không thuộc mã nguồn bàn giao.

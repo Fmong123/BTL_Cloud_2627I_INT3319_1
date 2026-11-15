@@ -19,11 +19,13 @@ import logging
 import os
 import re
 import time
+import warnings
 from collections import Counter
 from functools import lru_cache
 
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
+from botocore.config import Config
 from pipeline_common import (
     PipelineConflict, conditional_failure, put_audit, read_file, source_from_event,
     status_fields, summary, update_file, utc,
@@ -41,8 +43,9 @@ STRICT_DB_WRITE = os.environ.get("STRICT_DB_WRITE", "true").lower() == "true"
 # Match backend upload admission: 100 MB = 100,000,000 bytes.
 MAX_SCAN_BYTES = int(os.environ.get("MAX_SCAN_BYTES", "100000000"))
 MAX_OCR_IMAGE_BYTES = 10 * 1024 * 1024  # giới hạn Textract đồng bộ
+MAX_OCR_FRAMES = int(os.environ.get("MAX_OCR_FRAMES", "50"))
 MAX_FINDINGS = int(os.environ.get("MAX_FINDINGS", "500"))  # tránh payload Step Functions quá 256KB
-MIN_PDF_TEXT_CHARS = int(os.environ.get("MIN_PDF_TEXT_CHARS", "20"))
+MIN_PDF_TEXT_CHARS = int(os.environ.get("MIN_PDF_TEXT_CHARS", "1"))
 CREDIT_CARD_LUHN = os.environ.get("CREDIT_CARD_LUHN", "false").lower() == "true"
 
 SAFE, FLAGGED, UNSCANNED, ERROR = "safe", "flagged", "unscanned", "error"
@@ -51,12 +54,6 @@ PATTERNS = {
     "CREDIT_CARD": re.compile(r"\b(?:\d{4}[ -]?){3}\d{4}\b"),  # thẻ 16 số
     "CCCD_VN": re.compile(r"\b0\d{2}[0-3]\d{2}\d{6}\b"),       # CCCD 12 số, bắt đầu bằng 0
 }
-
-TEXTRACT_UNREADABLE = {
-    "UnsupportedDocumentException", "BadDocumentException", "InvalidS3ObjectException",
-    "DocumentTooLargeException", "InvalidParameterException",
-}
-
 
 class Unsupported(Exception):
     """Định dạng/kích thước chưa hỗ trợ -> unscanned."""
@@ -83,6 +80,9 @@ class ExtractedText(str):
 
 @lru_cache(maxsize=None)
 def _client(name):
+    if name == "textract":
+        return boto3.client(name, config=Config(connect_timeout=3, read_timeout=10,
+                                               retries={"total_max_attempts": 1}))
     return boto3.client(name)
 
 
@@ -98,6 +98,8 @@ def _detect_kind(data: bytes) -> str:
     if b"%PDF-" in head:
         return "pdf"
     if data.startswith((b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"II*\x00", b"MM\x00*")):
+        return "image"
+    if data.startswith((b"GIF87a", b"GIF89a")) or data.startswith(b"RIFF") and data[8:12] == b"WEBP":
         return "image"
     if data.startswith((b"\xff\xfe", b"\xfe\xff")) or b"\x00" not in data[:8192]:
         return "text"
@@ -124,25 +126,35 @@ def _decode_text(data: bytes) -> str:
 
 
 def _pdf_text(data: bytes):
-    """Trích văn bản từ PDF có chữ. None nếu thiếu thư viện hoặc PDF không có lớp chữ."""
+    """Read every text page; OCR is needed for scanned/mixed PDFs."""
     try:
-        from pypdf import PdfReader  # cần đóng gói/layer; thiếu thì dùng Textract
+        from pypdf import PdfReader
+        from pypdf.errors import DependencyError
     except ImportError:
-        return None
+        raise Unsupported("pdf_parser_unavailable") from None
     try:
         reader = PdfReader(io.BytesIO(data))
         if reader.is_encrypted and not reader.decrypt(""):
             raise Unreadable("pdf_password_protected")
         pages = list(reader.pages)
+        if not pages:
+            raise Unreadable("pdf_invalid")
+    except DependencyError:
+        raise Unsupported("pdf_crypto_unavailable") from None
+    except Unreadable:
+        raise
+    except Exception:
+        raise Unreadable("pdf_invalid") from None
+    try:
         texts = [(page.extract_text() or "") for page in pages]
         # Mixed PDFs must go through OCR instead of accepting only their text layer.
         if not pages or any(not text.strip() or bool(page.images) for page, text in zip(pages, texts)):
             return None
         text = "\n".join(texts)
-    except Unreadable:
-        raise
     except Exception:
-        raise Unreadable("pdf_invalid") from None
+        # Valid PDFs with unsupported text encodings can still be read by OCR.
+        logger.warning("PDF text layer could not be extracted; falling back to OCR")
+        return None
     return ExtractedText(text, total_pages=len(pages), extracted_pages=len(pages)) if len(text.strip()) >= MIN_PDF_TEXT_CHARS else None
 
 
@@ -150,64 +162,160 @@ def _lines(blocks):
     return [b["Text"] for b in blocks if b.get("BlockType") == "LINE" and "Text" in b]
 
 
-def _ocr_image(bucket, key, version=None) -> str:
+def _ocr_pages(blocks, *, include_blank=False):
+    return {b["Page"] for b in blocks if type(b.get("Page")) is int and b["Page"] > 0
+            and ((b.get("BlockType") == "LINE" and b.get("Text", "").strip())
+                 or (include_blank and b.get("BlockType") == "PAGE"))}
+
+
+def _ocr_error(exc):
+    code = exc.response.get("Error", {}).get("Code", "")
+    logger.warning("Textract request failed (%s)", code)
+    if code in {"ThrottlingException", "ProvisionedThroughputExceededException", "LimitExceededException"}:
+        raise Incomplete("ocr_throttled") from exc
+    if code == "DocumentTooLargeException":
+        raise Unsupported("ocr_document_too_large") from exc
+    reason = {"AccessDeniedException": "ocr_access_denied", "InvalidS3ObjectException": "ocr_source_unavailable",
+              "InvalidKMSKeyException": "ocr_kms_unavailable", "InvalidParameterException": "ocr_invalid_request"}.get(code)
+    if reason or code in {"UnsupportedDocumentException", "BadDocumentException"}:
+        raise Unreadable(reason or "ocr_document_unreadable") from exc
+    raise exc
+
+
+def _ocr_image(bucket, key, version=None, *, data=None) -> str:
+    if bucket is None and (data is None or len(data) > 5_000_000):
+        raise Unsupported("image_too_large")
     obj = {"Bucket": bucket, "Name": key}
     if version:
         obj["Version"] = version
     try:
-        resp = _client("textract").detect_document_text(
-            Document={"S3Object": obj})
+        # These bytes were already read from the pinned S3 version. Small
+        # PNG/JPEG images need no second S3 read by Textract.
+        document = {"Bytes": data} if data is not None and len(data) <= 5_000_000 else {"S3Object": obj}
+        resp = _client("textract").detect_document_text(Document=document)
     except ClientError as exc:
-        if exc.response["Error"]["Code"] in TEXTRACT_UNREADABLE:
-            raise Unreadable("ocr_document_unreadable") from None
-        raise
+        _ocr_error(exc)
+    except BotoCoreError as exc:
+        raise Incomplete("ocr_unavailable") from exc
     text = "\n".join(_lines(resp.get("Blocks", [])))
-    if not text.strip():
-        raise Incomplete("ocr_no_text")
-    return text
+    pages = resp.get("DocumentMetadata", {}).get("Pages")
+    if (type(pages) is not int or pages != 1 or resp.get("Warnings") or resp.get("NextToken")
+            or resp.get("JobStatus") not in {None, "SUCCEEDED"}):
+        raise Incomplete("ocr_incomplete", text, {"total_pages": pages, "extracted_pages": 1})
+    # Successful OCR of the whole image may legitimately contain no text
+    # (e.g. a landscape photo). The detector then reports no PII.
+    return ExtractedText(text, total_pages=1, extracted_pages=1)
 
 
-def _ocr_pdf(bucket, key, context, version=None) -> str:
+def _ocr_frames(data, context):
+    """Decode formats Textract cannot read; scan every frame without S3 writes."""
+    try:
+        from PIL import Image
+    except ImportError:
+        raise Unsupported("image_decoder_unavailable") from None
+    texts, read_frames, total_frames = [], 0, 0
+    def metadata():
+        return {"total_pages": total_frames, "extracted_pages": read_frames}
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as image:
+                total_frames = getattr(image, "n_frames", 1)
+                for index in range(min(total_frames, MAX_OCR_FRAMES)):
+                    if hasattr(context, "get_remaining_time_in_millis") and context.get_remaining_time_in_millis() <= 15_000:
+                        raise Incomplete("ocr_timeout", "\n".join(texts), metadata())
+                    image.seek(index)
+                    rgba = image.convert("RGBA")
+                    # Preserve dimensions and composite transparency onto white;
+                    # downscaling could hide sensitive text.
+                    rgb = Image.new("RGB", rgba.size, "white")
+                    rgb.paste(rgba, mask=rgba.getchannel("A"))
+                    output = io.BytesIO()
+                    rgb.save(output, format="PNG")
+                    try:
+                        text = _ocr_image(None, None, data=output.getvalue())
+                    except Incomplete as exc:
+                        if exc.text:
+                            texts.append(exc.text)
+                        raise Incomplete(str(exc), "\n".join(texts), metadata()) from exc
+                    except (Unreadable, Unsupported) as exc:
+                        if texts:
+                            raise Incomplete(str(exc), "\n".join(texts), metadata()) from exc
+                        raise
+                    texts.append(text)
+                    read_frames += 1
+    except (OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        if texts:
+            raise Incomplete("image_invalid", "\n".join(texts), metadata()) from exc
+        raise Unreadable("image_invalid") from exc
+    if read_frames != total_frames:
+        raise Incomplete("ocr_incomplete", "\n".join(texts), metadata())
+    return ExtractedText("\n".join(texts), **metadata())
+
+
+def _ocr_pdf(bucket, key, context, version=None, *, allow_no_text=False) -> str:
     textract = _client("textract")
     obj = {"Bucket": bucket, "Name": key}
     if version:
         obj["Version"] = version
+    remaining_ms = context.get_remaining_time_in_millis() if hasattr(context, "get_remaining_time_in_millis") else 120_000
+    deadline = time.monotonic() + max(remaining_ms / 1000 - 15, 0)
+    if time.monotonic() >= deadline:
+        raise Incomplete("ocr_timeout")
     try:
         job = textract.start_document_text_detection(
             DocumentLocation={"S3Object": obj})["JobId"]
     except ClientError as exc:
-        if exc.response["Error"]["Code"] in TEXTRACT_UNREADABLE:
-            raise Unreadable("ocr_document_unreadable") from None
-        raise
-    remaining_ms = context.get_remaining_time_in_millis() if hasattr(context, "get_remaining_time_in_millis") else 120_000
-    deadline = time.monotonic() + max(remaining_ms / 1000 - 15, 5)
+        _ocr_error(exc)
+    except BotoCoreError as exc:
+        raise Incomplete("ocr_unavailable") from exc
+    def fetch(**args):
+        if time.monotonic() >= deadline:
+            raise Incomplete("ocr_timeout")
+        try:
+            return textract.get_document_text_detection(JobId=job, **args)
+        except ClientError as exc:
+            _ocr_error(exc)
+        except BotoCoreError as exc:
+            raise Incomplete("ocr_unavailable") from exc
     while True:
-        resp = textract.get_document_text_detection(JobId=job)
+        resp = fetch()
         status = resp["JobStatus"]
         if status in ("SUCCEEDED", "PARTIAL_SUCCESS"):
             break
         if status == "FAILED":
+            logger.warning("Textract document job failed, job_id=%s", job)
             raise Unreadable("ocr_failed")
         if time.monotonic() > deadline:
             raise Incomplete("ocr_timeout")
         time.sleep(2)
-    partial = status == "PARTIAL_SUCCESS"
+    partial = status == "PARTIAL_SUCCESS" or bool(resp.get("Warnings"))
     blocks = list(resp.get("Blocks", []))
     expected_pages = resp.get("DocumentMetadata", {}).get("Pages")
     token = resp.get("NextToken")
+    seen_tokens = set()
     while token:
         if time.monotonic() > deadline:
             raise Incomplete("ocr_timeout", "\n".join(_lines(blocks)), {"total_pages": expected_pages,
-                "extracted_pages": len({b.get("Page") for b in blocks if b.get("BlockType") == "LINE" and b.get("Text", "").strip()})})
-        resp = textract.get_document_text_detection(JobId=job, NextToken=token)
+                "extracted_pages": len(_ocr_pages(blocks, include_blank=allow_no_text))})
+        if token in seen_tokens:
+            raise Incomplete("ocr_incomplete", "\n".join(_lines(blocks)))
+        seen_tokens.add(token)
+        try:
+            resp = fetch(NextToken=token)
+        except (Unreadable, Unsupported) as exc:
+            metadata = {"total_pages": expected_pages,
+                "extracted_pages": len(_ocr_pages(blocks, include_blank=allow_no_text))}
+            raise Incomplete(str(exc), "\n".join(_lines(blocks)), metadata) from exc
         blocks += resp.get("Blocks", [])
-        partial = partial or resp.get("JobStatus") == "PARTIAL_SUCCESS"
+        partial = partial or resp.get("JobStatus") != "SUCCEEDED" or bool(resp.get("Warnings"))
         token = resp.get("NextToken")
     text = "\n".join(_lines(blocks))
-    pages_with_text = {b.get("Page") for b in blocks if b.get("BlockType") == "LINE" and b.get("Text", "").strip()}
-    if partial or not text.strip() or not expected_pages or len(pages_with_text) < expected_pages:
-        raise Incomplete("ocr_incomplete", text, {"total_pages": expected_pages, "extracted_pages": len(pages_with_text)})
-    return ExtractedText(text, total_pages=expected_pages, extracted_pages=len(pages_with_text))
+    read_pages = _ocr_pages(blocks, include_blank=allow_no_text)
+    if (partial or (not allow_no_text and not text.strip()) or type(expected_pages) is not int or expected_pages < 1
+            or read_pages != set(range(1, expected_pages + 1))):
+        raise Incomplete("ocr_incomplete", text, {"total_pages": expected_pages, "extracted_pages": len(read_pages)})
+    return ExtractedText(text, total_pages=expected_pages, extracted_pages=len(read_pages))
 
 
 def extract_text(bucket, key, context, version=None) -> str:
@@ -251,11 +359,18 @@ def _extract_text(bucket, key, context, version, trace) -> str:
             return text
         trace["extraction_method"] = "textract_pdf"
         return _ocr_pdf(bucket, key, context, version)
-    trace["detected_format"] = "png" if data.startswith(b"\x89PNG") else "jpeg" if data.startswith(b"\xff\xd8") else "tiff"
+    trace["detected_format"] = ("png" if data.startswith(b"\x89PNG") else "jpeg" if data.startswith(b"\xff\xd8")
+                                else "gif" if data.startswith(b"GIF") else "webp" if data.startswith(b"RIFF") else "tiff")
     trace["extraction_method"] = "textract_image"
+    if trace["detected_format"] == "tiff":
+        # Synchronous Textract only supports one TIFF page. Use the paginated
+        # document API so later pages cannot silently escape the scan.
+        return _ocr_pdf(bucket, key, context, version, allow_no_text=True)
     if size > MAX_OCR_IMAGE_BYTES:
         raise Unsupported("image_too_large")
-    return _ocr_image(bucket, key, version)
+    if trace["detected_format"] in {"gif", "webp"}:
+        return _ocr_frames(data, context)
+    return _ocr_image(bucket, key, version, data=data)
 
 
 # ---------------------------------------------------------------- quét PII
@@ -397,10 +512,10 @@ def lambda_handler(event, context):
         status, reason, complete = (FLAGGED if counts else UNSCANNED), str(exc), False
     except Unsupported as exc:
         extraction = getattr(exc, "metadata", {})
-        status, reason, complete = UNSCANNED, str(exc) if str(exc) in {"file_too_large", "image_too_large"} else "unsupported_type_or_size", False
+        status, reason, complete = UNSCANNED, str(exc) if str(exc) in {"file_too_large", "image_too_large", "pdf_parser_unavailable", "pdf_crypto_unavailable", "image_decoder_unavailable", "ocr_document_too_large"} else "unsupported_type_or_size", False
     except Unreadable as exc:
         extraction = getattr(exc, "metadata", {})
-        status, reason, complete = ERROR, str(exc) if str(exc) in {"empty_file", "source_size_mismatch", "text_decode_failed", "pdf_password_protected", "pdf_invalid", "ocr_document_unreadable", "ocr_failed"} else "unreadable_document", False
+        status, reason, complete = ERROR, str(exc) if str(exc) in {"empty_file", "source_size_mismatch", "text_decode_failed", "pdf_password_protected", "pdf_invalid", "image_invalid", "ocr_document_unreadable", "ocr_failed", "ocr_access_denied", "ocr_source_unavailable", "ocr_kms_unavailable", "ocr_invalid_request"} else "unreadable_document", False
     except Exception as exc:
         extraction = getattr(exc, "metadata", {})
         logger.exception("Scan failed for file_id=%s", source["file_id"])

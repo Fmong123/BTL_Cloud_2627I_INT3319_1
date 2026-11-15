@@ -11,7 +11,7 @@ from ..routers.files import public_file, scan_report
 
 VN = timezone(timedelta(hours=7))
 STATUS_LABELS = {"not_started": "Chưa bắt đầu", "scanning": "Đang quét", "safe": "Không phát hiện",
-                 "flagged": "Chờ cách ly", "quarantined": "Đã cách ly", "quarantine_delete_failed": "Cách ly lỗi",
+                 "flagged": "Chưa cách ly", "quarantined": "Đã cách ly", "quarantine_delete_failed": "Cách ly lỗi",
                  "error": "Quét lỗi", "unscanned": "Chưa thể quét", "restored": "Đã khôi phục"}
 METHODS = {"direct_text": "Đọc văn bản", "pdf_text": "PDF có lớp chữ", "textract_image": "OCR ảnh", "textract_pdf": "OCR PDF"}
 
@@ -55,7 +55,12 @@ def build_report(metadata, accounts, start, end, owner_id=None, lifecycle="all")
                 report = scan_report(item, view)
                 counts[view.scan_status] += 1
                 detected = int(view.findings_count > 0)
-                error = int(view.scan_status in {"error", "quarantine_delete_failed"})
+                quarantine_error = view.scan_status == "flagged" and (
+                    item.get("quarantine_status") in {"failed", "copy_failed", "delete_failed"}
+                    or bool(view.status_reason and (view.status_reason.startswith("quarantine_")
+                        or view.status_reason in {"kms_key_arn_or_id_required", "source_size_mismatch",
+                            "source_missing_without_copy_record", "completed_source_still_exists"})))
+                error = int(view.scan_status in {"error", "quarantine_delete_failed"} or quarantine_error)
                 bucket = days[created.astimezone(VN).date().isoformat()]
                 bucket["files"] += 1
                 bucket["detected"] += detected

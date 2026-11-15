@@ -40,12 +40,16 @@ def notification_source(event):
 def build_message(result, row):
     # Only summary codes/counts enter the notification, never findings/location.
     data = summary(row)
+    name = row.get("display_name") or row['original_name']
     if result == "quarantined":
         subject = "[MaySec] File quarantined"
-        body = f"Tep: {row['original_name']}\nKet qua: DA CACH LY\nSo phat hien: {data['findings_count']}\nLoai: {', '.join(data['finding_types'])}"
+        body = f"Tep: {name}\nKet qua: DA CACH LY\nSo phat hien: {data['findings_count']}\nLoai: {', '.join(data['finding_types'])}"
+        if row.get("extraction_complete") is False:
+            body += "\nMuc do doc: Chua doc day du; so phat hien chi thuoc phan da doc."
     else:
         subject = "[MaySec] File safe"
-        body = f"Tep: {row['original_name']}\nKet qua: Khong phat hien theo pham vi kiem tra"
+        body = f"Tep: {name}\nKet qua: Khong phat hien theo pham vi kiem tra"
+    body += "\nKhong phai ket qua quet ma doc."
     return subject, body
 
 def send_sns(subject, body):

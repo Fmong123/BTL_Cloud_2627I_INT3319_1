@@ -1,40 +1,16 @@
 # Source AWS MâySec
 
-Hướng dẫn triển khai hiện hành: [handoff](../docs/AWS-HANDOFF-QUICKSTART-2026-10-31.md). Quyền/dữ liệu/lỗi: [phụ lục](../docs/AWS-HANDOFF-2026-10-31.md). Lưu ý triển khai: [DEPLOYMENT.md](DEPLOYMENT.md).
-
-## Các gói Lambda
-
-| Source | Lambda / ZIP |
+| Đường dẫn | Trách nhiệm |
 | --- | --- |
-| Lambda_AWS/scan_file/handler.py | securedrive-scan-pii |
-| Lambda_AWS/quarantine/handler.py | securedrive-quarantine-file |
-| Lambda_AWS/notification/handler.py | securedrive-notify |
-| Lambda_AWS/trash_cleanup/handler.py | securedrive-trash-cleanup |
+| Lambda_AWS/scan_file/ | Quét CCCD/số thẻ và trích xuất/OCR |
+| Lambda_AWS/quarantine/ | Copy cách ly/KMS, xác minh rồi xóa nguồn |
+| Lambda_AWS/notification/ | SNS/email và bằng chứng giao nhận |
+| Lambda_AWS/trash_cleanup/ | Dọn tệp/cây thư mục hết hạn |
+| Lambda_AWS/pipeline_common.py | Guard version/execution, metadata, audit và thông báo dùng chung |
+| Orchestration/State_machine.json | Workflow STANDARD, upload/rescan/recovery/fallback |
+| Orchestration/trash-cleanup-schedule.example.yaml | Lịch mẫu mặc định DISABLED |
+| IAM/ | Policy mẫu theo principal/role |
 
-Handler cả bốn: handler.lambda_handler. Ba pipeline ZIP có handler.py + pipeline_common.py ở gốc; cleanup có handler.py + app/. Không upload ZIP bàn giao tổng vào Lambda.
+Đóng gói dependency, bốn ZIP, cấu hình runtime/IAM, thứ tự phát hành và rollback theo [hướng dẫn triển khai](../docs/operations/aws-deployment.md). Builder chỉ giữ local theo .gitignore; bản clone mới không có sẵn.
 
-## Đóng gói từ thư mục gốc repo
-
-Script đóng gói chỉ giữ local, được `.gitignore` loại khỏi Git. Các lệnh dưới đây dành cho máy có sẵn `AWS/package_lambdas.py`; bản clone mới dùng source và các ZIP đã bàn giao, không tự có script này.
-
-```powershell
-python AWS/package_lambdas.py
-python AWS/package_lambdas.py --check
-```
-
-Lệnh thứ nhất tạo cả bốn ZIP Lambda trong AWS/build từ source hiện tại, chỉ lấy file Python cần đóng gói. Lệnh thứ hai kiểm tra nội dung ZIP khớp source, báo lỗi nếu thiếu/cũ. Đóng gói lại sau khi sửa Lambda, pipeline_common.py hoặc backend dùng trong cleanup. Frontend/backend, policy và workflow bàn giao từ cùng commit của repository; không dùng lại gói tổng cũ làm source hiện hành.
-
-Builder chỉ tạo file local, không cấp quyền/deploy AWS và không thu thập .env, credentials hoặc dữ liệu upload. Test trong backend/tests và frontend/tests cũng chỉ giữ local, không thay cho nghiệm thu OCR/quarantine/SNS trên AWS.
-
-## Cấu hình cần giữ khớp
-
-- Backend dùng DYNAMODB_FILES_TABLE/DYNAMODB_AUDIT_TABLE; Lambda dùng FILES_TABLE/AUDIT_TABLE, giá trị phải cùng bảng.
-- Scan: STRICT_DB_WRITE=true, layer PDF/Textract phù hợp. Upload tối đa 100 MB; Scan mặc định `MAX_SCAN_BYTES=100000000` (100 MB), khớp giới hạn upload. Khi triển khai, cập nhật cả biến môi trường Lambda nếu đang đặt mức cũ. OCR ảnh vẫn giới hạn 10 MiB trong source; không nâng lên 100 MB vì giới hạn Textract.
-- Quarantine: bucket và KMS_KEY_ID thật (ARN/UUID). Notify: SNS_TOPIC_ARN (SNS/email).
-- Cleanup: FILES_TABLE, UPLOAD_BUCKET, QUARANTINE_BUCKET; role riêng và Logs.
-- Orchestration/State_machine.json là workflow STANDARD để đối chiếu; mẫu trash-cleanup-schedule.example.yaml mặc định DISABLED, chỉ bật sau nghiệm thu.
-- IAM/ chứa policy theo từng principal/role. Thay placeholder và đối chiếu ARN trước khi áp dụng; giữ trust policy và key policy đang cần.
-
-Không tạo lại bảng hay reset dữ liệu để thêm thuộc tính. Mỗi thay đổi trên AWS phải đối chiếu bản đang chạy, sao lưu và nghiệm thu theo handoff.
-
-Xử lý riêng bước lỗi: [pipeline recovery](../docs/pipeline-recovery.md). Cần đồng bộ cả ba ZIP/pipeline_common.py và workflow có RouteOperation/RecoveryQuarantine/RecoveryNotify; backend dùng workflow STANDARD/ARN và quyền hiện có. Không chạy lại Scan/OCR khi admin yêu cầu thử lại cách ly hoặc gửi SNS/email. Xem hướng dẫn ngừng kênh cũ và xử lý yêu cầu còn treo trong tài liệu này.
+Thiết kế tại [luồng hệ thống](../docs/design/system.md); quy tắc tại [quét/cách ly](../docs/policies/scanning.md), [vòng đời](../docs/policies/file-lifecycle.md); xử lý lỗi tại [phục hồi pipeline](../docs/operations/pipeline-recovery.md). Kiểm cloud theo [nghiệm thu](../docs/operations/testing.md).

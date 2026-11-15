@@ -1,4 +1,5 @@
 import { dateBounds, filterFiles, isBusy } from './workspace.js';
+import { scanState } from './processing.js';
 
 export const activityGroups = {
   all: 'Tất cả',
@@ -33,6 +34,7 @@ export function activityGroup(file) {
     ['error', 'cancelled', 'unknown'].includes(file.status) ||
     ['failed', 'unknown'].includes(file.uploadState) ||
     ['error', 'unscanned', 'quarantine_delete_failed'].includes(file.scanStatus) ||
+    (file.scanStatus === 'flagged' && scanState(file)?.tone === 'error') ||
     file.lifecycleState === 'deleting'
   )
     return 'attention';

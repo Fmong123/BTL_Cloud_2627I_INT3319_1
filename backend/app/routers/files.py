@@ -431,7 +431,7 @@ def scan_report(item, view):
         counts_complete=complete,
         extraction_complete=item.get("extraction_complete") if type(item.get("extraction_complete")) is bool else None,
         scan_reason=reason,
-        detected_format=item.get("detected_format") if isinstance(item.get("detected_format"), str) and item["detected_format"] in {"text", "pdf", "png", "jpeg", "tiff"} else None,
+        detected_format=item.get("detected_format") if isinstance(item.get("detected_format"), str) and item["detected_format"] in {"text", "pdf", "png", "jpeg", "tiff", "gif", "webp"} else None,
         extraction_method=item.get("extraction_method") if isinstance(item.get("extraction_method"), str) and item["extraction_method"] in {"direct_text", "pdf_text", "textract_image", "textract_pdf"} else None,
         **{name: item.get(name) if type(item.get(name)) is int and item[name] >= 0 else None
            for name in ("extracted_pages", "total_pages", "extraction_duration_ms")},

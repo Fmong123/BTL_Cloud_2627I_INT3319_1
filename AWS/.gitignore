@@ -1,5 +1,6 @@
 build/*
 !build/securedrive-scan-pii.zip
+!build/securedrive-scan-pii.runtime.json
 !build/securedrive-quarantine-file.zip
 !build/securedrive-notify.zip
 !build/securedrive-trash-cleanup.zip

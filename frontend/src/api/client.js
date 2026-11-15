@@ -599,7 +599,7 @@ function parseScanReport(data, id) {
     (data.extraction_complete != null && typeof data.extraction_complete !== 'boolean') ||
     (data.scan_reason != null && typeof data.scan_reason !== 'string') ||
     (data.detected_format != null &&
-      !['text', 'pdf', 'png', 'jpeg', 'tiff'].includes(data.detected_format)) ||
+      !['text', 'pdf', 'png', 'jpeg', 'tiff', 'gif', 'webp'].includes(data.detected_format)) ||
     (data.extraction_method != null &&
       !['direct_text', 'pdf_text', 'textract_image', 'textract_pdf'].includes(
         data.extraction_method,
