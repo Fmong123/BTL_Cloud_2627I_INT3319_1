@@ -30,6 +30,61 @@ Không sửa mã ứng dụng, `requirements*.txt`, `pnpm-lock.yaml` hay ENV g�
 
 ## ENV và cấu hình
 
+### Bản mẫu đầy đủ trong launcher
+
+Xem [`.env.example`](.env.example): tập hợp toàn bộ biến backend/frontend mà launcher hỗ trợ, secret ký phiên demo và các biến đường dẫn AWS được giữ từ terminal. Mỗi biến có giải thích ngay phía trên. Đây là tài liệu tham khảo; launcher **không tự nạp `launcher/.env`**.
+
+Để dùng bản mẫu:
+
+1. Chép phần giữa `BEGIN BACKEND` và `END BACKEND` vào `backend/.env`.
+2. Chép phần giữa `BEGIN FRONTEND` và `END FRONTEND` vào `frontend/.env.local`.
+3. Nếu các file đã tồn tại, chỉ cập nhật biến cần thay đổi; không ghi đè cấu hình đang dùng. Có thể dùng các bản mẫu tách sẵn tại [`backend/.env.example`](../backend/.env.example) và [`frontend/.env.example`](../frontend/.env.example), nhưng nhớ kiểm tra auth theo chế độ bên dưới.
+4. Mở `MaySec.cmd`, chọn chế độ ở menu **2**, kiểm tra cấu hình tại **3 → 1**, rồi chọn **1** để chạy. Nếu đã chạy, dùng **7** để khởi động lại.
+
+Bản mẫu tổng hợp chọn `MAYSEC_AUTH_MODE=dev`, metadata tắt và profile trống để thử Local không AWS. Nếu ENV ghi rõ `dev`, launcher giữ giá trị đó khi chuyển chế độ; cần đổi sang `cognito` trước khi dùng S3.
+
+| Chế độ ở menu 2 | Launcher tự đặt | Cần cấu hình thêm |
+| --- | --- | --- |
+| Demo | Frontend `demo`, không chạy backend | Không cần AWS; chỉ mô phỏng giao diện |
+| Local | Storage `local`, metadata `disabled`, frontend `api`, pipeline tắt | Giữ auth `dev` để thử không token; API danh sách/trạng thái file chưa dùng được khi metadata tắt |
+| Local + DynamoDB | Storage `local`, metadata `dynamodb`, frontend `api`, pipeline tắt | Chọn AWS profile hợp lệ, đúng ba tên bảng; có thể giữ auth `dev` |
+| S3 + DynamoDB | Storage `s3`, metadata `dynamodb`, frontend `api` | AWS profile, bucket/region S3, auth `cognito`, User Pool/App client ID và cấu hình đăng nhập frontend; chỉ bật pipeline khi hạ tầng sẵn sàng |
+
+Các nhóm biến trong bản mẫu:
+
+| Nhóm | Ý nghĩa |
+| --- | --- |
+| `MAYSEC_STORAGE_*`, `MAYSEC_LOCAL_STORAGE_DIR`, `MAYSEC_MAX_FILE_SIZE_BYTES`, `MAYSEC_CORS_ORIGINS` | Nơi lưu nội dung, thư mục local, giới hạn tệp và origin được gọi API |
+| `MAYSEC_METADATA_MODE`, `DYNAMODB_*` | Bật lưu metadata và chọn ba bảng files/audit/users; DynamoDB bắt buộc Sydney |
+| `MAYSEC_AUTH_MODE`, `MAYSEC_DEV_ROLE`, `COGNITO_*` | Xác thực token Cognito hoặc danh tính phát triển; `dev` không dùng với S3 |
+| `MAYSEC_DEMO_LOGIN_ENABLED`, `MAYSEC_DEMO_SIGNING_KEY` | Bộ chọn tài khoản demo và secret ký phiên, khác với Demo chỉ giao diện; secret chỉ ở backend và không xuất hiện trong bảng cấu hình |
+| `AWS_PROFILE`, `S3_BUCKET_NAME`, `AWS_REGION`, `MAYSEC_QUARANTINE_BUCKET_NAME`, `MAYSEC_S3_*` | Danh tính AWS, bucket nguồn/cách ly, region S3 và tham số upload multipart |
+| `MAYSEC_SCAN_PIPELINE_ENABLED`, `MAYSEC_RESCAN_STATE_MACHINE_ARN` | Trạng thái pipeline của ứng dụng và workflow quét lại đã triển khai |
+| `VITE_UPLOAD_MODE`, `VITE_API_BASE_URL`, `VITE_MAX_FILE_SIZE_MB` | Cách frontend upload, URL API và giới hạn dung lượng; được launcher đồng bộ |
+| `VITE_COGNITO_*` | Domain đăng nhập, App client ID, URL callback/logout; App client ID phải khớp backend |
+| `AWS_CONFIG_FILE`, `AWS_SHARED_CREDENTIALS_FILE`, `AWS_LOGIN_CACHE_DIRECTORY`, `AWS_CA_BUNDLE` | Tùy chọn đường dẫn AWS/CA qua terminal; không được đọc từ file ENV và không truyền cho frontend |
+
+Biến `VITE_*` là cấu hình công khai của trình duyệt. Credentials AWS nằm trong profile; secret ký phiên demo chỉ đặt trong `backend/.env` hoặc terminal.
+
+### Những giá trị không phải ENV
+
+Chế độ chạy, port và giới hạn ghi đè nằm trong `launcher/runtime/settings.json`, được tạo/lưu qua menu. Không có biến `LAUNCHER_MODE`, `WEB_PORT` hoặc `API_PORT` để thay thế chúng. Cấu trúc mặc định để tham khảo:
+
+```json
+{
+  "version": 1,
+  "mode": "local",
+  "web_port": 5173,
+  "api_port": 8000,
+  "max_file_mb": null,
+  "overrides": {}
+}
+```
+
+`mode` nhận `demo`, `local`, `local-db`, `s3-db`; chọn bằng menu **2**. Hai port khác nhau, từ 1024 đến 65535, chỉnh ở **3 → 2**. `max_file_mb=null` nghĩa là lấy giới hạn từ ENV/mặc định; chỉnh ở **3 → 3** để đặt mức lớn hơn 0, tối đa 100 MB. `overrides` chứa các giá trị đã lưu qua menu, ưu tiên hơn ENV; dùng **3 → 8** để bỏ ghi đè và trả port/giới hạn về mặc định, giữ chế độ hiện tại.
+
+### Thứ tự nạp và đồng bộ
+
 Launcher mặc định chọn **Local không AWS** ở lần đầu, kể cả khi ENV cũ đang chọn AWS. Luôn xem bảng cấu hình trước khi chạy. Lựa chọn chỉ được lưu khi bạn chỉnh trên menu.
 
 Thứ tự xử lý: **mặc định → file ENV → biến terminal → giá trị đã lưu của launcher → chế độ và các giá trị đồng bộ**.
